@@ -247,6 +247,13 @@ internal static class NativeMethods
     public const int QUNS_QUIET_TIME = 6;
     public const int QUNS_APP = 7;
 
+    // Oturum olayları (uzak masaüstü, kilit açma)
+    public const uint NOTIFY_FOR_THIS_SESSION = 0;
+    public const int WTS_CONSOLE_CONNECT = 0x1;
+    public const int WTS_REMOTE_CONNECT = 0x3;
+    public const int WTS_SESSION_LOGON = 0x5;
+    public const int WTS_SESSION_UNLOCK = 0x8;
+
     // Güç olayları
     public const int PBT_APMRESUMEAUTOMATIC = 0x0012;
     public const int PBT_APMRESUMESUSPEND = 0x0007;
@@ -441,6 +448,16 @@ internal static class NativeMethods
 
     [DllImport("shell32.dll")]
     public static extern int SHQueryUserNotificationState(out int pquns);
+
+    // ------------------------------------------------------------ wtsapi32.dll
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool WTSRegisterSessionNotification(IntPtr hWnd, uint dwFlags);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool WTSUnRegisterSessionNotification(IntPtr hWnd);
 
     // --------------------------------------------------------------- shcore.dll
 

@@ -155,6 +155,12 @@ internal sealed class AppSettings
     /// <summary>Windows duvar kağıdı da zeminle eşitlensin mi?</summary>
     public bool SyncSystemWallpaper { get; set; } = true;
 
+    /// <summary>
+    /// Windows duvar kağıdına en son yazdığımız zeminin özeti. Aynıysa
+    /// duvar kağıdına hiç dokunmayız; her açılışta yazmak masaüstünü sarsıyor.
+    /// </summary>
+    public string? LastAppliedBackground { get; set; }
+
     /// <summary>Günlük ayrıntı seviyesi: 0 Ayrıntı, 1 Bilgi, 2 Uyarı, 3 Hata, 4 Kapalı.</summary>
     public int LogLevel { get; set; } = 3;
 

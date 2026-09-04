@@ -14,6 +14,9 @@ internal sealed class AppMessageWindow : NativeWindow
     /// <summary>Tepsi simgesinin olaylarını bildirdiği mesaj.</summary>
     public const uint TrayCallbackMessage = NativeMethods.WM_APP + 1;
 
+    /// <summary>Bu pencerenin sınıf adı; ikinci bir örnek bunu arayarak bize ulaşır.</summary>
+    public const string WindowClassName = "KalenderMesajPenceresi";
+
     private readonly uint _taskbarCreatedMessage;
 
     private AppMessageWindow()
@@ -21,7 +24,15 @@ internal sealed class AppMessageWindow : NativeWindow
         _taskbarCreatedMessage = NativeMethods.RegisterWindowMessage("TaskbarCreated");
     }
 
-    protected override string ClassName => "KalenderMesajPenceresi";
+    /// <summary>
+    /// Çalışan örneğe "ayarları aç" demek için kullanılan sistem geneli mesaj.
+    /// Kalender ikinci kez çalıştırıldığında yeni bir örnek açmak yerine
+    /// var olanın ayarlar penceresini öne getiriyoruz.
+    /// </summary>
+    public static uint OpenSettingsMessage { get; } =
+        NativeMethods.RegisterWindowMessage("KalenderAyarlariniAc");
+
+    protected override string ClassName => WindowClassName;
 
     /// <summary>Çözünürlük, monitör sayısı ya da yerleşim değişti.</summary>
     public event Action? DisplayChanged;
@@ -44,6 +55,9 @@ internal sealed class AppMessageWindow : NativeWindow
     /// </summary>
     public event Action? CloseRequested;
 
+    /// <summary>İkinci bir örnek çalıştırıldı; ayarlar penceresi açılmalı.</summary>
+    public event Action? SettingsRequested;
+
     public static AppMessageWindow Create()
     {
         var window = new AppMessageWindow();
@@ -52,6 +66,14 @@ internal sealed class AppMessageWindow : NativeWindow
             style: NativeMethods.WS_POPUP,
             x: 0, y: 0, width: 0, height: 0,
             parent: IntPtr.Zero);
+
+        // Uzak masaüstü bağlantısı ve kilit açma sonrası masaüstü katmanı
+        // yeniden kurulmalı; bunları öğrenmek için oturum bildirimlerine yazılıyoruz.
+        if (!NativeMethods.WTSRegisterSessionNotification(window.Handle, NativeMethods.NOTIFY_FOR_THIS_SESSION))
+        {
+            Log.Debug("Oturum bildirimlerine kaydolunamadı.");
+        }
+
         return window;
     }
 
@@ -61,6 +83,12 @@ internal sealed class AppMessageWindow : NativeWindow
         {
             Log.Info("Explorer yeniden başladı.");
             ShellRestarted?.Invoke();
+            return IntPtr.Zero;
+        }
+
+        if (msg == OpenSettingsMessage && OpenSettingsMessage != 0)
+        {
+            SettingsRequested?.Invoke();
             return IntPtr.Zero;
         }
 
@@ -88,6 +116,25 @@ internal sealed class AppMessageWindow : NativeWindow
                 DisplayChanged?.Invoke();
                 break;
 
+            case NativeMethods.WM_DPICHANGED:
+                // Ölçek değişti: takvimin punto ve boyutları yeniden hesaplanmalı.
+                Log.Info("Ekran ölçeği değişti.");
+                DisplayChanged?.Invoke();
+                return IntPtr.Zero;
+
+            case NativeMethods.WM_WTSSESSION_CHANGE:
+                int oturum = (int)wParam;
+                if (oturum is NativeMethods.WTS_CONSOLE_CONNECT
+                    or NativeMethods.WTS_REMOTE_CONNECT
+                    or NativeMethods.WTS_SESSION_LOGON
+                    or NativeMethods.WTS_SESSION_UNLOCK)
+                {
+                    Log.Info($"Oturum olayı: {oturum}");
+                    DisplayChanged?.Invoke();
+                }
+
+                return IntPtr.Zero;
+
             case NativeMethods.WM_TIMECHANGE:
                 TimeChanged?.Invoke();
                 return IntPtr.Zero;
@@ -103,5 +150,15 @@ internal sealed class AppMessageWindow : NativeWindow
         }
 
         return base.WndProc(hWnd, msg, wParam, lParam);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (Handle != IntPtr.Zero)
+        {
+            NativeMethods.WTSUnRegisterSessionNotification(Handle);
+        }
+
+        base.Dispose(disposing);
     }
 }

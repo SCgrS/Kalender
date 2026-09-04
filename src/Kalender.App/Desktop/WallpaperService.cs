@@ -22,6 +22,12 @@ internal sealed class WallpaperBackup
     /// <summary>Yerleşim biçimi.</summary>
     public int Position { get; set; }
 
+    /// <summary>
+    /// Kullanıcının duvar kağıdı olarak resim mi kullandığı. Yalnızca düz renk
+    /// kullanıyorduysa geri yüklerken de resmi kapatmamız gerekir.
+    /// </summary>
+    public bool WallpaperEnabled { get; set; } = true;
+
     /// <summary>Monitör aygıt yolu -> duvar kağıdı yolu.</summary>
     public Dictionary<string, string> PerMonitor { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -62,9 +68,12 @@ internal sealed class WallpaperService
             var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
             EnsureBackup(wallpaper);
 
+            string signature = BuildSignature(settings);
+
             // Zaten istediğimiz durumdaysa hiç dokunmuyoruz. Her açılışta
             // gereksiz yere duvar kağıdı yazmak masaüstünü sarsıyor.
-            if (AlreadyMatches(wallpaper, settings))
+            if (string.Equals(settings.LastAppliedBackground, signature, StringComparison.Ordinal)
+                && LooksApplied(wallpaper, settings))
             {
                 Log.Debug("Windows duvar kağıdı zaten güncel; değiştirilmedi.");
                 return false;
@@ -79,6 +88,8 @@ internal sealed class WallpaperService
                 ApplySolid(wallpaper, settings);
             }
 
+            _settings.Update(s => s.LastAppliedBackground = signature);
+
             Log.Info("Windows duvar kağıdı zeminle eşitlendi.");
             return true;
         }
@@ -91,54 +102,59 @@ internal sealed class WallpaperService
         }
     }
 
-    /// <summary>Windows duvar kağıdı zaten ayarlarla aynı mı?</summary>
-    private static bool AlreadyMatches(IDesktopWallpaper wallpaper, AppSettings settings)
+    /// <summary>Ayarların duvar kağıdını etkileyen kısmının özeti.</summary>
+    private static string BuildSignature(AppSettings settings)
+    {
+        AppearanceSettings a = settings.Appearance;
+        if (a.BackgroundMode != BackgroundMode.Photo)
+        {
+            return "duz:" + a.SolidColor;
+        }
+
+        var parcalar = new List<string> { "foto:" + a.PhotoFit, a.PhotoPath ?? string.Empty };
+        foreach ((string id, MonitorPlacement placement) in settings.Monitors.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (!string.IsNullOrWhiteSpace(placement.PhotoPath))
+            {
+                parcalar.Add(id + "=" + placement.PhotoPath);
+            }
+        }
+
+        return string.Join("|", parcalar);
+    }
+
+    /// <summary>
+    /// Kabaca bir doğrulama: imza tutsa bile kullanıcı arada duvar kağıdını
+    /// değiştirmiş olabilir. Düz renkte zemin rengine, fotoğrafta ilk ekranın
+    /// yoluna bakıyoruz.
+    /// </summary>
+    private static bool LooksApplied(IDesktopWallpaper wallpaper, AppSettings settings)
     {
         try
         {
-            bool photoMode = settings.Appearance.BackgroundMode == BackgroundMode.Photo;
-
-            if (!photoMode)
+            if (settings.Appearance.BackgroundMode != BackgroundMode.Photo)
             {
                 Color color = Rendering.ColorTools.Parse(
                     settings.Appearance.SolidColor, Color.FromArgb(0x2E, 0x32, 0x38));
-                if (wallpaper.GetBackgroundColor() != ToColorRef(color))
-                {
-                    return false;
-                }
+                return wallpaper.GetBackgroundColor() == ToColorRef(color);
             }
-            else if (wallpaper.GetPosition() != ToPosition(settings.Appearance.PhotoFit))
+
+            uint count = wallpaper.GetMonitorDevicePathCount();
+            if (count == 0)
             {
                 return false;
             }
 
-            uint count = wallpaper.GetMonitorDevicePathCount();
-            for (uint i = 0; i < count; i++)
-            {
-                string id = wallpaper.GetMonitorDevicePathAt(i);
-                string current = wallpaper.GetWallpaper(id) ?? string.Empty;
+            string id = wallpaper.GetMonitorDevicePathAt(0);
+            string current = wallpaper.GetWallpaper(id) ?? string.Empty;
+            string? expected = FindPhotoFor(settings, id) ?? settings.Appearance.PhotoPath;
 
-                string expected = string.Empty;
-                if (photoMode)
-                {
-                    string? path = FindPhotoFor(settings, id) ?? settings.Appearance.PhotoPath;
-                    if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-                    {
-                        expected = path;
-                    }
-                }
-
-                if (!string.Equals(current, expected, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return !string.IsNullOrWhiteSpace(expected)
+                && string.Equals(current, expected, StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı karşılaştırması yapılamadı: " + ex.Message);
+            Log.Debug("Duvar kağıdı durumu okunamadı: " + ex.Message);
             return false;
         }
     }
@@ -148,19 +164,18 @@ internal sealed class WallpaperService
         Color color = Rendering.ColorTools.Parse(settings.Appearance.SolidColor, Color.FromArgb(0x2E, 0x32, 0x38));
         wallpaper.SetBackgroundColor(ToColorRef(color));
 
-        // Resim kaldırılınca zemin rengi görünür.
-        uint count = wallpaper.GetMonitorDevicePathCount();
-        for (uint i = 0; i < count; i++)
-        {
-            string id = wallpaper.GetMonitorDevicePathAt(i);
-            wallpaper.SetWallpaper(id, string.Empty);
-        }
+        // Resim yolunu boşaltmak yetmiyor: Windows o durumda varsayılan duvar
+        // kağıdına düşüyor. Doğru yol, duvar kağıdı resmini tamamen kapatmak;
+        // o zaman zemin rengi görünür.
+        wallpaper.Enable(false);
     }
 
     private static void ApplyPhoto(IDesktopWallpaper wallpaper, AppSettings settings)
     {
         Color color = Rendering.ColorTools.Parse(settings.Appearance.SolidColor, Color.Black);
         wallpaper.SetBackgroundColor(ToColorRef(color));
+
+        wallpaper.Enable(true);
         wallpaper.SetPosition(ToPosition(settings.Appearance.PhotoFit));
 
         uint count = wallpaper.GetMonitorDevicePathCount();
@@ -172,10 +187,6 @@ internal sealed class WallpaperService
             if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
             {
                 wallpaper.SetWallpaper(id, path);
-            }
-            else
-            {
-                wallpaper.SetWallpaper(id, string.Empty);
             }
         }
     }
@@ -233,13 +244,17 @@ internal sealed class WallpaperService
                 }
             }
 
+            // Hiçbir ekranda resim yoksa kullanıcı düz renk kullanıyordu.
+            backup.WallpaperEnabled = !string.IsNullOrWhiteSpace(backup.Wallpaper)
+                || backup.PerMonitor.Values.Any(v => !string.IsNullOrWhiteSpace(v));
+
             Directory.CreateDirectory(Paths.RootFolder);
             File.WriteAllText(
                 Paths.BackupFile,
                 JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }),
                 new UTF8Encoding(false));
 
-            Log.Info("Önceki duvar kağıdı yedeklendi.");
+            Log.Info($"Önceki duvar kağıdı yedeklendi (resim: {backup.WallpaperEnabled}).");
         }
         catch (Exception ex)
         {
@@ -266,18 +281,38 @@ internal sealed class WallpaperService
 
             var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
             wallpaper.SetBackgroundColor(backup.BackgroundColor);
-            wallpaper.SetPosition((DesktopWallpaperPosition)backup.Position);
 
-            if (backup.PerMonitor.Count > 0)
+            // Bayrağa körü körüne güvenmiyoruz: eski yedek dosyalarında bu alan
+            // yok ve varsayılan true geliyor. Kayıtlı yol da yoksa kullanıcı
+            // düz renk kullanıyordu demektir.
+            bool hadImage = backup.WallpaperEnabled
+                && (!string.IsNullOrWhiteSpace(backup.Wallpaper)
+                    || backup.PerMonitor.Values.Any(v => !string.IsNullOrWhiteSpace(v)));
+
+            if (!hadImage)
             {
-                foreach ((string id, string path) in backup.PerMonitor)
-                {
-                    wallpaper.SetWallpaper(id, path ?? string.Empty);
-                }
+                // Kullanıcı düz renk kullanıyordu.
+                wallpaper.Enable(false);
             }
-            else if (!string.IsNullOrWhiteSpace(backup.Wallpaper))
+            else
             {
-                wallpaper.SetWallpaper(null, backup.Wallpaper);
+                wallpaper.Enable(true);
+                wallpaper.SetPosition((DesktopWallpaperPosition)backup.Position);
+
+                if (backup.PerMonitor.Count > 0)
+                {
+                    foreach ((string id, string path) in backup.PerMonitor)
+                    {
+                        if (!string.IsNullOrWhiteSpace(path))
+                        {
+                            wallpaper.SetWallpaper(id, path);
+                        }
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(backup.Wallpaper))
+                {
+                    wallpaper.SetWallpaper(null, backup.Wallpaper);
+                }
             }
 
             // Kalender kapalıyken de çağrılabildiği için masaüstünde asılı

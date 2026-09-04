@@ -47,7 +47,46 @@ sunucu olmaz.
 
 ## Ayarlar
 
-> Ayarlar penceresi 6. aşamada eklenecek; bu bölüm o zaman doldurulacaktır.
+Tepsi (saatin yanındaki bildirim alanı) simgesine **tıklayın** ya da sağ tıklayıp
+**Ayarlar**'ı seçin. Kalender zaten açıkken `Kalender.exe`'yi tekrar çalıştırmak da
+ayarları açar.
+
+Yaptığınız her değişiklik anında masaüstüne yansır; "Tamam"a basmanız gerekmez.
+
+### Zemin
+
+- **Hazır renkler** — koyudan açığa sekiz renk. Birine tıklayın, hemen uygulanır.
+- **Kendi rengim** — renk çarkından ton ve doygunluk, yandaki şeritten parlaklık
+  seçilir. Renk kodunu (`#2E3238` gibi) elle de yazabilirsiniz.
+- **Fotoğraf** — kendi resminizi zemin yapar. Yerleşim seçenekleri: Kapla, Sığdır,
+  Ortala, Döşe.
+
+Seçtiğiniz zemin aynı zamanda Windows duvar kağıdına da yazılır; böylece açılışta
+Kalender devreye girene kadar ekran farklı görünmez. Bunu geri almak için tepsi
+menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
+
+### Yazı
+
+- **Yazı rengini zemine göre otomatik seç** — düz renk zeminde açık/koyu yazı
+  kendiliğinden seçilir. Fotoğraf zeminde otomatik seçim yapılamaz, rengi siz
+  belirlersiniz.
+- **Cumartesi de pazar gibi kırmızı olsun** — varsayılan olarak açık.
+- **Takvimin arkasını karart** — yalnızca fotoğraf zeminde. Yazılar okunmuyorsa
+  takvimin arkasına yumuşak bir gölge koyar.
+
+### Ekranlar
+
+- Takvimin **tüm ekranlarda**, **yalnız ana ekranda** ya da **seçtiğiniz
+  ekranlarda** görünmesini seçebilirsiniz.
+- Her ekran için ayrı ayrı:
+  - **Takvimi taşı** — o ekranı kaplayan bir yerleştirme ekranı açar. Takvimi
+    sürükleyip bırakın; kenarlara ve ortaya yaklaşınca kendiliğinden hizalanır.
+    Aynı ekranda boyutu da (%80-150) ayarlayabilirsiniz. Esc: vazgeç.
+  - **Boyut** — takvimin büyüklüğü.
+  - **Bu ekrana fotoğraf…** — o ekrana özel zemin fotoğrafı.
+
+Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınızın
+çözünürlüğü ya da ölçeği değişirse Kalender kendini yeniden kurar.
 
 ## Resmi tatiller
 
@@ -72,14 +111,23 @@ Proje aşama aşama geliştiriliyor.
 | Aşama | İçerik | Durum |
 | --- | --- | --- |
 | 1 | İskelet, WorkerW katmanı, düz renk zemin, statik takvim çizimi | Tamam |
-| 2 | Çoklu monitör, DPI, konum/boyut, temalar, renk seçici, fotoğraf | Sırada |
-| 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Bekliyor |
+| 2 | Çoklu monitör, DPI, konum/boyut, temalar, renk seçici, fotoğraf | Tamam |
+| 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Sırada |
 | 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Bekliyor |
 | 5 | Noktacıklar, fare üstünde açılan gün kutusu | Bekliyor |
 | 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Bekliyor |
 | 7 | Kurulum dosyası, README, sürüm etiketi | Bekliyor |
 
 ## Sürüm geçmişi
+
+### 0.2.0 (geliştirme)
+
+- Görünüm ayarları penceresi: hazır renkler, renk çarkı, fotoğraf zemin, yazı rengi,
+  cumartesi rengi, takvim arkası karartma.
+- Takvim sürükleyerek yerleştirilebiliyor; kenarlara ve ortaya yapışıyor.
+- Konum, boyut ve fotoğraf her monitör için ayrı hatırlanıyor.
+- Ekran ölçeği (DPI), çözünürlük, monitör tak/çıkar, uzak masaüstü ve kilit açma
+  durumlarında katman kendini yeniden kuruyor.
 
 ### 0.1.0 (geliştirme)
 

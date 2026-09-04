@@ -32,7 +32,17 @@ public partial class App : Application
         _instance = new SingleInstance();
         if (!_instance.TryAcquire())
         {
-            // Zaten çalışan bir Kalender var; sessizce çekiliyoruz.
+            // Zaten çalışan bir Kalender var. İkinci kez çalıştırmak bir işe
+            // yaramadan kapanmak yerine, çalışan örneğin ayarlarını açsın.
+            IntPtr existing = Interop.NativeMethods.FindWindow(
+                Interop.AppMessageWindow.WindowClassName, null);
+
+            if (existing != IntPtr.Zero)
+            {
+                Interop.NativeMethods.PostMessage(
+                    existing, Interop.AppMessageWindow.OpenSettingsMessage, IntPtr.Zero, IntPtr.Zero);
+            }
+
             Shutdown();
             return;
         }

@@ -62,6 +62,48 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     }
 
     /// <summary>
+    /// Yalnızca zemini üretir; takvim çizilmez. Takvimi sürükleyerek
+    /// yerleştirme ekranı arka plan olarak bunu kullanır.
+    /// </summary>
+    public Bitmap RenderBackgroundOnly(Size pixelSize, AppSettings settings, MonitorPlacement placement)
+    {
+        var bitmap = new Bitmap(Math.Max(pixelSize.Width, 1), Math.Max(pixelSize.Height, 1),
+            PixelFormat.Format32bppPArgb);
+
+        var theme = Theme.From(settings.Appearance);
+
+        using Graphics g = Graphics.FromImage(bitmap);
+        string? photo = placement.PhotoPath ?? settings.Appearance.PhotoPath;
+        PhotoFit fit = placement.PhotoPath is not null ? placement.PhotoFit : settings.Appearance.PhotoFit;
+        _background.Paint(g, new Rectangle(Point.Empty, bitmap.Size), settings.Appearance, theme, photo, fit);
+
+        return bitmap;
+    }
+
+    /// <summary>
+    /// Yalnızca takvim bloğunu saydam bir yüzeye çizer. Sürükleyerek
+    /// yerleştirmede ekranda gezdirilen görüntü budur.
+    /// </summary>
+    public Bitmap RenderCalendarBlock(float scale, AppSettings settings,
+        CalendarDataSnapshot data, DateOnly today)
+    {
+        SizeF size = CalendarLayout.MeasureSize(scale);
+        var bitmap = new Bitmap(
+            Math.Max((int)Math.Ceiling(size.Width), 1),
+            Math.Max((int)Math.Ceiling(size.Height), 1),
+            PixelFormat.Format32bppPArgb);
+
+        var theme = Theme.From(settings.Appearance);
+        var layout = CalendarLayout.Create(today, scale, PointF.Empty);
+
+        using Graphics g = Graphics.FromImage(bitmap);
+        g.Clear(Color.Transparent);
+        _calendar.Paint(g, layout, theme, settings.Appearance, data, today);
+
+        return bitmap;
+    }
+
+    /// <summary>
     /// Kayıtlı oranlardan takvimin sol üst köşesini hesaplar ve bloğun
     /// ekran dışına taşmamasını güvence altına alır.
     /// </summary>
@@ -87,17 +129,26 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
             return;
         }
 
-        int alpha = (int)Math.Round(Math.Clamp(appearance.BackdropDim, 0, 100) / 100.0 * 200);
-        float pad = 28f * scale;
-        var rect = RectangleF.Inflate(layout.Bounds, pad, pad);
+        int alpha = (int)Math.Round(Math.Clamp(appearance.BackdropDim, 0, 100) / 100.0 * 235);
 
-        // Kenarları belli olmayan yumuşak bir gölge için merkezden dışa doğru soluklaşan bir fırça.
+        // Elips, takvim dikdörtgenini köşeleriyle birlikte içine alacak kadar
+        // büyütülüyor; yoksa köşelerdeki rakamlar korumasız kalıyor.
+        var rect = RectangleF.Inflate(
+            layout.Bounds,
+            layout.Bounds.Width * 0.24f,
+            layout.Bounds.Height * 0.24f);
+
+        // Kenarları belli olmayan yumuşak bir gölge: merkezde koyu, dışa doğru saydam.
         using var path = new GraphicsPath();
         path.AddEllipse(rect);
         using var brush = new PathGradientBrush(path)
         {
             CenterColor = Color.FromArgb(alpha, 0, 0, 0),
             SurroundColors = new[] { Color.FromArgb(0, 0, 0, 0) },
+
+            // Ortadaki koyu bölge takvimi kapsayacak kadar geniş dursun,
+            // solma yalnızca dışarıda olsun.
+            FocusScales = new PointF(0.55f, 0.55f),
         };
 
         g.FillEllipse(brush, rect);

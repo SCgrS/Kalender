@@ -51,29 +51,23 @@ internal static class DesktopRefresher
     }
 
     /// <summary>
-    /// Kabuğa duvar kağıdını yeniden çizdirir. Okuduğumuz değerleri aynen geri
-    /// yazıyoruz; kullanıcının ayarı değişmiyor, yalnızca kabuk boyamayı
-    /// tazeliyor.
+    /// Kabuğa duvar kağıdını yeniden çizdirir.
+    ///
+    /// Yalnızca zemin rengini okuyup aynen geri yazıyoruz. Bu, kabuğu boyamaya
+    /// zorlamaya yetiyor ve hiçbir ayarı değiştirmiyor. Duvar kağıdı yolunu
+    /// geri yazmak cazip görünse de tehlikeli: düz renk kipinde resim kapalıdır,
+    /// yolu geri yazmak resmi tekrar açar.
     /// </summary>
     private static void RewriteWallpaperInPlace()
     {
         try
         {
             var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
-
             wallpaper.SetBackgroundColor(wallpaper.GetBackgroundColor());
-
-            uint count = wallpaper.GetMonitorDevicePathCount();
-            for (uint i = 0; i < count; i++)
-            {
-                string id = wallpaper.GetMonitorDevicePathAt(i);
-                string current = wallpaper.GetWallpaper(id) ?? string.Empty;
-                wallpaper.SetWallpaper(id, current);
-            }
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı yeniden yazılamadı: " + ex.Message);
+            Log.Debug("Duvar kağıdı yeniden çizdirilemedi: " + ex.Message);
         }
     }
 }

@@ -1,8 +1,10 @@
+using Kalender.Calendar;
 using Kalender.Desktop;
 using Kalender.Interop;
 using Kalender.Settings;
 using Kalender.Time;
 using Kalender.Tray;
+using Kalender.Ui;
 
 namespace Kalender.Core;
 
@@ -10,7 +12,7 @@ namespace Kalender.Core;
 /// Uygulamanın omurgası. Parçaları kurar, birbirine bağlar ve kapanışta
 /// düzgünce toplar. İş mantığı burada değil, ilgili sınıflardadır.
 /// </summary>
-internal sealed class AppHost : IDisposable
+internal sealed class AppHost : IDisposable, IAppearanceHost
 {
     private const uint MenuSettings = 1;
     private const uint MenuRefresh = 2;
@@ -25,12 +27,31 @@ internal sealed class AppHost : IDisposable
     private DesktopLayerManager? _layer;
     private WallpaperService? _wallpaper;
     private DayChangeWatcher? _dayWatcher;
+    private SettingsWindow? _settingsWindow;
+    private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
     private bool _layerWarningShown;
 
     /// <summary>Kullanıcı çıkışı seçtiğinde tetiklenir.</summary>
     public event Action? ExitRequested;
 
     public SettingsStore Settings => _settings;
+
+    /// <summary>
+    /// Ayarlar ekranının gösterdiği monitör listesi. Masaüstü katmanı
+    /// kurulamadıysa doğrudan sistemden okunur.
+    /// </summary>
+    public IReadOnlyList<MonitorTarget> Monitors
+    {
+        get
+        {
+            IReadOnlyList<MonitorTarget>? fromLayer = _layer?.Monitors;
+            return fromLayer is { Count: > 0 } ? fromLayer : MonitorEnumerator.All();
+        }
+    }
+
+    public CalendarDataSnapshot Data => _data;
+
+    public DateOnly Today => _dayWatcher?.Today ?? DateOnly.FromDateTime(DateTime.Now);
 
     public void Start()
     {
@@ -46,12 +67,13 @@ internal sealed class AppHost : IDisposable
             MenuBuilder = BuildMenu,
         };
         _tray.MenuItemClicked += OnMenuItemClicked;
-        _tray.Clicked += () => { /* Ayarlar penceresi 6. aşamada bağlanacak. */ };
+        _tray.Clicked += OpenSettings;
         _tray.Show("Kalender");
 
         _layer.LayerUnavailable += OnLayerUnavailable;
 
         _messages.CloseRequested += () => ExitRequested?.Invoke();
+        _messages.SettingsRequested += OpenSettings;
         _messages.DisplayChanged += OnDisplayChanged;
         _messages.ShellRestarted += OnShellRestarted;
         _messages.TimeChanged += () => _dayWatcher.Recheck();
@@ -99,14 +121,44 @@ internal sealed class AppHost : IDisposable
         }
     }
 
+    /// <summary>Ayarlar penceresinin çağırdığı uygulama yolu: kaydet ve tazele.</summary>
+    public void ApplyAppearance()
+    {
+        _settings.Save();
+        ApplySettings();
+    }
+
+    public void OpenSettings()
+    {
+        try
+        {
+            if (_settingsWindow is not null)
+            {
+                _settingsWindow.Activate();
+                return;
+            }
+
+            _settingsWindow = new SettingsWindow(this);
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Show();
+            _settingsWindow.Activate();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Ayarlar penceresi açılamadı.", ex);
+            _settingsWindow = null;
+        }
+    }
+
     private IReadOnlyList<TrayMenuItem> BuildMenu()
     {
         bool hidden = _settings.Current.CalendarHidden;
 
         return new[]
         {
-            // Ayarlar penceresi 6. aşamada eklenecek.
-            new TrayMenuItem(MenuSettings, "Ayarlar", Enabled: false),
+            new TrayMenuItem(MenuSettings, "Ayarlar"),
+
+            // Google verisi 4. aşamada bağlanacak.
             new TrayMenuItem(MenuRefresh, "Şimdi yenile", Enabled: false),
             TrayMenuItem.Separator,
             new TrayMenuItem(MenuToggleCalendar, hidden ? "Takvimi göster" : "Takvimi gizle"),
@@ -121,6 +173,10 @@ internal sealed class AppHost : IDisposable
     {
         switch (id)
         {
+            case MenuSettings:
+                OpenSettings();
+                break;
+
             case MenuToggleCalendar:
                 _settings.Update(s => s.CalendarHidden = !s.CalendarHidden);
                 _layer?.Refresh();
@@ -159,7 +215,7 @@ internal sealed class AppHost : IDisposable
 
     private void OnDisplayChanged()
     {
-        // Çözünürlük ya da monitör düzeni değişti: katmanı sıfırdan kur.
+        // Çözünürlük, monitör düzeni ya da ölçek değişti: katmanı sıfırdan kur.
         // Burada duvar kağıdına dokunmuyoruz; duvar kağıdı yazmak yeni bir
         // ayar değişikliği bildirimi doğurur ve döngüye girilir.
         _layer?.RequestRebuild("ekran yapılandırması değişti");
@@ -195,6 +251,7 @@ internal sealed class AppHost : IDisposable
 
     public void Dispose()
     {
+        _settingsWindow?.Close();
         _dayWatcher?.Dispose();
         _tray?.Dispose();
         _layer?.Dispose();
