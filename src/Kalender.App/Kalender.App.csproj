@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <AssemblyName>Kalender</AssemblyName>
+    <RootNamespace>Kalender</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Kalender.ico</ApplicationIcon>
+
+    <!-- Kaynak dosyalar UTF-8; Turkce karakterler dogru okunsun diye acikca belirtiliyor. -->
+    <CodePage>65001</CodePage>
+
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Product>Kalender</Product>
+    <Company>Kalender</Company>
+    <Description>Masaustu duvar kagidina islenmis aylik takvim</Description>
+    <NeutralLanguage>tr-TR</NeutralLanguage>
+
+    <!-- Tek dosya, kendi kendine yeten yayin. RuntimeIdentifier ve SelfContained
+         yayin.ps1 tarafindan komut satirindan verilir; boylece gunluk derleme hizli kalir. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <DebugType>embedded</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Tepsi simgesi tek dosya yayinda da bulunabilsin diye gomuluyor. -->
+    <EmbeddedResource Include="Assets\Kalender.ico" LogicalName="Kalender.Assets.Kalender.ico" />
+  </ItemGroup>
+
+</Project>

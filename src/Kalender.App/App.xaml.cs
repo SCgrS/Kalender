@@ -1,0 +1,78 @@
+using System.Windows;
+using System.Windows.Threading;
+using Kalender.Core;
+
+namespace Kalender;
+
+/// <summary>
+/// Uygulama giriş noktası. Görünür bir ana pencere yoktur; Kalender tepsiden
+/// yönetilir ve çizimini masaüstü katmanına yapar.
+/// </summary>
+public partial class App : Application
+{
+    private SingleInstance? _instance;
+    private AppHost? _host;
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        Paths.EnsureFolders();
+
+        _instance = new SingleInstance();
+        if (!_instance.TryAcquire())
+        {
+            // Zaten çalışan bir Kalender var; sessizce çekiliyoruz.
+            Shutdown();
+            return;
+        }
+
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        try
+        {
+            _host = new AppHost();
+            _host.ExitRequested += Shutdown;
+            _host.Start();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Kalender başlatılamadı.", ex);
+            MessageBox.Show(
+                "Kalender başlatılamadı. Ayrıntılar günlük dosyasına yazıldı:\n" + Paths.LogFolder,
+                "Kalender",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown();
+        }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _host?.Dispose();
+        _instance?.Dispose();
+        Log.Info("Kalender kapandı.");
+        base.OnExit(e);
+    }
+
+    private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        // Arayüz iş parçacığındaki bir hata yüzünden uygulama kapanmasın:
+        // logla ve devam et. Kararlılık her şeyin önünde.
+        Log.Error("Arayüz iş parçacığında yakalanmamış hata.", e.Exception);
+        e.Handled = true;
+    }
+
+    private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        Log.Error("Yakalanmamış hata.", e.ExceptionObject as Exception);
+    }
+
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        Log.Error("Gözlenmemiş görev hatası.", e.Exception);
+        e.SetObserved();
+    }
+}

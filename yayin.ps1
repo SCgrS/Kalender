@@ -1,0 +1,40 @@
+# Kalender'i tek dosya, kendi kendine yeten bir exe olarak yayina hazirlar.
+#
+#   powershell -ExecutionPolicy Bypass -File yayin.ps1
+#
+# Cikti: dagitim\Kalender.exe
+
+$ErrorActionPreference = 'Stop'
+$kok = Split-Path -Parent $MyInvocation.MyCommand.Path
+$proje = Join-Path $kok "src\Kalender.App\Kalender.App.csproj"
+$cikti = Join-Path $kok "dagitim"
+
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    $dp = "C:\Program Files\dotnet"
+    if (Test-Path (Join-Path $dp "dotnet.exe")) { $env:PATH = "$dp;$env:PATH" }
+    else { throw ".NET SDK bulunamadi. https://dotnet.microsoft.com/download adresinden .NET 8 SDK kurun." }
+}
+
+if (Test-Path $cikti) { Remove-Item $cikti -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $cikti | Out-Null
+
+Write-Host "Yayin hazirlaniyor..." -ForegroundColor Cyan
+
+dotnet publish $proje `
+    -c Release `
+    -r win-x64 `
+    --self-contained true `
+    -p:PublishSingleFile=true `
+    -p:EnableCompressionInSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:DebugType=embedded `
+    -o $cikti
+
+if ($LASTEXITCODE -ne 0) { throw "Yayin basarisiz oldu." }
+
+$exe = Join-Path $cikti "Kalender.exe"
+if (-not (Test-Path $exe)) { throw "Cikti dosyasi olusmadi: $exe" }
+
+$mb = [Math]::Round((Get-Item $exe).Length / 1MB, 1)
+Write-Host ""
+Write-Host "Tamam: $exe  ($mb MB)" -ForegroundColor Green

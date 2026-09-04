@@ -1,0 +1,17 @@
+# Derleme ciktilari
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+*.user
+*.suo
+.vs/
+
+# Yayin ciktilari
+dagitim/
+*.zip
+
+# Gecici
+*.log
+*.tmp
