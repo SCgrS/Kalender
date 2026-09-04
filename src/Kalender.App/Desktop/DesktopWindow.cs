@@ -30,6 +30,13 @@ internal sealed class DesktopWindow : NativeWindow
     /// <summary>Bu penceredeki takvim geometrisi; takvim çizilmediyse null.</summary>
     public CalendarLayout? Layout => _surface?.Layout;
 
+    /// <summary>
+    /// Pencere bizim isteğimiz dışında yok edildi. Bu, ana pencerenin (WorkerW)
+    /// kabuk tarafından yıkıldığı anlamına gelir; katman yeniden kurulmalıdır.
+    /// Duvar kağıdı değiştiğinde kabuk WorkerW'yi tam olarak böyle yeniler.
+    /// </summary>
+    public event Action? DestroyedByShell;
+
     public static DesktopWindow Create(string monitorId, Rectangle monitorBounds, IntPtr host, Point hostOrigin)
     {
         var window = new DesktopWindow
@@ -95,6 +102,15 @@ internal sealed class DesktopWindow : NativeWindow
 
             case NativeMethods.WM_MOUSEACTIVATE:
                 return new IntPtr(NativeMethods.MA_NOACTIVATE);
+
+            case NativeMethods.WM_DESTROY:
+                if (!IsDisposing)
+                {
+                    Log.Info("Çizim penceresi kabuk tarafından yok edildi.");
+                    DestroyedByShell?.Invoke();
+                }
+
+                break;
         }
 
         return base.WndProc(hWnd, msg, wParam, lParam);

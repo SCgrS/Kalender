@@ -44,18 +44,31 @@ internal sealed class WallpaperService
     }
 
     /// <summary>Ayarlardaki zemini Windows duvar kağıdına yazar.</summary>
-    public void Apply()
+    /// <returns>
+    /// Duvar kağıdı gerçekten değiştiyse true. Bu önemli: kabuk duvar kağıdı
+    /// değişince WorkerW'yi yıkıp yeniden kuruyor, dolayısıyla çağıran taraf
+    /// masaüstü katmanını biraz bekleyip kurmalı.
+    /// </returns>
+    public bool Apply()
     {
         AppSettings settings = _settings.Current;
         if (!settings.SyncSystemWallpaper)
         {
-            return;
+            return false;
         }
 
         try
         {
             var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
             EnsureBackup(wallpaper);
+
+            // Zaten istediğimiz durumdaysa hiç dokunmuyoruz. Her açılışta
+            // gereksiz yere duvar kağıdı yazmak masaüstünü sarsıyor.
+            if (AlreadyMatches(wallpaper, settings))
+            {
+                Log.Debug("Windows duvar kağıdı zaten güncel; değiştirilmedi.");
+                return false;
+            }
 
             if (settings.Appearance.BackgroundMode == BackgroundMode.Photo)
             {
@@ -65,12 +78,68 @@ internal sealed class WallpaperService
             {
                 ApplySolid(wallpaper, settings);
             }
+
+            Log.Info("Windows duvar kağıdı zeminle eşitlendi.");
+            return true;
         }
         catch (Exception ex)
         {
             // Duvar kağıdı yazılamazsa uygulama çalışmaya devam eder;
             // yalnızca açılıştaki bir iki saniyelik boşlukta eski zemin görünür.
             Log.Warn("Windows duvar kağıdı güncellenemedi.", ex);
+            return false;
+        }
+    }
+
+    /// <summary>Windows duvar kağıdı zaten ayarlarla aynı mı?</summary>
+    private static bool AlreadyMatches(IDesktopWallpaper wallpaper, AppSettings settings)
+    {
+        try
+        {
+            bool photoMode = settings.Appearance.BackgroundMode == BackgroundMode.Photo;
+
+            if (!photoMode)
+            {
+                Color color = Rendering.ColorTools.Parse(
+                    settings.Appearance.SolidColor, Color.FromArgb(0x2E, 0x32, 0x38));
+                if (wallpaper.GetBackgroundColor() != ToColorRef(color))
+                {
+                    return false;
+                }
+            }
+            else if (wallpaper.GetPosition() != ToPosition(settings.Appearance.PhotoFit))
+            {
+                return false;
+            }
+
+            uint count = wallpaper.GetMonitorDevicePathCount();
+            for (uint i = 0; i < count; i++)
+            {
+                string id = wallpaper.GetMonitorDevicePathAt(i);
+                string current = wallpaper.GetWallpaper(id) ?? string.Empty;
+
+                string expected = string.Empty;
+                if (photoMode)
+                {
+                    string? path = FindPhotoFor(settings, id) ?? settings.Appearance.PhotoPath;
+                    if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                    {
+                        expected = path;
+                    }
+                }
+
+                if (!string.Equals(current, expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Duvar kağıdı karşılaştırması yapılamadı: " + ex.Message);
+            return false;
         }
     }
 

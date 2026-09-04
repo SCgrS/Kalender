@@ -60,10 +60,20 @@ internal sealed class AppHost : IDisposable
 
         // Önce gerçek duvar kağıdını yazıyoruz: bir sonraki açılışta Kalender
         // devreye girene kadar ekran doğru görünsün.
-        _wallpaper.Apply();
+        bool wallpaperChanged = _wallpaper.Apply();
 
         _layer.SetToday(_dayWatcher.Today);
-        _layer.Rebuild();
+
+        if (wallpaperChanged)
+        {
+            // Duvar kağıdı değişince kabuk WorkerW'yi yıkıp yeniden kuruyor.
+            // Hemen kurarsak katmanımız o yıkıma yakalanır; kabuğun oturmasını bekliyoruz.
+            _layer.RequestRebuild("açılış (duvar kağıdı değişti)", TimeSpan.FromMilliseconds(2500));
+        }
+        else
+        {
+            _layer.Rebuild();
+        }
 
         if (!_settings.Current.FirstRunDone)
         {
@@ -76,8 +86,16 @@ internal sealed class AppHost : IDisposable
     /// <summary>Ayarlar değiştikten sonra çağrılır: zemini ve çizimi tazeler.</summary>
     public void ApplySettings()
     {
-        _wallpaper?.Apply();
-        _layer?.Refresh();
+        bool wallpaperChanged = _wallpaper?.Apply() ?? false;
+
+        if (wallpaperChanged)
+        {
+            _layer?.RequestRebuild("ayar değişti (duvar kağıdı yenilendi)", TimeSpan.FromMilliseconds(2500));
+        }
+        else
+        {
+            _layer?.Refresh();
+        }
     }
 
     private IReadOnlyList<TrayMenuItem> BuildMenu()
@@ -141,23 +159,21 @@ internal sealed class AppHost : IDisposable
     private void OnDisplayChanged()
     {
         // Çözünürlük ya da monitör düzeni değişti: katmanı sıfırdan kur.
-        _layer?.Rebuild();
-        _wallpaper?.Apply();
+        // Burada duvar kağıdına dokunmuyoruz; duvar kağıdı yazmak yeni bir
+        // ayar değişikliği bildirimi doğurur ve döngüye girilir.
+        _layer?.RequestRebuild("ekran yapılandırması değişti");
     }
 
     private void OnShellRestarted()
     {
         // Explorer yeniden başladığında WorkerW de yeniden üretilir.
-        _layer?.Rebuild();
+        _layer?.RequestRebuild("Explorer yeniden başladı", TimeSpan.FromSeconds(2));
     }
 
     private void OnResumed()
     {
         _dayWatcher?.Recheck();
-        if (_layer is not null && !_layer.EnsureAlive())
-        {
-            _layer.Rebuild();
-        }
+        _layer?.EnsureAlive();
     }
 
     private void OnLayerUnavailable()

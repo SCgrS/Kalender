@@ -25,6 +25,13 @@ internal abstract class NativeWindow : IDisposable
 
     public IntPtr Handle { get; private set; }
 
+    /// <summary>
+    /// Pencereyi biz mi kapatıyoruz? WM_DESTROY geldiğinde, bunun bizim
+    /// isteğimiz mi yoksa dışarıdan (ana pencerenin yıkılması gibi) mi
+    /// olduğunu ayırt etmek için kullanılır.
+    /// </summary>
+    protected bool IsDisposing { get; private set; }
+
     protected abstract string ClassName { get; }
 
     /// <summary>Pencere sınıfının stil bayrakları (CS_*).</summary>
@@ -155,6 +162,7 @@ internal abstract class NativeWindow : IDisposable
         }
 
         _disposed = true;
+        IsDisposing = true;
 
         if (Handle != IntPtr.Zero)
         {
