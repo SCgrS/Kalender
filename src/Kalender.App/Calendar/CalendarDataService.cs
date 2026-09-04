@@ -1,26 +1,30 @@
+using System.Drawing;
 using Kalender.Calendar.Holidays;
+using Kalender.Google;
+using Kalender.Rendering;
 using Kalender.Settings;
 
 namespace Kalender.Calendar;
 
 /// <summary>
-/// Görünen ayın gün içeriklerini hazırlar.
+/// Görünen ayın gün içeriklerini hazırlar: resmi tatiller, Google takvim
+/// etkinlikleri ve görevler tek bir anlık görüntüde birleşir.
 ///
-/// Şu an yalnızca resmi tatilleri birleştiriyor; 4. aşamada Google takvim
-/// etkinlikleri ve görevler de buraya katılacak. Her kaynak değiştiğinde
-/// yeni bir anlık görüntü üretilip tek atışta yayınlanır, böylece çizim ve
-/// gün kutusu her zaman tutarlı veri görür.
+/// Her kaynak değiştiğinde yeni bir anlık görüntü üretilip tek atışta
+/// yayınlanır; böylece çizim ve gün kutusu her zaman tutarlı veri görür.
 /// </summary>
 internal sealed class CalendarDataService
 {
     private readonly HolidayService _holidays;
+    private readonly ICalendarProvider? _provider;
     private readonly SettingsStore _settings;
 
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
 
-    public CalendarDataService(HolidayService holidays, SettingsStore settings)
+    public CalendarDataService(HolidayService holidays, ICalendarProvider? provider, SettingsStore settings)
     {
         _holidays = holidays;
+        _provider = provider;
         _settings = settings;
     }
 
@@ -28,6 +32,9 @@ internal sealed class CalendarDataService
     public event Action<CalendarDataSnapshot>? Changed;
 
     public CalendarDataSnapshot Current { get; private set; } = CalendarDataSnapshot.Empty;
+
+    /// <summary>Şu an gösterilen ayın kapsadığı gün aralığı.</summary>
+    public (DateOnly First, DateOnly Last) VisibleRange => CalendarLayout.GridRange(_today);
 
     public void SetToday(DateOnly today)
     {
@@ -38,38 +45,24 @@ internal sealed class CalendarDataService
     /// <summary>Kaynaklardan görünen ayın içeriğini yeniden derler.</summary>
     public void Rebuild()
     {
-        (DateOnly first, DateOnly last) = CalendarLayout.GridRange(_today);
+        (DateOnly first, DateOnly last) = VisibleRange;
 
-        var days = new Dictionary<DateOnly, DayContent>();
-        bool holidaysOn = _settings.Current.Holidays.Enabled;
+        var days = new Dictionary<DateOnly, List<DayEntry>>();
+        var holidayNames = new Dictionary<DateOnly, HolidayInfo>();
 
-        for (DateOnly day = first; day <= last; day = day.AddDays(1))
+        AddHolidays(first, last, days, holidayNames);
+        AddEvents(first, last, days);
+        AddTasks(first, last, days);
+
+        var result = new Dictionary<DateOnly, DayContent>(days.Count);
+
+        foreach ((DateOnly day, List<DayEntry> entries) in days)
         {
-            HolidayInfo? holiday = null;
-            if (holidaysOn && _holidays.Days.TryGetValue(day, out HolidayInfo? found))
-            {
-                holiday = found;
-            }
+            entries.Sort((a, b) => a.SortKey.CompareTo(b.SortKey));
 
-            var entries = new List<DayEntry>();
+            holidayNames.TryGetValue(day, out HolidayInfo? holiday);
 
-            if (holiday is not null)
-            {
-                entries.Add(new DayEntry
-                {
-                    Kind = EntryKind.Holiday,
-                    Title = holiday.Name,
-                });
-            }
-
-            // Google etkinlikleri ve görevler 4. aşamada buraya eklenecek.
-
-            if (holiday is null && entries.Count == 0)
-            {
-                continue;
-            }
-
-            days[day] = new DayContent
+            result[day] = new DayContent
             {
                 Date = day,
                 HolidayName = holiday?.Name,
@@ -78,7 +71,99 @@ internal sealed class CalendarDataService
             };
         }
 
-        Current = new CalendarDataSnapshot(days);
+        Current = new CalendarDataSnapshot(result);
         Changed?.Invoke(Current);
+    }
+
+    private void AddHolidays(DateOnly first, DateOnly last,
+        Dictionary<DateOnly, List<DayEntry>> days, Dictionary<DateOnly, HolidayInfo> holidayNames)
+    {
+        if (!_settings.Current.Holidays.Enabled)
+        {
+            return;
+        }
+
+        for (DateOnly day = first; day <= last; day = day.AddDays(1))
+        {
+            if (!_holidays.Days.TryGetValue(day, out HolidayInfo? holiday))
+            {
+                continue;
+            }
+
+            holidayNames[day] = holiday;
+            Bucket(days, day).Add(new DayEntry
+            {
+                Kind = EntryKind.Holiday,
+                Title = holiday.Name,
+            });
+        }
+    }
+
+    private void AddEvents(DateOnly first, DateOnly last, Dictionary<DateOnly, List<DayEntry>> days)
+    {
+        if (_provider is null)
+        {
+            return;
+        }
+
+        foreach (ProviderEvent e in _provider.Data.Events)
+        {
+            Color dot = ColorTools.Parse(e.ColorHex, Color.FromArgb(0x4C, 0x8D, 0xFF));
+
+            DateOnly from = e.StartDate < first ? first : e.StartDate;
+            DateOnly to = e.EndDate > last ? last : e.EndDate;
+
+            for (DateOnly day = from; day <= to; day = day.AddDays(1))
+            {
+                // Çok günlü saatli etkinliklerde saat yalnızca ilk günde anlamlı;
+                // sonraki günler "tüm gün" gibi gösteriliyor.
+                bool showTime = !e.AllDay && day == e.StartDate;
+
+                Bucket(days, day).Add(new DayEntry
+                {
+                    Kind = showTime ? EntryKind.Timed : EntryKind.AllDay,
+                    Title = e.Title,
+                    Start = showTime ? e.StartTime : null,
+                    DotColor = dot,
+                });
+            }
+        }
+    }
+
+    private void AddTasks(DateOnly first, DateOnly last, Dictionary<DateOnly, List<DayEntry>> days)
+    {
+        if (_provider is null)
+        {
+            return;
+        }
+
+        Color dot = ColorTools.Parse(
+            _settings.Current.Google.TaskColor, Color.FromArgb(0x4C, 0x8D, 0xFF));
+
+        foreach (ProviderTask task in _provider.Data.Tasks)
+        {
+            if (task.Due < first || task.Due > last)
+            {
+                continue;
+            }
+
+            Bucket(days, task.Due).Add(new DayEntry
+            {
+                Kind = EntryKind.Task,
+                Title = task.Title,
+                DotColor = dot,
+            });
+        }
+    }
+
+    private static List<DayEntry> Bucket(Dictionary<DateOnly, List<DayEntry>> days, DateOnly day)
+    {
+        if (!days.TryGetValue(day, out List<DayEntry>? list))
+        {
+            list = new List<DayEntry>();
+            days[day] = list;
+        }
+
+        return list;
     }
 }

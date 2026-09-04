@@ -39,11 +39,69 @@ o günün Google Takvim etkinlikleri ile görevleri listelenir.
 ## Google Takvim ve Görevler bağlantısı
 
 Kalender, Google hesabınıza **yalnızca okuma** izniyle bağlanır; etkinlik veya görev eklemez,
-silmez. Bağlantı için kendi Google Cloud istemci kimliğinizi oluşturmanız gerekir. Böylece
-verileriniz doğrudan sizin Google hesabınızla Kalender arasında kalır, arada başka bir
-sunucu olmaz.
+silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur.
 
-> Bu rehber, Google bağlantısı eklendiğinde (4. aşama) adım adım doldurulacaktır.
+Bunun için kendi Google Cloud istemci kimliğinizi oluşturmanız gerekiyor. Bir kerelik bir
+işlem, yaklaşık beş dakika sürüyor. Aynı adımlar Kalender'in Ayarlar penceresinde de yazılı.
+
+### 1. Google Cloud projesi oluşturun
+
+1. [console.cloud.google.com](https://console.cloud.google.com) adresine kendi Google
+   hesabınızla girin.
+2. Sayfanın üstündeki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu)
+   tıklayın, açılan pencerede **Yeni proje**'ye basın.
+3. Proje adına `Kalender` yazıp **Oluştur**'a basın. Proje oluşunca yine üstteki seçiciden
+   bu projeyi seçin.
+
+### 2. Gerekli iki API'yi açın
+
+1. Sol üstteki menüden **API'ler ve Hizmetler > Kitaplık**'a girin.
+2. Arama kutusuna `Google Calendar API` yazın, çıkan sonuca tıklayın, **Etkinleştir**'e basın.
+3. Kitaplığa geri dönüp bu kez `Google Tasks API` arayın ve onu da **Etkinleştir**'e basın.
+
+### 3. İzin ekranını hazırlayın
+
+1. **API'ler ve Hizmetler > OAuth izin ekranı**'na girin.
+2. Kullanıcı türü olarak **Harici**'yi seçin, **Oluştur**'a basın.
+3. Uygulama adına `Kalender`, kullanıcı destek e-postası ve iletişim e-postası alanlarına
+   kendi e-posta adresinizi yazın. **Kaydet ve devam et** ile ilerleyin.
+4. Kapsamlar adımında bir şey eklemeden **Kaydet ve devam et**.
+5. **Test kullanıcıları** adımında **Kullanıcı ekle**'ye basıp kendi e-posta adresinizi ekleyin.
+   Bu önemli: eklemezseniz Google onay ekranında sizi reddeder.
+
+### 4. İstemci kimliğini oluşturun
+
+1. **API'ler ve Hizmetler > Kimlik bilgileri**'ne girin.
+2. Üstteki **+ Kimlik bilgisi oluştur > OAuth istemci kimliği**'ne tıklayın.
+3. Uygulama türü: **Masaüstü uygulaması**. Ada `Kalender` yazıp **Oluştur**'a basın.
+4. Çıkan pencerede **İstemci Kimliği** ve **İstemci gizli anahtarı** yazar. İkisini de
+   kopyalayın (pencereyi kapatsanız bile Kimlik bilgileri listesinden yeniden açabilirsiniz).
+
+### 5. Kalender'e yapıştırın
+
+1. Tepsi simgesine tıklayıp **Ayarlar**'ı açın, **Google Takvim ve Görevler** bölümüne inin.
+2. İki değeri ilgili kutulara yapıştırın.
+3. **Google'a bağlan**'a basın. Tarayıcıda Google onay ekranı açılır.
+4. "Google bu uygulamayı doğrulamadı" uyarısı çıkarsa **Gelişmiş > Kalender'e git (güvenli
+   değil)** yolunu izleyin. Bu uyarı, uygulamanın Google tarafından incelenmemiş olmasından
+   kaynaklanır; kendi projenizde kendi hesabınızla çalıştığınız için beklenen bir durumdur.
+5. İzin verdikten sonra tarayıcıda "Kalender bağlandı" yazısını görünce sekmeyi
+   kapatabilirsiniz.
+
+Bağlandıktan sonra Ayarlar penceresinde hangi takvimlerin ve hangi görev listelerinin
+gösterileceğini, verinin ne sıklıkla yenileneceğini (30 saniye ile 24 saat arası) ve görev
+noktacıklarının rengini seçebilirsiniz.
+
+**Bağlantıyı kesmek için:** Ayarlar > Google bölümü > **Bağlantıyı kes**. Bu, bilgisayarınızdaki
+yetki dosyasını ve yerel veri kopyasını siler.
+
+### Verileriniz nerede duruyor?
+
+- Google yetki anahtarı `%LOCALAPPDATA%\Kalender\google-token.dat` dosyasında, Windows'un
+  DPAPI'siyle **yalnızca sizin kullanıcı hesabınızın çözebileceği** şekilde şifrelenmiş durur.
+- Etkinlik ve görev kopyası `%LOCALAPPDATA%\Kalender\cache\google.json` dosyasındadır ve
+  yalnızca görünen ayı kapsar.
+- İstemci kimliği ve gizli anahtar uygulamanın içine gömülü **değildir**; sizin projenize aittir.
 
 ## Ayarlar
 
@@ -123,12 +181,25 @@ Proje aşama aşama geliştiriliyor.
 | 1 | İskelet, WorkerW katmanı, düz renk zemin, statik takvim çizimi | Tamam |
 | 2 | Çoklu monitör, DPI, konum/boyut, temalar, renk seçici, fotoğraf | Tamam |
 | 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Tamam |
-| 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Sırada |
-| 5 | Noktacıklar, fare üstünde açılan gün kutusu | Bekliyor |
+| 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Tamam |
+| 5 | Noktacıklar, fare üstünde açılan gün kutusu | Sırada |
 | 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Bekliyor |
 | 7 | Kurulum dosyası, README, sürüm etiketi | Bekliyor |
 
 ## Sürüm geçmişi
+
+### 0.4.0 (geliştirme)
+
+- Google Takvim ve Görevler bağlantısı: OAuth 2.0 + PKCE, loopback yönlendirme, yalnız okuma
+  izinleri. Uygulamaya hiçbir gizli anahtar gömülmedi; kullanıcı kendi istemci kimliğini verir.
+- Yetki anahtarı DPAPI ile şifreli saklanıyor; ayarlardan bağlantı kesilebiliyor.
+- Yalnızca görünen ay çekiliyor; yoklamalar artımlı (updatedMin) ve yanıtlar "fields" ile
+  kırpılıyor. Değişiklik yoksa yanıt birkaç yüz bayt.
+- Hangi takvimlerin ve görev listelerinin gösterileceği, yenileme aralığı (30 sn - 24 saat) ve
+  görev noktacığı rengi ayarlanabiliyor.
+- Gün rakamının altında noktacıklar: renk etkinliğin ya da takvimin kendi renginden geliyor,
+  dörtten fazlaysa 3 nokta + "+N".
+- Çevrimdışıyken hata gösterilmiyor; yerel kopya kullanılıyor ve durum tepsi ipucunda yazıyor.
 
 ### 0.3.0 (geliştirme)
 

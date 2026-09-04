@@ -141,6 +141,74 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ================================================ GOOGLE -->
+                <Border Style="{StaticResource Bolum}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Baslik}" Text="Google Takvim ve Görevler" />
+                        <TextBlock Style="{StaticResource Aciklama}"
+                                   Text="Kalender hesabınıza yalnızca okuma izniyle bağlanır; etkinlik ya da görev eklemez, silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur." />
+
+                        <Expander Header="Client ID nasıl alınır? (bir kerelik)" Margin="0,0,0,12">
+                            <StackPanel Margin="4,10,0,4">
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="1. console.cloud.google.com adresine kendi Google hesabınızla girin." />
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="2. Üstteki proje seçiciden yeni bir proje oluşturun (adı önemli değil, örn. Kalender)." />
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="3. Sol menüden API'ler ve Hizmetler > Kitaplık'a girin; Google Calendar API ve Google Tasks API'yi bulup ikisini de Etkinleştir'e basın." />
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="4. API'ler ve Hizmetler > OAuth izin ekranı: Harici'yi seçin, uygulama adı ve e-postanızı yazın, Test kullanıcıları bölümüne kendi e-postanızı ekleyin." />
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="5. API'ler ve Hizmetler > Kimlik bilgileri > Kimlik bilgisi oluştur > OAuth istemci kimliği. Uygulama türü: Masaüstü uygulaması." />
+                                <TextBlock TextWrapping="Wrap"
+                                           Text="6. Çıkan pencerede İstemci Kimliği ve İstemci gizli anahtarı yazar. İkisini de aşağıya yapıştırın." />
+                            </StackPanel>
+                        </Expander>
+
+                        <TextBlock Text="İstemci kimliği (Client ID)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <TextBox x:Name="ClientIdBox" Padding="6,5" FontFamily="Consolas" FontSize="12"
+                                 LostFocus="OnGoogleCredentialsChanged" />
+
+                        <TextBlock Text="İstemci gizli anahtarı (Client secret)" FontWeight="SemiBold"
+                                   Margin="0,12,0,4" />
+                        <TextBox x:Name="ClientSecretBox" Padding="6,5" FontFamily="Consolas" FontSize="12"
+                                 LostFocus="OnGoogleCredentialsChanged" />
+                        <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,0"
+                                   Text="Bu iki değer uygulamanın içinde gömülü değildir; sizin projenize aittir ve bilgisayarınızda şifreli saklanır." />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button x:Name="ConnectButton" Content="Google'a bağlan" MinWidth="150"
+                                    Click="OnConnectGoogle" />
+                            <Button x:Name="DisconnectButton" Content="Bağlantıyı kes" Margin="10,0,0,0"
+                                    MinWidth="130" Click="OnDisconnectGoogle" />
+                        </StackPanel>
+
+                        <TextBlock x:Name="GoogleStatusText" Margin="0,12,0,0" TextWrapping="Wrap" />
+
+                        <StackPanel x:Name="GoogleDetailsPanel" Margin="0,16,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="Ne sıklıkla yenilensin?" VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <ComboBox x:Name="PollIntervalCombo" Width="140" VerticalAlignment="Center"
+                                          SelectionChanged="OnPollIntervalChanged" />
+                            </StackPanel>
+
+                            <TextBlock Text="Gösterilecek takvimler" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <StackPanel x:Name="CalendarListPanel" Margin="4,0,0,10" />
+
+                            <TextBlock Text="Gösterilecek görev listeleri" FontWeight="SemiBold" Margin="0,6,0,6" />
+                            <StackPanel x:Name="TaskListPanel" Margin="4,0,0,10" />
+
+                            <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,0"
+                                       Text="Google, görev listeleri için renk vermiyor; bütün görevler tek renkle gösterilir." />
+                            <Expander Header="Görev noktacığı rengi" Margin="0,4,0,0">
+                                <ui:ColorWheel x:Name="TaskColorWheel" Margin="0,12,0,4"
+                                               HorizontalAlignment="Left" />
+                            </Expander>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- ============================================== EKRANLAR -->
                 <Border Style="{StaticResource Bolum}">
                     <StackPanel>

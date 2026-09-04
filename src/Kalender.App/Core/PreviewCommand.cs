@@ -60,7 +60,8 @@ internal static class PreviewCommand
                 await holidays.RefreshAsync(force: true).ConfigureAwait(false);
             }
 
-            var data = new CalendarDataService(holidays, settings);
+            // Önizleme yalnızca tatilleri gösterir; Google verisi için oturum gerekir.
+            var data = new CalendarDataService(holidays, provider: null, settings);
             data.SetToday(today);
 
             MonitorTarget monitor = MonitorEnumerator.All().FirstOrDefault(m => m.IsPrimary)

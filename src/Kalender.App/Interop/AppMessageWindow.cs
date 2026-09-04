@@ -43,6 +43,9 @@ internal sealed class AppMessageWindow : NativeWindow
     /// <summary>Bilgisayar uykudan uyandı.</summary>
     public event Action? Resumed;
 
+    /// <summary>Bilgisayar uykuya giriyor; zamanlayıcılar durdurulmalı.</summary>
+    public event Action? Suspending;
+
     /// <summary>Explorer yeniden başladı; masaüstü katmanı sıfırdan kurulmalı.</summary>
     public event Action? ShellRestarted;
 
@@ -144,6 +147,10 @@ internal sealed class AppMessageWindow : NativeWindow
                 if (olay is NativeMethods.PBT_APMRESUMEAUTOMATIC or NativeMethods.PBT_APMRESUMESUSPEND)
                 {
                     Resumed?.Invoke();
+                }
+                else if (olay == NativeMethods.PBT_APMSUSPEND)
+                {
+                    Suspending?.Invoke();
                 }
 
                 return new IntPtr(1);

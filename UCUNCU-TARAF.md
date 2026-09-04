@@ -11,7 +11,7 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
 | --- | --- | --- | --- |
 | _(henüz yok)_ | | | |
 
-3. aşama sonunda proje hâlâ hiçbir üçüncü taraf pakete bağlı değil. Bilerek böyle yapıldı:
+4. aşama sonunda proje hâlâ hiçbir üçüncü taraf pakete bağlı değil. Bilerek böyle yapıldı:
 
 - **Tepsi simgesi** için hazır bir kütüphane yerine doğrudan `Shell_NotifyIcon` çağrıldı.
   Böylece Explorer yeniden başladığında simgeyi geri koymak gibi ayrıntılar elimizde kaldı
@@ -23,11 +23,16 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
   değil; yalnızca resmi tatil akışındaki tüm gün süren kayıtları okuyacak kadarını yapıyor
   (satır katlaması, kaçış dizileri, DTSTART/DTEND/SUMMARY/DESCRIPTION). İhtiyaç bu kadar dar
   olduğu için paket eklenmedi.
+- **Google bağlantısı** için Google'ın .NET kütüphaneleri yerine doğrudan REST çağrıları ve
+  kendi yazdığımız OAuth 2.0 + PKCE akışı kullanıldı. Üç nedenle: tek dosya yayın küçük kalıyor,
+  isteklerde `fields` parametresiyle veriyi kırpabiliyoruz (şartnamedeki az veri kuralı) ve
+  uygulamaya hiçbir gizli anahtar gömmek zorunda kalmıyoruz. Google'ın kendi kütüphaneleri
+  zaten bu listeye girmezdi; mesele boyut ve denetim.
 - **Çizim** için `System.Drawing.Common` kullanılıyor; bu Microsoft'un kendi paketi.
 
 ## İlerideki aşamalarda beklenenler
 
 Aşağıdakiler henüz eklenmedi; eklendiklerinde bu dosyada gerçek satırlar hâline gelecek.
 
-- **SQLite** (4. aşama): yerel önbellek için. JSON yeterli gelirse hiç kullanılmayacak.
-  Tatil önbelleği 2 KB'lık bir JSON dosyası oldu; Google verisi için de JSON yeteceğe benziyor.
+- Şu an bir ihtiyaç görünmüyor. Önbellekler küçük JSON dosyaları olarak yeterli oldu
+  (tatiller ~2 KB, Google verisi görünen ay kadar), bu yüzden SQLite'a gerek kalmadı.

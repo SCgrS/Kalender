@@ -106,6 +106,12 @@ internal sealed class GoogleSettings
     /// <summary>Kullanıcının kendi Google Cloud istemci kimliği.</summary>
     public string? ClientId { get; set; }
 
+    /// <summary>
+    /// Kullanıcının kendi istemci parolası. Uygulamaya gömülü değildir;
+    /// Google masaüstü istemcilerinde bunu istediği için saklanır.
+    /// </summary>
+    public string? ClientSecret { get; set; }
+
     /// <summary>Yoklama aralığı (saniye). 30, 60, 300, 900 ya da 86400.</summary>
     public int PollIntervalSeconds { get; set; } = 60;
 

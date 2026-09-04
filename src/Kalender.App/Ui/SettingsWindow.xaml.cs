@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Kalender.Core;
+using Kalender.Google;
 using Kalender.Interop;
 using Kalender.Rendering;
 using Kalender.Settings;
@@ -52,8 +53,14 @@ public partial class SettingsWindow : Window
             FitCombo.Items.Add(name);
         }
 
+        foreach ((int _, string label) in GooglePoller.Intervals)
+        {
+            PollIntervalCombo.Items.Add(label);
+        }
+
         BackgroundWheel.ColorChanged += OnBackgroundColorPicked;
         TextWheel.ColorChanged += OnTextColorPicked;
+        TaskColorWheel.ColorChanged += OnTaskColorPicked;
 
         BuildPresets();
         BuildMonitorRows();
@@ -63,7 +70,21 @@ public partial class SettingsWindow : Window
         // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
         _host.MonitorsChanged += OnMonitorsChanged;
         _host.HolidaysUpdated += OnHolidaysUpdated;
+        _host.GoogleStateChanged += OnGoogleStateChanged;
     }
+
+    private void OnGoogleStateChanged() => Dispatcher.BeginInvoke(() =>
+    {
+        _loading = true;
+        try
+        {
+            UpdateGoogleUi();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    });
 
     private void OnMonitorsChanged()
     {
@@ -117,6 +138,18 @@ public partial class SettingsWindow : Window
 
             HolidaysBox.IsChecked = S.Holidays.Enabled;
             UpdateHolidayStatus();
+
+            ClientIdBox.Text = S.Google.ClientId ?? string.Empty;
+            ClientSecretBox.Text = S.Google.ClientSecret ?? string.Empty;
+
+            int intervalIndex = Array.FindIndex(
+                GooglePoller.Intervals, i => i.Seconds == S.Google.PollIntervalSeconds);
+            PollIntervalCombo.SelectedIndex = intervalIndex >= 0 ? intervalIndex : 1;
+
+            TaskColorWheel.SelectedColor = WpfImaging.ToMedia(
+                ColorTools.Parse(S.Google.TaskColor, System.Drawing.Color.FromArgb(0x4C, 0x8D, 0xFF)));
+
+            UpdateGoogleUi();
 
             DimSlider.Value = a.BackdropDim;
             DimText.Text = $"%{a.BackdropDim}";
@@ -432,6 +465,191 @@ public partial class SettingsWindow : Window
             : $"Son güncelleme: {last.Value.ToLocalTime():d MMMM yyyy HH:mm} · {_host.HolidayCount} tatil günü";
     }
 
+    // --------------------------------------------------------------- Google
+
+    private void UpdateGoogleUi()
+    {
+        bool connected = _host.GoogleConnected;
+
+        ConnectButton.Content = connected ? "Yeniden bağlan" : "Google'a bağlan";
+        DisconnectButton.IsEnabled = connected;
+        GoogleDetailsPanel.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!connected)
+        {
+            GoogleStatusText.Text = string.IsNullOrWhiteSpace(S.Google.ClientId)
+                ? "Bağlı değil. Önce yukarıdaki iki değeri yapıştırın."
+                : "Bağlı değil. \"Google'a bağlan\" düğmesine basın; tarayıcıda onay ekranı açılacak.";
+            return;
+        }
+
+        string durum = _host.GoogleOnline ? "bağlı" : "bağlı, şu an çevrimdışı (yerel kopya gösteriliyor)";
+
+        GoogleStatusText.Text =
+            $"{_host.GoogleAccountEmail ?? "Hesap"} · {durum}"
+            + $"\nBu ayda {_host.GoogleEventCount} etkinlik, {_host.GoogleTaskCount} görev.";
+
+        BuildSourceList(CalendarListPanel, _host.GoogleCalendars.Select(c => (c.Id, c.Name)).ToList(),
+            S.Google.SelectedCalendarIds);
+
+        BuildSourceList(TaskListPanel, _host.GoogleTaskLists.Select(l => (l.Id, l.Name)).ToList(),
+            S.Google.SelectedTaskListIds);
+    }
+
+    /// <summary>
+    /// Takvim ya da görev listesi seçim kutularını kurar. Seçim listesi boşsa
+    /// "hepsi" anlamına gelir; kullanıcı ilk kez bir kutunun işaretini kaldırınca
+    /// liste gerçek seçimle doldurulur.
+    /// </summary>
+    private void BuildSourceList(StackPanel panel, List<(string Id, string Name)> sources, List<string> selected)
+    {
+        panel.Children.Clear();
+
+        if (sources.Count == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Henüz yüklenmedi.",
+                Opacity = 0.65,
+            });
+            return;
+        }
+
+        foreach ((string id, string name) in sources)
+        {
+            var box = new CheckBox
+            {
+                Content = name,
+                IsChecked = selected.Count == 0 || selected.Contains(id),
+                Tag = id,
+                Margin = new Thickness(0, 3, 0, 3),
+            };
+
+            box.Checked += OnSourceToggled;
+            box.Unchecked += OnSourceToggled;
+            panel.Children.Add(box);
+        }
+    }
+
+    private void OnSourceToggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not CheckBox { Tag: string } box)
+        {
+            return;
+        }
+
+        bool isCalendar = ReferenceEquals(box.Parent, CalendarListPanel);
+        StackPanel panel = isCalendar ? CalendarListPanel : TaskListPanel;
+        List<string> target = isCalendar ? S.Google.SelectedCalendarIds : S.Google.SelectedTaskListIds;
+
+        target.Clear();
+        foreach (object child in panel.Children)
+        {
+            if (child is CheckBox { IsChecked: true, Tag: string id })
+            {
+                target.Add(id);
+            }
+        }
+
+        // Hepsi işaretliyse listeyi boş bırakmak "hepsi" demek; ileride yeni
+        // takvim eklenirse kendiliğinden dahil olsun.
+        if (target.Count == panel.Children.Count)
+        {
+            target.Clear();
+        }
+
+        _host.ApplyAppearance();
+        _ = _host.RefreshGoogleAsync(force: true);
+    }
+
+    private void OnGoogleCredentialsChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        string id = ClientIdBox.Text.Trim();
+        string secret = ClientSecretBox.Text.Trim();
+
+        if (S.Google.ClientId == id && S.Google.ClientSecret == secret)
+        {
+            return;
+        }
+
+        S.Google.ClientId = string.IsNullOrEmpty(id) ? null : id;
+        S.Google.ClientSecret = string.IsNullOrEmpty(secret) ? null : secret;
+
+        _host.ApplyAppearance();
+        UpdateGoogleUi();
+    }
+
+    private async void OnConnectGoogle(object sender, RoutedEventArgs e)
+    {
+        OnGoogleCredentialsChanged(sender, e);
+
+        ConnectButton.IsEnabled = false;
+        GoogleStatusText.Text = "Tarayıcıda onay bekleniyor…";
+
+        try
+        {
+            SignInResult result = await _host.ConnectGoogleAsync();
+
+            if (!result.Success)
+            {
+                GoogleStatusText.Text = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Google bağlantısı kurulamadı.", ex);
+            GoogleStatusText.Text = "Bağlantı kurulamadı: " + ex.Message;
+        }
+        finally
+        {
+            ConnectButton.IsEnabled = true;
+            LoadFromSettings();
+        }
+    }
+
+    private void OnDisconnectGoogle(object sender, RoutedEventArgs e)
+    {
+        MessageBoxResult answer = MessageBox.Show(this,
+            "Google bağlantısı kesilecek ve bu bilgisayardaki kopya silinecek. Devam edilsin mi?",
+            "Kalender", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _host.DisconnectGoogle();
+        LoadFromSettings();
+    }
+
+    private void OnPollIntervalChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || PollIntervalCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        S.Google.PollIntervalSeconds = GooglePoller.Intervals[PollIntervalCombo.SelectedIndex].Seconds;
+        _host.ApplyAppearance();
+        _host.ApplyPollInterval();
+    }
+
+    private void OnTaskColorPicked(Color color)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        S.Google.TaskColor = ColorWheel.ToHex(color);
+        ScheduleApply();
+    }
+
     // ------------------------------------------------------------- ekranlar
 
     private void OnDisplayTargetChanged(object sender, RoutedEventArgs e)
@@ -536,6 +754,7 @@ public partial class SettingsWindow : Window
     {
         _host.MonitorsChanged -= OnMonitorsChanged;
         _host.HolidaysUpdated -= OnHolidaysUpdated;
+        _host.GoogleStateChanged -= OnGoogleStateChanged;
         _applyTimer.Stop();
 
         // Bekleyen bir değişiklik varsa kapanmadan önce diske yazılsın.

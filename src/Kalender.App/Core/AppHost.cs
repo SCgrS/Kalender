@@ -2,6 +2,7 @@ using System.Windows;
 using Kalender.Calendar;
 using Kalender.Calendar.Holidays;
 using Kalender.Desktop;
+using Kalender.Google;
 using Kalender.Interop;
 using Kalender.Settings;
 using Kalender.Time;
@@ -31,6 +32,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private DayChangeWatcher? _dayWatcher;
     private HolidayService? _holidays;
     private CalendarDataService? _calendarData;
+    private GoogleAuthenticator? _googleAuth;
+    private GoogleCalendarProvider? _google;
+    private GooglePoller? _poller;
     private SettingsWindow? _settingsWindow;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
     private bool _layerWarningShown;
@@ -43,6 +47,72 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>Tatil listesi yenilendi.</summary>
     public event Action? HolidaysUpdated;
+
+    /// <summary>Google bağlantı durumu ya da verisi değişti.</summary>
+    public event Action? GoogleStateChanged;
+
+    public bool GoogleConnected => _googleAuth?.IsConnected == true;
+
+    public bool GoogleOnline => _google?.IsOnline ?? true;
+
+    public string? GoogleAccountEmail => _googleAuth?.AccountEmail;
+
+    public IReadOnlyList<ProviderCalendar> GoogleCalendars
+        => (IReadOnlyList<ProviderCalendar>?)_google?.Data.Calendars ?? Array.Empty<ProviderCalendar>();
+
+    public IReadOnlyList<ProviderTaskList> GoogleTaskLists
+        => (IReadOnlyList<ProviderTaskList>?)_google?.Data.TaskLists ?? Array.Empty<ProviderTaskList>();
+
+    public int GoogleEventCount => _google?.Data.Events.Count ?? 0;
+
+    public int GoogleTaskCount => _google?.Data.Tasks.Count ?? 0;
+
+    /// <summary>Google hesabına bağlanır (tarayıcıda onay açılır).</summary>
+    public async Task<SignInResult> ConnectGoogleAsync()
+    {
+        if (_googleAuth is null)
+        {
+            return new SignInResult(false, "Uygulama henüz hazır değil.");
+        }
+
+        SignInResult result = await _googleAuth.SignInAsync().ConfigureAwait(true);
+
+        if (result.Success)
+        {
+            await RefreshGoogleAsync(force: true).ConfigureAwait(true);
+        }
+
+        return result;
+    }
+
+    public void DisconnectGoogle()
+    {
+        _googleAuth?.SignOut();
+        _settings.Update(s =>
+        {
+            s.Google.AccountEmail = null;
+            s.Google.SelectedCalendarIds.Clear();
+            s.Google.SelectedTaskListIds.Clear();
+        });
+    }
+
+    public async Task RefreshGoogleAsync(bool force)
+    {
+        if (_poller is null)
+        {
+            return;
+        }
+
+        await _poller.RefreshAsync(force).ConfigureAwait(true);
+        GoogleStateChanged?.Invoke();
+    }
+
+    /// <summary>Yoklama aralığı ayarı değiştiğinde çağrılır.</summary>
+    public void ApplyPollInterval()
+    {
+        _poller?.ApplyInterval();
+        _poller?.Start();
+    }
 
     public DateTimeOffset? HolidaysLastFetchUtc => _holidays?.LastFetchUtc;
 
@@ -76,7 +146,12 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _wallpaper = new WallpaperService(_settings);
         _dayWatcher = new DayChangeWatcher();
         _holidays = new HolidayService();
-        _calendarData = new CalendarDataService(_holidays, _settings);
+        _googleAuth = new GoogleAuthenticator(new SettingsOAuthConfig(_settings));
+        _google = new GoogleCalendarProvider(_googleAuth, _settings);
+        _google.LoadCache();
+
+        _calendarData = new CalendarDataService(_holidays, _google, _settings);
+        _poller = new GooglePoller(_google, _calendarData, _settings);
 
         _tray = new TrayIcon(_messages)
         {
@@ -95,6 +170,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _messages.ShellRestarted += OnShellRestarted;
         _messages.TimeChanged += () => _dayWatcher.Recheck();
         _messages.Resumed += OnResumed;
+        _messages.Suspending += OnSuspending;
 
         _dayWatcher.DayChanged += date =>
         {
@@ -115,6 +191,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // arka planda tazeleniyor. Böylece açılış internete bağlı değil.
         _holidays.LoadCache();
         _calendarData.SetToday(_dayWatcher.Today);
+
+        _googleAuth.StateChanged += OnGoogleStateChanged;
+        _poller.StatusChanged += UpdateTrayTooltip;
+        _poller.Start();
 
         // Önce gerçek duvar kağıdını yazıyoruz: bir sonraki açılışta Kalender
         // devreye girene kadar ekran doğru görünsün.
@@ -142,6 +222,48 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         // Açılışı bekletmeden tatil listesini tazele.
         _ = RefreshHolidaysAsync(force: false);
+    }
+
+    private void OnGoogleStateChanged()
+    {
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            _settings.Update(s => s.Google.AccountEmail = _googleAuth?.AccountEmail);
+
+            if (_googleAuth?.IsConnected == true)
+            {
+                _poller?.Start();
+            }
+            else
+            {
+                _poller?.Stop();
+                _google?.ClearCache();
+                _calendarData?.Rebuild();
+            }
+
+            UpdateTrayTooltip();
+            GoogleStateChanged?.Invoke();
+        });
+    }
+
+    /// <summary>
+    /// Tepsi ipucunda bağlantı durumunu gösteriyoruz. Çevrimdışıyken hata
+    /// kutusu açmak yerine burada belli ediliyor (şartname böyle istiyor).
+    /// </summary>
+    private void UpdateTrayTooltip()
+    {
+        if (_tray is null)
+        {
+            return;
+        }
+
+        string durum = _googleAuth?.IsConnected != true
+            ? "Google bağlı değil"
+            : _google?.IsOnline == true
+                ? "Google bağlı"
+                : "Google bağlı (çevrimdışı)";
+
+        _tray.UpdateTooltip($"Kalender · {durum}");
     }
 
     private void OnHolidaysUpdated()
@@ -249,6 +371,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
             case MenuRefresh:
                 _ = RefreshHolidaysAsync(force: true);
+                _ = RefreshGoogleAsync(force: true);
                 break;
 
             case MenuToggleCalendar:
@@ -308,6 +431,15 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         // Uykuda geçen sürede ay dönmüş ve liste eskimiş olabilir.
         _ = RefreshHolidaysAsync(force: false);
+
+        // Uyandıktan sonra tek seferlik yenileme; zamanlayıcı uykuda durmuştu.
+        _poller?.Start();
+    }
+
+    private void OnSuspending()
+    {
+        // Uykuda ağa çıkmanın anlamı yok; zamanlayıcıyı durduruyoruz.
+        _poller?.Stop();
     }
 
     private void OnLayerUnavailable()
@@ -329,6 +461,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     public void Dispose()
     {
         _settingsWindow?.Close();
+        _poller?.Dispose();
+        _google?.Dispose();
+        _googleAuth?.Dispose();
         _holidays?.Dispose();
         _dayWatcher?.Dispose();
         _tray?.Dispose();
