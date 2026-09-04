@@ -28,6 +28,18 @@ internal interface IAppearanceHost
 
     DateOnly Today { get; }
 
+    /// <summary>Tatil listesinin en son ne zaman indirildiği; hiç indirilmediyse null.</summary>
+    DateTimeOffset? HolidaysLastFetchUtc { get; }
+
+    /// <summary>Önbellekteki tatil günü sayısı.</summary>
+    int HolidayCount { get; }
+
+    /// <summary>Tatil listesi yenilendi.</summary>
+    event Action? HolidaysUpdated;
+
+    /// <summary>Tatil listesini indirir. force=true süresi dolmamış olsa bile indirir.</summary>
+    Task RefreshHolidaysAsync(bool force);
+
     /// <summary>Ayarları kaydeder, duvar kağıdını ve masaüstü çizimini tazeler.</summary>
     void ApplyAppearance();
 }

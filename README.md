@@ -90,8 +90,18 @@ Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınız�
 
 ## Resmi tatiller
 
-Tatil listesi Google'ın Türkiye resmi tatil takviminden alınır ve yerel olarak saklanır.
-İnternet olmadığında en son indirilen liste kullanılır.
+Tatil listesi Google'ın herkese açık Türkiye resmi tatil takviminden (ICS) alınır; hesap
+ya da anahtar gerekmez. Liste bilgisayarınızda `%LOCALAPPDATA%\Kalender\cache` altında
+saklanır ve ayda bir yenilenir. İnternet olmadığında en son indirilen liste sessizce
+kullanılmaya devam eder, hata penceresi çıkmaz.
+
+- **Tam gün resmi tatiller** kırmızı gösterilir.
+- **Arifeler (yarım günler)** kırmızı gösterilmez, normal gün gibi durur. Adları gün
+  kutusunda görünür (5. aşamada).
+- **Anneler Günü gibi kutlama/anma günleri** tatil sayılmaz, kırmızıya boyanmaz.
+
+Listeyi elle yenilemek için tepsi menüsünde **Şimdi yenile** ya da Ayarlar penceresindeki
+**Listeyi şimdi güncelle** düğmesi.
 
 > **Uyarı:** Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan
 > teyit ediniz.
@@ -112,13 +122,21 @@ Proje aşama aşama geliştiriliyor.
 | --- | --- | --- |
 | 1 | İskelet, WorkerW katmanı, düz renk zemin, statik takvim çizimi | Tamam |
 | 2 | Çoklu monitör, DPI, konum/boyut, temalar, renk seçici, fotoğraf | Tamam |
-| 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Sırada |
-| 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Bekliyor |
+| 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Tamam |
+| 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Sırada |
 | 5 | Noktacıklar, fare üstünde açılan gün kutusu | Bekliyor |
 | 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Bekliyor |
 | 7 | Kurulum dosyası, README, sürüm etiketi | Bekliyor |
 
 ## Sürüm geçmişi
+
+### 0.3.0 (geliştirme)
+
+- Resmi tatiller Google'ın açık ICS akışından indiriliyor, yerel olarak saklanıyor ve
+  ayda bir yenileniyor. İnternet yoksa önbellek sessizce kullanılıyor.
+- Tam gün tatiller kırmızı; arifeler normal, kutlama/anma günleri hariç.
+- Ayarlara "Resmi tatiller" bölümü ve dini bayram teyit uyarısı eklendi.
+- Tepsi menüsündeki "Şimdi yenile" artık çalışıyor.
 
 ### 0.2.0 (geliştirme)
 
@@ -145,6 +163,13 @@ Tek dosya, kendi kendine yeten yayın için:
 
 ```
 powershell -ExecutionPolicy Bypass -File yayin.ps1
+```
+
+Belirli bir ayın takvimini arayüz açmadan bir PNG'ye çizdirmek için (görünüm ve tatil
+denetimlerinde işe yarıyor):
+
+```
+Kalender.exe --onizleme 2026-10 C:\gecici\ekim.png
 ```
 
 Kullanılan üçüncü taraf bileşenler için [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasına bakın.

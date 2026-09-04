@@ -29,6 +29,15 @@ public partial class App : Application
             return;
         }
 
+        // Geliştirme aracı: istenen ayı bir PNG'ye çizip çıkar.
+        if (e.Args.Any(a => string.Equals(a, PreviewCommand.Switch, StringComparison.OrdinalIgnoreCase)))
+        {
+            Log.Level = LogLevel.Info;
+            _ = PreviewCommand.TryRunAsync(e.Args).ContinueWith(_ =>
+                Dispatcher.BeginInvoke(Shutdown), TaskScheduler.Default);
+            return;
+        }
+
         _instance = new SingleInstance();
         if (!_instance.TryAcquire())
         {

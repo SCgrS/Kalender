@@ -115,6 +115,32 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ============================================== TATİLLER -->
+                <Border Style="{StaticResource Bolum}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Baslik}" Text="Resmi tatiller" />
+
+                        <CheckBox x:Name="HolidaysBox" Content="Resmi tatilleri kırmızı göster"
+                                  Margin="0,0,0,0"
+                                  Checked="OnHolidaysEnabledChanged" Unchecked="OnHolidaysEnabledChanged" />
+                        <TextBlock Style="{StaticResource Aciklama}" Margin="24,4,0,0"
+                                   Text="Liste, Google'ın Türkiye resmi tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
+
+                        <Border Background="#1AD08A00" BorderBrush="#40D08A00" BorderThickness="1"
+                                CornerRadius="6" Padding="12,10" Margin="0,4,0,0">
+                            <TextBlock TextWrapping="Wrap"
+                                       Text="Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan teyit ediniz." />
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <Button x:Name="RefreshHolidaysButton" Content="Listeyi şimdi güncelle"
+                                    MinWidth="170" Click="OnRefreshHolidays" />
+                            <TextBlock x:Name="HolidayStatusText" VerticalAlignment="Center"
+                                       Margin="14,0,0,0" Opacity="0.75" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- ============================================== EKRANLAR -->
                 <Border Style="{StaticResource Bolum}">
                     <StackPanel>

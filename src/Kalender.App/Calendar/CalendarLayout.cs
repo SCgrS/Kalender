@@ -89,6 +89,17 @@ internal sealed class CalendarLayout
     public static SizeF MeasureSize(float scale)
         => new(BaseColumnWidth * Columns * scale, BaseRowHeight * TotalRows * scale);
 
+    /// <summary>
+    /// Bir ayın ızgarasında görünen ilk ve son gün. Veri katmanı yalnızca bu
+    /// aralığı hazırlar; şartnamedeki "görünen ay ± 1 gün" kuralı buradan gelir.
+    /// </summary>
+    public static (DateOnly First, DateOnly Last) GridRange(DateOnly anyDayOfMonth)
+    {
+        var monthStart = new DateOnly(anyDayOfMonth.Year, anyDayOfMonth.Month, 1);
+        DateOnly first = monthStart.AddDays(-TurkishNames.WeekIndex(monthStart.DayOfWeek));
+        return (first, first.AddDays((Columns * WeekRows) - 1));
+    }
+
     public static CalendarLayout Create(DateOnly anyDayOfMonth, float scale, PointF origin)
     {
         var monthStart = new DateOnly(anyDayOfMonth.Year, anyDayOfMonth.Month, 1);

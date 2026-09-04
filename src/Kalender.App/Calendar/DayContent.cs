@@ -43,13 +43,19 @@ internal sealed class DayContent
     /// <summary>Resmi tatil adı; tatil değilse null.</summary>
     public string? HolidayName { get; init; }
 
+    /// <summary>
+    /// Yarım günlük tatil (arife) mi? Şartname gereği arifeler özel renk almaz;
+    /// adı yalnızca gün kutusunda görünür.
+    /// </summary>
+    public bool IsHalfDayHoliday { get; init; }
+
     public IReadOnlyList<DayEntry> Entries { get; init; } = Array.Empty<DayEntry>();
 
-    /// <summary>Gün kırmızı yazılmalı mı (tatil olduğu için)?</summary>
-    public bool IsHoliday => HolidayName is not null;
+    /// <summary>Gün kırmızı yazılmalı mı? Yalnızca tam gün resmi tatillerde.</summary>
+    public bool IsHoliday => HolidayName is not null && !IsHalfDayHoliday;
 
     /// <summary>Popup açılmasını gerektiren bir şey var mı?</summary>
-    public bool HasAnything => IsHoliday || Entries.Count > 0;
+    public bool HasAnything => HolidayName is not null || Entries.Count > 0;
 }
 
 /// <summary>

@@ -1,4 +1,6 @@
+using System.Windows;
 using Kalender.Calendar;
+using Kalender.Calendar.Holidays;
 using Kalender.Desktop;
 using Kalender.Interop;
 using Kalender.Settings;
@@ -27,6 +29,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private DesktopLayerManager? _layer;
     private WallpaperService? _wallpaper;
     private DayChangeWatcher? _dayWatcher;
+    private HolidayService? _holidays;
+    private CalendarDataService? _calendarData;
     private SettingsWindow? _settingsWindow;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
     private bool _layerWarningShown;
@@ -36,6 +40,13 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>Ekran listesi değişti; ayarlar penceresi kendini tazelemeli.</summary>
     public event Action? MonitorsChanged;
+
+    /// <summary>Tatil listesi yenilendi.</summary>
+    public event Action? HolidaysUpdated;
+
+    public DateTimeOffset? HolidaysLastFetchUtc => _holidays?.LastFetchUtc;
+
+    public int HolidayCount => _holidays?.Count ?? 0;
 
     public SettingsStore Settings => _settings;
 
@@ -64,6 +75,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _layer = new DesktopLayerManager(_settings);
         _wallpaper = new WallpaperService(_settings);
         _dayWatcher = new DayChangeWatcher();
+        _holidays = new HolidayService();
+        _calendarData = new CalendarDataService(_holidays, _settings);
 
         _tray = new TrayIcon(_messages)
         {
@@ -83,7 +96,25 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _messages.TimeChanged += () => _dayWatcher.Recheck();
         _messages.Resumed += OnResumed;
 
-        _dayWatcher.DayChanged += date => _layer.SetToday(date);
+        _dayWatcher.DayChanged += date =>
+        {
+            _layer.SetToday(date);
+            _calendarData.SetToday(date);
+        };
+
+        _calendarData.Changed += snapshot =>
+        {
+            _data = snapshot;
+            _layer.SetData(snapshot);
+        };
+
+        // Tatil listesi arka planda inebiliyor; arayüz iş parçacığına taşıyoruz.
+        _holidays.Updated += OnHolidaysUpdated;
+
+        // Önce diskteki liste yükleniyor (ağa çıkmadan), sonra gerekiyorsa
+        // arka planda tazeleniyor. Böylece açılış internete bağlı değil.
+        _holidays.LoadCache();
+        _calendarData.SetToday(_dayWatcher.Today);
 
         // Önce gerçek duvar kağıdını yazıyoruz: bir sonraki açılışta Kalender
         // devreye girene kadar ekran doğru görünsün.
@@ -108,6 +139,37 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
 
         Log.Info("Kalender başlatıldı.");
+
+        // Açılışı bekletmeden tatil listesini tazele.
+        _ = RefreshHolidaysAsync(force: false);
+    }
+
+    private void OnHolidaysUpdated()
+    {
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            _settings.Update(s => s.Holidays.LastFetchUtc = _holidays?.LastFetchUtc);
+            _calendarData?.Rebuild();
+            HolidaysUpdated?.Invoke();
+        });
+    }
+
+    /// <summary>Tatil listesini tazeler. Hata olursa sessizce önbellek kullanılır.</summary>
+    public async Task RefreshHolidaysAsync(bool force)
+    {
+        if (_holidays is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _holidays.RefreshAsync(force).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Tatil yenilemesi başarısız.", ex);
+        }
     }
 
     /// <summary>Ayarlar değiştikten sonra çağrılır: zemini ve çizimi tazeler.</summary>
@@ -129,6 +191,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     public void ApplyAppearance()
     {
         _settings.Save();
+
+        // Tatil gösterimi gibi ayarlar gün içeriğini de etkiliyor.
+        _calendarData?.Rebuild();
+
         ApplySettings();
     }
 
@@ -162,8 +228,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             new TrayMenuItem(MenuSettings, "Ayarlar"),
 
-            // Google verisi 4. aşamada bağlanacak.
-            new TrayMenuItem(MenuRefresh, "Şimdi yenile", Enabled: false),
+            // Şimdilik yalnız tatil listesini yeniler; 4. aşamada Google verisi de katılacak.
+            new TrayMenuItem(MenuRefresh, "Şimdi yenile"),
             TrayMenuItem.Separator,
             new TrayMenuItem(MenuToggleCalendar, hidden ? "Takvimi göster" : "Takvimi gizle"),
             new TrayMenuItem(MenuRedraw, "Takvimi yeniden çiz"),
@@ -179,6 +245,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             case MenuSettings:
                 OpenSettings();
+                break;
+
+            case MenuRefresh:
+                _ = RefreshHolidaysAsync(force: true);
                 break;
 
             case MenuToggleCalendar:
@@ -235,6 +305,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         _dayWatcher?.Recheck();
         _layer?.EnsureAlive();
+
+        // Uykuda geçen sürede ay dönmüş ve liste eskimiş olabilir.
+        _ = RefreshHolidaysAsync(force: false);
     }
 
     private void OnLayerUnavailable()
@@ -256,6 +329,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     public void Dispose()
     {
         _settingsWindow?.Close();
+        _holidays?.Dispose();
         _dayWatcher?.Dispose();
         _tray?.Dispose();
         _layer?.Dispose();

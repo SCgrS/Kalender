@@ -62,6 +62,7 @@ public partial class SettingsWindow : Window
         // Çözünürlük ya da ölçek değişirse satırlardaki ölçüler eskir; taşıma
         // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
         _host.MonitorsChanged += OnMonitorsChanged;
+        _host.HolidaysUpdated += OnHolidaysUpdated;
     }
 
     private void OnMonitorsChanged()
@@ -72,6 +73,8 @@ public partial class SettingsWindow : Window
             LoadFromSettings();
         });
     }
+
+    private void OnHolidaysUpdated() => Dispatcher.BeginInvoke(UpdateHolidayStatus);
 
     private AppSettings S => _host.Settings.Current;
 
@@ -111,6 +114,9 @@ public partial class SettingsWindow : Window
             TextColorExpander.IsExpanded = manualText;
 
             SaturdayRedBox.IsChecked = a.SaturdayIsRed;
+
+            HolidaysBox.IsChecked = S.Holidays.Enabled;
+            UpdateHolidayStatus();
 
             DimSlider.Value = a.BackdropDim;
             DimText.Text = $"%{a.BackdropDim}";
@@ -384,6 +390,48 @@ public partial class SettingsWindow : Window
         ScheduleApply();
     }
 
+    // ------------------------------------------------------------- tatiller
+
+    private void OnHolidaysEnabledChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        S.Holidays.Enabled = HolidaysBox.IsChecked == true;
+        ScheduleApply();
+    }
+
+    private async void OnRefreshHolidays(object sender, RoutedEventArgs e)
+    {
+        RefreshHolidaysButton.IsEnabled = false;
+        HolidayStatusText.Text = "İndiriliyor…";
+
+        try
+        {
+            await _host.RefreshHolidaysAsync(force: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Tatil listesi elle yenilenemedi.", ex);
+        }
+        finally
+        {
+            RefreshHolidaysButton.IsEnabled = true;
+            UpdateHolidayStatus();
+        }
+    }
+
+    private void UpdateHolidayStatus()
+    {
+        DateTimeOffset? last = _host.HolidaysLastFetchUtc;
+
+        HolidayStatusText.Text = last is null
+            ? "Liste henüz indirilmedi."
+            : $"Son güncelleme: {last.Value.ToLocalTime():d MMMM yyyy HH:mm} · {_host.HolidayCount} tatil günü";
+    }
+
     // ------------------------------------------------------------- ekranlar
 
     private void OnDisplayTargetChanged(object sender, RoutedEventArgs e)
@@ -487,6 +535,7 @@ public partial class SettingsWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _host.MonitorsChanged -= OnMonitorsChanged;
+        _host.HolidaysUpdated -= OnHolidaysUpdated;
         _applyTimer.Stop();
 
         // Bekleyen bir değişiklik varsa kapanmadan önce diske yazılsın.
