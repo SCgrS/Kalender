@@ -64,7 +64,7 @@ public partial class PlacementOverlayWindow : Window
     /// <summary>Kullanıcının belirlediği yerleşim. Vazgeçilirse null olur.</summary>
     internal MonitorPlacement? Result { get; private set; }
 
-    private float TotalScale => (float)(_monitor.DpiScale * (_scalePercent / 100.0));
+    private float TotalScale => CalendarScale.For(_monitor.Bounds.Size, _scalePercent);
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {

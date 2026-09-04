@@ -30,7 +30,7 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     /// <summary>Takvimin ekran kenarına en fazla yaklaşabileceği pay (ölçek 1.0 iken piksel).</summary>
     private const float EdgeMargin = 12f;
 
-    public DesktopSurface Render(Size pixelSize, double dpiScale, AppSettings settings,
+    public DesktopSurface Render(Size pixelSize, AppSettings settings,
         MonitorPlacement placement, CalendarDataSnapshot data, DateOnly today, bool drawCalendar)
     {
         var bitmap = new Bitmap(Math.Max(pixelSize.Width, 1), Math.Max(pixelSize.Height, 1),
@@ -49,7 +49,9 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
 
             if (drawCalendar)
             {
-                float scale = (float)(dpiScale * (placement.ScalePercent / 100.0));
+                // Ölçek ekran ölçüsünden türetiliyor: çözünürlük değişince
+                // takvim de birlikte küçülüp büyüsün.
+                float scale = CalendarScale.For(pixelSize, placement.ScalePercent);
                 PointF origin = ResolveOrigin(pixelSize, scale, placement);
                 layout = CalendarLayout.Create(today, scale, origin);
 

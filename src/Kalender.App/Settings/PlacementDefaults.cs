@@ -18,7 +18,7 @@ internal static class PlacementDefaults
     {
         var placement = new MonitorPlacement();
 
-        float scale = (float)monitor.DpiScale;
+        float scale = CalendarScale.For(monitor.Bounds.Size, placement.ScalePercent);
         SizeF block = CalendarLayout.MeasureSize(scale);
 
         double width = Math.Max(monitor.Bounds.Width, 1);

@@ -128,6 +128,8 @@ Proje aşama aşama geliştiriliyor.
 - Konum, boyut ve fotoğraf her monitör için ayrı hatırlanıyor.
 - Ekran ölçeği (DPI), çözünürlük, monitör tak/çıkar, uzak masaüstü ve kilit açma
   durumlarında katman kendini yeniden kuruyor.
+- Takvimin boyutu ekran ölçüsüyle orantılı: çözünürlük değişince takvim de
+  birlikte küçülüp büyüyor, ekrandaki oranı sabit kalıyor.
 
 ### 0.1.0 (geliştirme)
 

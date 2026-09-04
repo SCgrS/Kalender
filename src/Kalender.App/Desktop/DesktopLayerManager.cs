@@ -244,7 +244,6 @@ internal sealed class DesktopLayerManager : IDisposable
 
                 DesktopSurface surface = _renderer.Render(
                     monitor.Bounds.Size,
-                    monitor.DpiScale,
                     settings,
                     placement,
                     _data,
