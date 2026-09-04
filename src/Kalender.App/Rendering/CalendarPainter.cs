@@ -17,7 +17,9 @@ internal sealed class CalendarPainter : IDisposable
     // Ölçek 1.0 iken punto ve ölçüler (piksel).
     private const float MonthFontSize = 46f;
     private const float MonthLetterSpacing = 6f;
-    private const float WeekdayFontSize = 36f;
+
+    // Gün adı harfleri, rakamlardan birkaç punto büyük duruyor; şartname böyle istiyor.
+    private const float WeekdayFontSize = 43f;
     private const float DayFontSize = 40f;
     private const float TodayRadius = 34f;
     private const float DotDiameter = 8f;
@@ -82,6 +84,7 @@ internal sealed class CalendarPainter : IDisposable
     private void DrawMonthTitle(Graphics g, CalendarLayout layout, Theme theme, float scale)
     {
         Font font = GetFont(MonthFontSize * scale, FontStyle.Bold);
+        Font weekdayFont = GetFont(WeekdayFontSize * scale, FontStyle.Bold);
         string text = TurkishNames.MonthNameUpper(layout.MonthStart.Month);
         float spacing = MonthLetterSpacing * scale;
 
@@ -89,7 +92,13 @@ internal sealed class CalendarPainter : IDisposable
         using var format = TypographicFormat(StringAlignment.Near);
 
         float y = layout.TitleBounds.Y + (layout.TitleBounds.Height / 2f) + (0.35f * font.Size) - Ascent(font);
-        float x = layout.TitleBounds.X;
+
+        // Ay adı, hücrenin sol kenarına değil, ilk sütundaki gün harfinin
+        // (Pazartesi'nin P'si) sol kenarına hizalanır; ikisi alt alta simetrik dursun.
+        RectangleF firstCell = layout.WeekdayCells[0];
+        float harfGenisligi = g.MeasureString(
+            TurkishNames.WeekdayInitials[0], weekdayFont, PointF.Empty, format).Width;
+        float x = firstCell.X + ((firstCell.Width - harfGenisligi) / 2f);
 
         // Harf aralığı GDI+ tarafından desteklenmediği için harfleri tek tek çiziyoruz.
         foreach (char ch in text)

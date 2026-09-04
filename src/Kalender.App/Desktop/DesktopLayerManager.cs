@@ -24,10 +24,18 @@ internal sealed class DesktopLayerManager : IDisposable
     /// <summary>Kabuk inatla katmanı yıkıyorsa geçilen yavaş deneme aralığı.</summary>
     private static readonly TimeSpan BackoffDelay = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Ekran yapılandırmasının sessizce değişmediğinden emin olmak için yapılan
+    /// düşük sıklıklı denetim. Windows bazı durumlarda (sürücü yenilenmesi,
+    /// uzak masaüstü) bildirim göndermeden çözünürlük değiştirebiliyor.
+    /// </summary>
+    private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(8);
+
     private readonly SettingsStore _settings;
     private readonly DesktopSurfaceRenderer _renderer = new();
     private readonly List<(MonitorTarget Monitor, DesktopWindow Window)> _screens = new();
     private readonly DispatcherTimer _rebuildTimer;
+    private readonly DispatcherTimer _watchdogTimer;
 
     private DesktopHost? _host;
     private Point _hostOrigin;
@@ -36,6 +44,7 @@ internal sealed class DesktopLayerManager : IDisposable
     private DateTime _rebuildWindowStart = DateTime.MinValue;
     private DateTime _rebuildDeadline = DateTime.MinValue;
     private int _rebuildsInWindow;
+    private string _configSignature = string.Empty;
     private bool _disposed;
 
     public DesktopLayerManager(SettingsStore settings)
@@ -48,10 +57,17 @@ internal sealed class DesktopLayerManager : IDisposable
             _rebuildTimer.Stop();
             Rebuild();
         };
+
+        _watchdogTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle) { Interval = WatchdogInterval };
+        _watchdogTimer.Tick += (_, _) => EnsureAlive();
+        _watchdogTimer.Start();
     }
 
     /// <summary>Masaüstü katmanı hiç kurulamadığında bir kez tetiklenir.</summary>
     public event Action? LayerUnavailable;
+
+    /// <summary>Ekran listesi değişti (çözünürlük, ölçek, monitör tak/çıkar).</summary>
+    public event Action? MonitorsChanged;
 
     /// <summary>Şu an takvim çizen pencereler var mı?</summary>
     public bool IsActive => _screens.Count > 0;
@@ -152,7 +168,12 @@ internal sealed class DesktopLayerManager : IDisposable
 
         _hostOrigin = ResolveHostOrigin(_host.Handle);
 
-        foreach (MonitorTarget monitor in MonitorEnumerator.All())
+        IReadOnlyList<MonitorTarget> monitors = MonitorEnumerator.All();
+        string signature = BuildConfigSignature(monitors);
+        bool configChanged = signature != _configSignature;
+        _configSignature = signature;
+
+        foreach (MonitorTarget monitor in monitors)
         {
             try
             {
@@ -180,7 +201,21 @@ internal sealed class DesktopLayerManager : IDisposable
 
         Log.Info($"Masaüstü katmanı kuruldu: {_screens.Count} ekran, tür {_host.Kind}.");
         Refresh();
+
+        if (configChanged)
+        {
+            Log.Info("Ekran yapılandırması değişti: " + signature);
+            MonitorsChanged?.Invoke();
+        }
     }
+
+    /// <summary>
+    /// Ekranların kimliği, yeri, ölçüsü ve DPI'sının özeti. Değiştiğinde
+    /// katman ve ayarlar ekranı tazelenmelidir.
+    /// </summary>
+    private static string BuildConfigSignature(IReadOnlyList<MonitorTarget> monitors)
+        => string.Join(";", monitors.Select(m =>
+            $"{m.StableId}@{m.Bounds.X},{m.Bounds.Y},{m.Bounds.Width}x{m.Bounds.Height}#{m.Dpi}"));
 
     /// <summary>Pencereleri yeniden kurmadan yalnızca görüntüleri üretir.</summary>
     public void Refresh()
@@ -230,9 +265,21 @@ internal sealed class DesktopLayerManager : IDisposable
         }
     }
 
-    /// <summary>Ana pencere hâlâ yaşıyor mu? Değilse katman yeniden kurulur.</summary>
+    /// <summary>
+    /// Katman hâlâ sağlam mı? Ana pencere yaşıyor mu, pencerelerimiz ona bağlı mı
+    /// ve ekran yapılandırması aynı mı? Değilse katman yeniden kurulur.
+    ///
+    /// Düşük sıklıklı zamanlayıcıdan ve uykudan uyanma sonrası çağrılır. Olay
+    /// tabanlı bildirimler çoğu durumu yakalıyor ama Windows bazen çözünürlük
+    /// değişimini bildirmeden geçiyor; bu denetim o boşluğu kapatıyor.
+    /// </summary>
     public bool EnsureAlive()
     {
+        if (_disposed)
+        {
+            return false;
+        }
+
         if (_host is null || !NativeMethods.IsWindow(_host.Handle))
         {
             Log.Info("Masaüstü katmanı kaybolmuş, yeniden kuruluyor.");
@@ -248,6 +295,13 @@ internal sealed class DesktopLayerManager : IDisposable
                 Rebuild();
                 return _screens.Count > 0;
             }
+        }
+
+        if (BuildConfigSignature(MonitorEnumerator.All()) != _configSignature)
+        {
+            Log.Info("Ekran yapılandırması bildirimsiz değişmiş, katman yeniden kuruluyor.");
+            Rebuild();
+            return _screens.Count > 0;
         }
 
         return _screens.Count > 0;
@@ -335,6 +389,7 @@ internal sealed class DesktopLayerManager : IDisposable
     {
         _disposed = true;
         _rebuildTimer.Stop();
+        _watchdogTimer.Stop();
 
         bool hadWindows = _screens.Count > 0;
         DisposeWindows();

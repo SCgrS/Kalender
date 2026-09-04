@@ -34,6 +34,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// <summary>Kullanıcı çıkışı seçtiğinde tetiklenir.</summary>
     public event Action? ExitRequested;
 
+    /// <summary>Ekran listesi değişti; ayarlar penceresi kendini tazelemeli.</summary>
+    public event Action? MonitorsChanged;
+
     public SettingsStore Settings => _settings;
 
     /// <summary>
@@ -71,6 +74,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _tray.Show("Kalender");
 
         _layer.LayerUnavailable += OnLayerUnavailable;
+        _layer.MonitorsChanged += () => MonitorsChanged?.Invoke();
 
         _messages.CloseRequested += () => ExitRequested?.Invoke();
         _messages.SettingsRequested += OpenSettings;

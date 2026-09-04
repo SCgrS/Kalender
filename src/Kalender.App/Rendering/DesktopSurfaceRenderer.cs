@@ -121,7 +121,13 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         return new PointF(Math.Clamp(x, margin, maxX), Math.Clamp(y, margin, maxY));
     }
 
-    /// <summary>Fotoğraf kipinde takvimin arkasına isteğe bağlı yumuşak karartma.</summary>
+    /// <summary>
+    /// Fotoğraf kipinde takvimin arkasına isteğe bağlı yumuşak karartma.
+    ///
+    /// Şekil daire değil, köşeleri yuvarlatılmış bir dikdörtgen: takvim de
+    /// dikdörtgen olduğu için gölge onu daha doğal sarıyor ve ekranın ortasında
+    /// kocaman siyah bir daire oluşmuyor. Kenarlar yumuşak geçişli.
+    /// </summary>
     private static void PaintBackdrop(Graphics g, CalendarLayout layout, AppearanceSettings appearance, float scale)
     {
         if (appearance.BackgroundMode != BackgroundMode.Photo || appearance.BackdropDim <= 0)
@@ -129,29 +135,39 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
             return;
         }
 
-        int alpha = (int)Math.Round(Math.Clamp(appearance.BackdropDim, 0, 100) / 100.0 * 235);
+        // En koyu ayarda bile tam siyah olmasın; altındaki fotoğraf sezilsin.
+        int alpha = (int)Math.Round(Math.Clamp(appearance.BackdropDim, 0, 100) / 100.0 * 190);
 
-        // Elips, takvim dikdörtgenini köşeleriyle birlikte içine alacak kadar
-        // büyütülüyor; yoksa köşelerdeki rakamlar korumasız kalıyor.
-        var rect = RectangleF.Inflate(
-            layout.Bounds,
-            layout.Bounds.Width * 0.24f,
-            layout.Bounds.Height * 0.24f);
+        float pad = 90f * scale;
+        var rect = RectangleF.Inflate(layout.Bounds, pad, pad);
+        float radius = Math.Min(rect.Width, rect.Height) * 0.28f;
 
-        // Kenarları belli olmayan yumuşak bir gölge: merkezde koyu, dışa doğru saydam.
-        using var path = new GraphicsPath();
-        path.AddEllipse(rect);
+        using GraphicsPath path = RoundedRectangle(rect, radius);
         using var brush = new PathGradientBrush(path)
         {
+            CenterPoint = new PointF(rect.X + (rect.Width / 2f), rect.Y + (rect.Height / 2f)),
             CenterColor = Color.FromArgb(alpha, 0, 0, 0),
             SurroundColors = new[] { Color.FromArgb(0, 0, 0, 0) },
 
-            // Ortadaki koyu bölge takvimi kapsayacak kadar geniş dursun,
-            // solma yalnızca dışarıda olsun.
-            FocusScales = new PointF(0.55f, 0.55f),
+            // Koyu bölge takvimi kapsayacak kadar geniş dursun; solma dışarıda başlasın.
+            FocusScales = new PointF(0.80f, 0.80f),
         };
 
-        g.FillEllipse(brush, rect);
+        g.FillPath(brush, path);
+    }
+
+    private static GraphicsPath RoundedRectangle(RectangleF rect, float radius)
+    {
+        float d = Math.Min(radius * 2f, Math.Min(rect.Width, rect.Height));
+        var path = new GraphicsPath();
+
+        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+
+        return path;
     }
 
     public void Dispose()

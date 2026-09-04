@@ -58,6 +58,19 @@ public partial class SettingsWindow : Window
         BuildPresets();
         BuildMonitorRows();
         LoadFromSettings();
+
+        // Çözünürlük ya da ölçek değişirse satırlardaki ölçüler eskir; taşıma
+        // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
+        _host.MonitorsChanged += OnMonitorsChanged;
+    }
+
+    private void OnMonitorsChanged()
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            BuildMonitorRows();
+            LoadFromSettings();
+        });
     }
 
     private AppSettings S => _host.Settings.Current;
@@ -399,7 +412,13 @@ public partial class SettingsWindow : Window
 
         try
         {
-            var overlay = new PlacementOverlayWindow(row.Monitor, S, row.Placement, _host.Data, _host.Today)
+            // Monitör ölçülerini tam bu anda yeniden okuyoruz; arada çözünürlük
+            // değişmiş olabilir ve eski ölçüyle açılan ekran takvimi yanlış
+            // koyar.
+            MonitorTarget monitor = _host.Monitors
+                .FirstOrDefault(m => m.StableId == row.Monitor.StableId) ?? row.Monitor;
+
+            var overlay = new PlacementOverlayWindow(monitor, S, row.Placement, _host.Data, _host.Today)
             {
                 Owner = this,
             };
@@ -407,7 +426,7 @@ public partial class SettingsWindow : Window
             bool? result = overlay.ShowDialog();
             if (result == true && overlay.Result is not null)
             {
-                S.Monitors[row.Monitor.StableId] = overlay.Result;
+                S.Monitors[monitor.StableId] = overlay.Result;
                 BuildMonitorRows();
                 LoadFromSettings();
                 _host.ApplyAppearance();
@@ -467,6 +486,7 @@ public partial class SettingsWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _host.MonitorsChanged -= OnMonitorsChanged;
         _applyTimer.Stop();
 
         // Bekleyen bir değişiklik varsa kapanmadan önce diske yazılsın.
