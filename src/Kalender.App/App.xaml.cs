@@ -19,6 +19,16 @@ public partial class App : Application
 
         Paths.EnsureFolders();
 
+        // Kaldırma aracının ve sorun gidermenin kullandığı kısa yol:
+        // uygulamayı açmadan yalnızca duvar kağıdını eski hâline döndürür.
+        if (e.Args.Any(a => string.Equals(a, "--duvar-kagidini-geri-yukle", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Sessiz çalışır: kaldırma aracı kendi penceresini gösterecek.
+            Desktop.WallpaperService.Restore();
+            Shutdown();
+            return;
+        }
+
         _instance = new SingleInstance();
         if (!_instance.TryAcquire())
         {

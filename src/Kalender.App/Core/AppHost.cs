@@ -16,6 +16,7 @@ internal sealed class AppHost : IDisposable
     private const uint MenuRefresh = 2;
     private const uint MenuToggleCalendar = 3;
     private const uint MenuRedraw = 4;
+    private const uint MenuRestoreWallpaper = 5;
     private const uint MenuExit = 9;
 
     private readonly SettingsStore _settings = new();
@@ -91,6 +92,7 @@ internal sealed class AppHost : IDisposable
             TrayMenuItem.Separator,
             new TrayMenuItem(MenuToggleCalendar, hidden ? "Takvimi göster" : "Takvimi gizle"),
             new TrayMenuItem(MenuRedraw, "Takvimi yeniden çiz"),
+            new TrayMenuItem(MenuRestoreWallpaper, "Eski duvar kağıdıma dön"),
             TrayMenuItem.Separator,
             new TrayMenuItem(MenuExit, "Çıkış"),
         };
@@ -109,10 +111,31 @@ internal sealed class AppHost : IDisposable
                 _layer?.Rebuild();
                 break;
 
+            case MenuRestoreWallpaper:
+                RestoreWallpaper();
+                break;
+
             case MenuExit:
                 ExitRequested?.Invoke();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Kalender kurulmadan önceki duvar kağıdını geri yükler ve zemin eşitlemesini
+    /// kapatır; yoksa bir sonraki açılışta yeniden değiştirilirdi.
+    /// </summary>
+    private void RestoreWallpaper()
+    {
+        bool ok = WallpaperService.Restore();
+        _settings.Update(s => s.SyncSystemWallpaper = false);
+
+        _tray?.ShowBalloon(
+            "Kalender",
+            ok
+                ? "Eski duvar kağıdınız geri yüklendi. Windows duvar kağıdı eşitlemesi kapatıldı."
+                : "Yedeklenmiş bir duvar kağıdı bulunamadı. Windows duvar kağıdı eşitlemesi yine de kapatıldı.",
+            warning: !ok);
     }
 
     private void OnDisplayChanged()
