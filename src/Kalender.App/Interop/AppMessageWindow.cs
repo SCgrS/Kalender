@@ -38,6 +38,12 @@ internal sealed class AppMessageWindow : NativeWindow
     /// <summary>Tepsi simgesine tıklandı: (mesaj, ekran x, ekran y).</summary>
     public event Action<uint, int, int>? TrayEvent;
 
+    /// <summary>
+    /// Dışarıdan düzgün kapanma istendi (bu pencereye WM_CLOSE gönderildi).
+    /// Kurulum ve kaldırma araçları Kalender'i böyle kapatabilir.
+    /// </summary>
+    public event Action? CloseRequested;
+
     public static AppMessageWindow Create()
     {
         var window = new AppMessageWindow();
@@ -66,6 +72,11 @@ internal sealed class AppMessageWindow : NativeWindow
                     (uint)(NativeMethods.LoWord(lParam) & 0xFFFF),
                     NativeMethods.LoWord(wParam),
                     NativeMethods.HiWord(wParam));
+                return IntPtr.Zero;
+
+            case NativeMethods.WM_CLOSE:
+                Log.Info("Dışarıdan kapanma isteği alındı.");
+                CloseRequested?.Invoke();
                 return IntPtr.Zero;
 
             case NativeMethods.WM_DISPLAYCHANGE:

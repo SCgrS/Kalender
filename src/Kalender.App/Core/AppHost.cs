@@ -51,6 +51,7 @@ internal sealed class AppHost : IDisposable
 
         _layer.LayerUnavailable += OnLayerUnavailable;
 
+        _messages.CloseRequested += () => ExitRequested?.Invoke();
         _messages.DisplayChanged += OnDisplayChanged;
         _messages.ShellRestarted += OnShellRestarted;
         _messages.TimeChanged += () => _dayWatcher.Recheck();

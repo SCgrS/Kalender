@@ -280,6 +280,10 @@ internal sealed class WallpaperService
                 wallpaper.SetWallpaper(null, backup.Wallpaper);
             }
 
+            // Kalender kapalıyken de çağrılabildiği için masaüstünde asılı
+            // kalmış bir çizim varsa burada temizlenmiş olur.
+            DesktopRefresher.ForceRedraw();
+
             Log.Info("Önceki duvar kağıdı geri yüklendi.");
             return true;
         }

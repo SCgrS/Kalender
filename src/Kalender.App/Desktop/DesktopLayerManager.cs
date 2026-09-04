@@ -335,7 +335,16 @@ internal sealed class DesktopLayerManager : IDisposable
     {
         _disposed = true;
         _rebuildTimer.Stop();
+
+        bool hadWindows = _screens.Count > 0;
         DisposeWindows();
         _renderer.Dispose();
+
+        if (hadWindows)
+        {
+            // Pencerelerimiz gittikten sonra kabuk duvar kağıdını kendiliğinden
+            // yeniden boyamıyor; takvim ekranda asılı kalıyor. Açıkça tazeliyoruz.
+            DesktopRefresher.ForceRedraw();
+        }
     }
 }
