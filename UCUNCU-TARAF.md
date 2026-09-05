@@ -11,7 +11,7 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
 | --- | --- | --- | --- |
 | _(henüz yok)_ | | | |
 
-4. aşama sonunda proje hâlâ hiçbir üçüncü taraf pakete bağlı değil. Bilerek böyle yapıldı:
+5. aşama sonunda proje hâlâ hiçbir üçüncü taraf pakete bağlı değil. Bilerek böyle yapıldı:
 
 - **Tepsi simgesi** için hazır bir kütüphane yerine doğrudan `Shell_NotifyIcon` çağrıldı.
   Böylece Explorer yeniden başladığında simgeyi geri koymak gibi ayrıntılar elimizde kaldı

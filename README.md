@@ -156,6 +156,28 @@ menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
 Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınızın
 çözünürlüğü ya da ölçeği değişirse Kalender kendini yeniden kurar.
 
+## Gün kutusu
+
+Masaüstündeyken farenizi bir günün üzerine getirip kısa süre beklerseniz, Windows'un kendi
+ipucu balonlarına benzeyen küçük bir kutu açılır ve o günün içeriğini listeler:
+
+- Önce varsa resmi tatil,
+- sonra tüm gün süren etkinlikler,
+- sonra saatli etkinlikler (saate göre sıralı, `09:30 · Başlık`),
+- en altta görevler (`Görev · Başlık`).
+
+Kutu şu koşulların **hepsi** sağlanmadan açılmaz:
+
+1. İmlecin altındaki pencere masaüstünün kendisi olmalı (üstte Word, Chrome gibi bir pencere
+   varsa açılmaz).
+2. Fare tuşlarından hiçbiri basılı olmamalı (seçim yaparken ya da simge sürüklerken açılmaz).
+3. Tam ekran, sunum ya da oyun kipi olmamalı.
+4. İmleç aynı günün üzerinde en az 0,4 saniye durmuş olmalı.
+
+Hücreden çıkınca kutu yaklaşık 0,15 saniye içinde kapanır. O günde gösterilecek hiçbir şey
+yoksa kutu hiç açılmaz. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu
+kendisi düzeltir.
+
 ## Resmi tatiller
 
 Tatil listesi Google'ın herkese açık Türkiye resmi tatil takviminden (ICS) alınır; hesap
@@ -192,11 +214,19 @@ Proje aşama aşama geliştiriliyor.
 | 2 | Çoklu monitör, DPI, konum/boyut, temalar, renk seçici, fotoğraf | Tamam |
 | 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Tamam |
 | 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Tamam |
-| 5 | Noktacıklar, fare üstünde açılan gün kutusu | Sırada |
-| 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Bekliyor |
+| 5 | Noktacıklar, fare üstünde açılan gün kutusu | Tamam |
+| 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Sırada |
 | 7 | Kurulum dosyası, README, sürüm etiketi | Bekliyor |
 
 ## Sürüm geçmişi
+
+### 0.5.0 (geliştirme)
+
+- Gün kutusu: fare bir günün üzerinde 0,4 saniye beklediğinde o günün tatili, etkinlikleri ve
+  görevleri listeleniyor. Kutu odak almıyor, tıklanmıyor, ekran kenarında konumunu düzeltiyor.
+- Kutu yalnızca masaüstü görünürken, fare tuşu basılı değilken ve tam ekran/sunum kipi
+  yokken açılıyor. O günde gösterilecek bir şey yoksa hiç açılmıyor.
+- Başlıklardaki sekme ve satır sonları tekleştirilip 40 karakterde kırpılıyor.
 
 ### 0.4.0 (geliştirme)
 

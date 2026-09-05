@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="Kalender.Ui.DayPopupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Kalender gün kutusu"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowActivated="False"
+        Focusable="False"
+        IsHitTestVisible="False"
+        SizeToContent="WidthAndHeight"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI">
+
+    <!-- Windows'un kendi ipucu balonları gibi: koyu zemin, ince kenarlık,
+         küçük köşe yuvarlaklığı, gölge, küçük punto. -->
+    <Border Margin="10" CornerRadius="6" Padding="12,9"
+            Background="#F21F2227" BorderThickness="1" BorderBrush="#4A505A">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black" />
+        </Border.Effect>
+        <StackPanel x:Name="Lines" MaxWidth="360" />
+    </Border>
+</Window>

@@ -214,9 +214,20 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         }
         catch (HttpRequestException ex)
         {
-            // Çevrimdışıyken kullanıcıyı rahatsız etmiyoruz; önbellek gösterilmeye devam eder.
             IsOnline = false;
-            Log.Debug("Google'a ulaşılamadı: " + ex.Message);
+
+            if (ex.StatusCode is null)
+            {
+                // Ağ yok: kullanıcıyı rahatsız etmiyoruz, önbellek gösterilmeye devam eder.
+                Log.Debug("Google'a ulaşılamadı: " + ex.Message);
+            }
+            else
+            {
+                // Sunucudan hata geldi (API kapalı, kota, izin). Bu sessizce
+                // geçilmemeli; sorunu ancak günlükten anlayabiliriz.
+                Log.Warn($"Google isteği reddedildi ({(int)ex.StatusCode}): {ex.Message}");
+            }
+
             return false;
         }
         catch (Exception ex)

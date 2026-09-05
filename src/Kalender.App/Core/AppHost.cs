@@ -35,6 +35,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private GoogleAuthenticator? _googleAuth;
     private GoogleCalendarProvider? _google;
     private GooglePoller? _poller;
+    private HoverWatcher? _hover;
+    private DayPopupWindow? _popup;
     private SettingsWindow? _settingsWindow;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
     private bool _layerWarningShown;
@@ -182,7 +184,13 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             _data = snapshot;
             _layer.SetData(snapshot);
+            _hover?.Reset();
         };
+
+        _hover = new HoverWatcher(_layer, () => _data);
+        _hover.ShowRequested += OnPopupRequested;
+        _hover.HideRequested += () => _popup?.HidePopup();
+        _hover.Start();
 
         // Tatil listesi arka planda inebiliyor; arayüz iş parçacığına taşıyoruz.
         _holidays.Updated += OnHolidaysUpdated;
@@ -222,6 +230,21 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         // Açılışı bekletmeden tatil listesini tazele.
         _ = RefreshHolidaysAsync(force: false);
+    }
+
+    /// <summary>Gün kutusunu açar. Pencere bir kez kurulup yeniden kullanılır.</summary>
+    private void OnPopupRequested(DayContent content, System.Drawing.Rectangle cellBounds)
+    {
+        try
+        {
+            _popup ??= new DayPopupWindow();
+            _popup.ShowFor(content, cellBounds);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Gün kutusu açılamadı.", ex);
+            _popup = null;
+        }
     }
 
     private void OnGoogleStateChanged()
@@ -461,6 +484,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     public void Dispose()
     {
         _settingsWindow?.Close();
+        _hover?.Dispose();
+        _popup?.Close();
         _poller?.Dispose();
         _google?.Dispose();
         _googleAuth?.Dispose();

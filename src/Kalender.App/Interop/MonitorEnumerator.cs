@@ -91,6 +91,33 @@ internal static class MonitorEnumerator
         return list.OrderByDescending(m => m.IsPrimary).ThenBy(m => m.Bounds.X).ThenBy(m => m.Bounds.Y).ToList();
     }
 
+    /// <summary>Verilen noktanın bulunduğu ekranın çalışma alanı (görev çubuğu hariç).</summary>
+    public static Rectangle WorkAreaAt(Point screenPoint)
+    {
+        try
+        {
+            var pt = new NativeMethods.POINT { X = screenPoint.X, Y = screenPoint.Y };
+            IntPtr monitor = NativeMethods.MonitorFromPoint(pt, NativeMethods.MONITOR_DEFAULTTONEAREST);
+
+            var info = new NativeMethods.MONITORINFOEX
+            {
+                cbSize = Marshal.SizeOf<NativeMethods.MONITORINFOEX>(),
+                szDevice = string.Empty,
+            };
+
+            if (NativeMethods.GetMonitorInfo(monitor, ref info))
+            {
+                return ToRectangle(info.rcWork);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Çalışma alanı okunamadı: " + ex.Message);
+        }
+
+        return VirtualScreen();
+    }
+
     /// <summary>Bütün ekranları kapsayan sanal masaüstü dikdörtgeni.</summary>
     public static Rectangle VirtualScreen()
     {
