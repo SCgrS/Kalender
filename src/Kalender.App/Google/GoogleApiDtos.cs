@@ -54,6 +54,12 @@ internal sealed class EventEntry
 
     [JsonPropertyName("colorId")] public string? ColorId { get; set; }
 
+    /// <summary>
+    /// "default", "task", "workingLocation", "birthday"... Google artık Görevler'i
+    /// de takvim etkinliği olarak döndürüyor; onları buradan ayırt ediyoruz.
+    /// </summary>
+    [JsonPropertyName("eventType")] public string? EventType { get; set; }
+
     [JsonPropertyName("start")] public EventTime? Start { get; set; }
 
     [JsonPropertyName("end")] public EventTime? End { get; set; }

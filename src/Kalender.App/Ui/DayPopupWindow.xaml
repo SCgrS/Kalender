@@ -24,6 +24,6 @@
         <Border.Effect>
             <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black" />
         </Border.Effect>
-        <StackPanel x:Name="Lines" MaxWidth="360" />
+        <StackPanel x:Name="Lines" MaxWidth="430" />
     </Border>
 </Window>

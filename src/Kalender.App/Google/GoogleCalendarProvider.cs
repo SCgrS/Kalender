@@ -355,6 +355,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
         var byId = bundle.Events.ToDictionary(e => e.Id + "@" + e.CalendarId, e => e);
         IReadOnlyList<string> wanted = SelectedCalendarIds(bundle);
+        var seenTypes = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (ProviderCalendar calendar in bundle.Calendars)
         {
@@ -373,7 +374,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                     + (updatedMin is null
                         ? "&showDeleted=false"
                         : $"&showDeleted=true&updatedMin={Uri.EscapeDataString(Rfc3339(updatedMin.Value.UtcDateTime))}")
-                    + "&fields=" + Uri.EscapeDataString("items(id,summary,status,colorId,start,end),nextPageToken")
+                    + "&fields=" + Uri.EscapeDataString(
+                        "items(id,summary,status,colorId,eventType,start,end),nextPageToken")
                     + Page(pageToken);
 
                 EventsResponse? page;
@@ -395,8 +397,19 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                     }
 
                     string key = item.Id + "@" + calendar.Id;
+                    seenTypes.Add(item.EventType ?? "(yok)");
 
                     if (string.Equals(item.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+                    {
+                        byId.Remove(key);
+                        continue;
+                    }
+
+                    // Google, Görevler'i de takvim etkinliği olarak döndürüyor.
+                    // Onları Tasks API'sinden zaten alıyoruz; buradan geçerse
+                    // aynı kayıt iki kez görünüyor. Çalışma konumu kayıtları da
+                    // randevu değil, gösterilmiyor.
+                    if (item.EventType is "task" or "workingLocation")
                     {
                         byId.Remove(key);
                         continue;
@@ -413,6 +426,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             }
             while (!string.IsNullOrEmpty(pageToken));
         }
+
+        Log.Debug("Görülen etkinlik türleri: " + string.Join(", ", seenTypes));
 
         // Aralık dışına düşmüş ya da artık seçili olmayan takvimlerin kayıtlarını at.
         bundle.Events = byId.Values

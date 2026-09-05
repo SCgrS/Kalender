@@ -220,6 +220,15 @@ Proje aşama aşama geliştiriliyor.
 
 ## Sürüm geçmişi
 
+### 0.5.1 (geliştirme)
+
+- Gün kutusunda başlıklar artık kısaltılmıyor; sığmazsa alt satıra sarkıyor ve alt satır
+  saatin altına değil başlığın hizasına geliyor.
+- Aynı kayıt iki kez görünmüyordu düzeltildi: Google, süresi saatli olan Görevler'i Takvim
+  API'sinde de sıradan bir etkinlik olarak döndürebiliyor. Aynı gün ve aynı başlıktaki
+  etkinlik, görev kaydı varsa gösterilmiyor.
+- Çalışma konumu (workingLocation) kayıtları takvimde gösterilmiyor.
+
 ### 0.5.0 (geliştirme)
 
 - Gün kutusu: fare bir günün üzerinde 0,4 saniye beklediğinde o günün tatili, etkinlikleri ve

@@ -97,25 +97,25 @@ public partial class DayPopupWindow : Window
         }
     }
 
-    private TextBlock BuildLine(DayEntry entry, DayContent content)
+    /// <summary>
+    /// Bir satır: solda "10:30 ·" gibi kısa bir ön ek, sağda başlık.
+    /// Başlık sığmazsa ikinci satıra sarkar ve alt satır ön ekin altına değil,
+    /// başlığın hizasına gelir.
+    /// </summary>
+    private UIElement BuildLine(DayEntry entry, DayContent content)
     {
-        var block = new TextBlock
-        {
-            FontSize = 12.5,
-            Margin = new Thickness(0, 2, 0, 2),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-
         if (entry.Kind == EntryKind.Holiday)
         {
             // Tam gün tatil kırmızı, arife normal renkte; takvimdeki renkle aynı mantık.
-            block.Inlines.Add(new Run(Kirp(entry.Title))
+            return new TextBlock
             {
+                Text = Temizle(entry.Title),
+                FontSize = 12.5,
+                Margin = new Thickness(0, 2, 0, 4),
+                TextWrapping = TextWrapping.Wrap,
                 Foreground = content.IsHoliday ? HolidayBrush : TitleBrush,
                 FontWeight = FontWeights.SemiBold,
-            });
-
-            return block;
+            };
         }
 
         string prefix = entry.Kind switch
@@ -125,23 +125,45 @@ public partial class DayPopupWindow : Window
             _ => "Tüm gün",
         };
 
-        block.Inlines.Add(new Run(prefix + " · ") { Foreground = PrefixBrush });
-        block.Inlines.Add(new Run(Kirp(entry.Title)) { Foreground = TitleBrush });
+        var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        return block;
+        var prefixBlock = new TextBlock
+        {
+            Text = prefix + " · ",
+            FontSize = 12.5,
+            Foreground = PrefixBrush,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        var titleBlock = new TextBlock
+        {
+            Text = Temizle(entry.Title),
+            FontSize = 12.5,
+            Foreground = TitleBrush,
+            // Başlığın tamamı görünsün; sığmazsa alt satıra sarksın.
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        Grid.SetColumn(prefixBlock, 0);
+        Grid.SetColumn(titleBlock, 1);
+        grid.Children.Add(prefixBlock);
+        grid.Children.Add(titleBlock);
+
+        return grid;
     }
 
     /// <summary>
-    /// Uzun başlıkları kısaltır; kutu ekranı kaplamasın.
-    ///
-    /// Önce boşluklar tekleştiriliyor: Google'dan gelen başlıklarda sekme ve
-    /// satır sonu olabiliyor, bunlar kutuda kocaman boşluklar açıp satırı
-    /// karakter sayısından çok daha geniş gösteriyordu.
+    /// Başlıktaki boşlukları tekleştirir. Google'dan gelen başlıklarda sekme ve
+    /// satır sonu olabiliyor; bunlar kutuda kocaman boşluklar açıyordu.
     /// </summary>
-    private static string Kirp(string title, int max = 40)
+    private static string Temizle(string title)
     {
         string temiz = WhitespaceRuns().Replace(title, " ").Trim();
-        return temiz.Length <= max ? temiz : temiz[..(max - 1)].TrimEnd() + "…";
+
+        // Uçuk uzun bir başlık kutuyu boğmasın; görsel sınır zaten MaxLines.
+        return temiz.Length <= 240 ? temiz : temiz[..239].TrimEnd() + "…";
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\s+")]

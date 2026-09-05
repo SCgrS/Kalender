@@ -58,6 +58,7 @@ internal sealed class CalendarDataService
 
         foreach ((DateOnly day, List<DayEntry> entries) in days)
         {
+            RemoveDuplicateTasks(entries);
             entries.Sort((a, b) => a.SortKey.CompareTo(b.SortKey));
 
             holidayNames.TryGetValue(day, out HolidayInfo? holiday);
@@ -155,6 +156,34 @@ internal sealed class CalendarDataService
             });
         }
     }
+
+    /// <summary>
+    /// Aynı gün içinde başlığı bir görevle birebir aynı olan etkinlikleri atar.
+    ///
+    /// Google Görevler'i hem Tasks API'sinden hem de takvim etkinliği olarak
+    /// döndürebiliyor. Etkinlik tarafını eventType alanına bakarak zaten
+    /// süzüyoruz; bu, o süzgecin tutmadığı durumlar için ağ. Görev kaydı
+    /// korunuyor çünkü asıl kaynak o.
+    /// </summary>
+    private static void RemoveDuplicateTasks(List<DayEntry> entries)
+    {
+        var taskTitles = entries
+            .Where(e => e.Kind == EntryKind.Task)
+            .Select(e => Normalize(e.Title))
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (taskTitles.Count == 0)
+        {
+            return;
+        }
+
+        entries.RemoveAll(e => e.Kind is EntryKind.Timed or EntryKind.AllDay
+            && taskTitles.Contains(Normalize(e.Title)));
+    }
+
+    private static string Normalize(string title)
+        => string.Join(' ', title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .ToLowerInvariant();
 
     private static List<DayEntry> Bucket(Dictionary<DateOnly, List<DayEntry>> days, DateOnly day)
     {
