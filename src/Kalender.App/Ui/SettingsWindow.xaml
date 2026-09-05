@@ -157,11 +157,13 @@
                                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
                                            Text="3. Sol menüden API'ler ve Hizmetler > Kitaplık'a girin; Google Calendar API ve Google Tasks API'yi bulup ikisini de Etkinleştir'e basın." />
                                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="4. API'ler ve Hizmetler > OAuth izin ekranı: Harici'yi seçin, uygulama adı ve e-postanızı yazın, Test kullanıcıları bölümüne kendi e-postanızı ekleyin." />
+                                           Text="4. API'ler ve Hizmetler > OAuth izin ekranı'na girin (Google Auth Platform sayfasına yönlendirir). Get started > uygulama adı ve e-postanız > Audience: External > iletişim e-postanız > ilkeyi kabul edip Create." />
                                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="5. API'ler ve Hizmetler > Kimlik bilgileri > Kimlik bilgisi oluştur > OAuth istemci kimliği. Uygulama türü: Masaüstü uygulaması." />
+                                           Text="5. Sol menüden Audience > Test users > + Add users: kendi e-posta adresinizi ekleyin. Bu şart; eklemezseniz Google onay ekranında sizi reddeder." />
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="6. Sol menüden Clients > + Create client. Application type: Desktop app. Ad: Kalender > Create." />
                                 <TextBlock TextWrapping="Wrap"
-                                           Text="6. Çıkan pencerede İstemci Kimliği ve İstemci gizli anahtarı yazar. İkisini de aşağıya yapıştırın." />
+                                           Text="7. Çıkan pencerede Client ID ve Client secret yazar. İkisini de aşağıya yapıştırın." />
                             </StackPanel>
                         </Expander>
 

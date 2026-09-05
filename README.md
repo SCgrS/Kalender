@@ -61,21 +61,31 @@ işlem, yaklaşık beş dakika sürüyor. Aynı adımlar Kalender'in Ayarlar pen
 
 ### 3. İzin ekranını hazırlayın
 
-1. **API'ler ve Hizmetler > OAuth izin ekranı**'na girin.
-2. Kullanıcı türü olarak **Harici**'yi seçin, **Oluştur**'a basın.
-3. Uygulama adına `Kalender`, kullanıcı destek e-postası ve iletişim e-postası alanlarına
-   kendi e-posta adresinizi yazın. **Kaydet ve devam et** ile ilerleyin.
-4. Kapsamlar adımında bir şey eklemeden **Kaydet ve devam et**.
-5. **Test kullanıcıları** adımında **Kullanıcı ekle**'ye basıp kendi e-posta adresinizi ekleyin.
-   Bu önemli: eklemezseniz Google onay ekranında sizi reddeder.
+Google bu bölümü yeniledi; artık adı **Google Auth Platform**. Sol menüden
+**API'ler ve Hizmetler > OAuth izin ekranı**'na girdiğinizde bu sayfaya yönlendirilirsiniz.
+
+1. Sayfanın ortasındaki **Get started** (Başlayın) düğmesine basın.
+2. **App Information**: uygulama adına `Kalender`, destek e-postası olarak kendi adresinizi
+   seçin → **Next**.
+3. **Audience**: **External** (Harici) → **Next**.
+4. **Contact Information**: kendi e-posta adresinizi yazın → **Next**.
+5. **Finish**: kullanıcı verisi ilkesini kabul eden kutuyu işaretleyin → **Continue** →
+   **Create**.
+6. Sol menüden **Audience**'a girip aşağıdaki **Test users** bölümünde **+ Add users** ile
+   kendi e-posta adresinizi ekleyin ve kaydedin. Bu önemli: eklemezseniz Google onay
+   ekranında sizi reddeder.
 
 ### 4. İstemci kimliğini oluşturun
 
-1. **API'ler ve Hizmetler > Kimlik bilgileri**'ne girin.
-2. Üstteki **+ Kimlik bilgisi oluştur > OAuth istemci kimliği**'ne tıklayın.
-3. Uygulama türü: **Masaüstü uygulaması**. Ada `Kalender` yazıp **Oluştur**'a basın.
-4. Çıkan pencerede **İstemci Kimliği** ve **İstemci gizli anahtarı** yazar. İkisini de
-   kopyalayın (pencereyi kapatsanız bile Kimlik bilgileri listesinden yeniden açabilirsiniz).
+1. Sol menüden **Clients** (İstemciler) → **+ Create client**.
+2. Application type (Uygulama türü): **Desktop app** (Masaüstü uygulaması).
+3. Ada `Kalender` yazıp **Create**'e basın.
+4. Çıkan pencerede **Client ID** ve **Client secret** yazar. İkisini de kopyalayın
+   (pencereyi kapatsanız bile Clients listesinden yeniden açabilirsiniz).
+
+> Daha eski bir Google Cloud arayüzü görüyorsanız aynı işler **API'ler ve Hizmetler >
+> OAuth izin ekranı** ve **API'ler ve Hizmetler > Kimlik bilgileri > OAuth istemci kimliği**
+> altındadır.
 
 ### 5. Kalender'e yapıştırın
 
