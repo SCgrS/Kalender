@@ -27,14 +27,31 @@ o günün Google Takvim etkinlikleri ile görevleri listelenir.
 
 ## Kurulum
 
-> Bu bölüm ilk sürüm yayımlandığında doğrudan indirme bağlantısıyla güncellenecektir.
+### [⬇ Kalender-Kurulum.exe indir](https://github.com/SCgrS/kalender/releases/latest/download/Kalender-Kurulum.exe)
 
-1. `Kalender-Kurulum.exe` dosyasını indirin.
-2. Çift tıklayın.
+Tek dosya, 63 MB. İçinde çalışması için gereken her şey var; ayrıca .NET kurmanız gerekmez.
+
+1. Yukarıdaki bağlantıya tıklayıp dosyayı indirin.
+2. İndirilen `Kalender-Kurulum.exe` dosyasına **çift tıklayın**.
 3. Dosya imzalı olmadığı için Windows SmartScreen bir uyarı gösterebilir:
    **Daha fazla bilgi** yazısına tıklayın, sonra çıkan **Yine de çalıştır** düğmesine basın.
-4. Kurulum `%LOCALAPPDATA%\Kalender` klasörüne yapılır, Başlat menüsüne kısayol eklenir ve
-   Windows açılışında kendiliğinden başlaması ayarlanır.
+4. Açılan pencerede **Kur**'a basın. Kurulum birkaç saniye sürer, ardından Kalender başlar.
+
+Kurulum, yönetici hakkı istemez ve sistem klasörlerine hiçbir şey yazmaz:
+
+- Uygulama `%LOCALAPPDATA%\Kalender\app` klasörüne kopyalanır.
+- Başlat menüsüne **Kalender** kısayolu eklenir.
+- Windows açılışında kendiliğinden başlaması için yalnızca kendi kullanıcı kaydınıza
+  (`HKCU\...\Run`) yazılır.
+- Windows'un "Uygulamalar ve özellikler" listesine kaydedilir, oradan da kaldırabilirsiniz.
+
+Ayarlarınız ve yerel veri kopyanız `%LOCALAPPDATA%\Kalender` altında, uygulama klasörünün
+**dışında** durur; güncelleme yaptığınızda korunur.
+
+### Güncelleme
+
+Yeni sürümün `Kalender-Kurulum.exe` dosyasını indirip çalıştırmanız yeterli. Çalışan Kalender
+kendiliğinden kapatılır, dosya değiştirilir, ayarlarınıza dokunulmaz.
 
 ## Google Takvim ve Görevler bağlantısı
 
@@ -214,7 +231,7 @@ kullanılmaya devam eder, hata penceresi çıkmaz.
 
 - **Tam gün resmi tatiller** kırmızı gösterilir.
 - **Arifeler (yarım günler)** kırmızı gösterilmez, normal gün gibi durur. Adları gün
-  kutusunda görünür (5. aşamada).
+  kutusunda görünür.
 - **Anneler Günü gibi kutlama/anma günleri** tatil sayılmaz, kırmızıya boyanmaz.
 
 Listeyi elle yenilemek için tepsi menüsünde **Şimdi yenile** ya da Ayarlar penceresindeki
@@ -225,11 +242,20 @@ Listeyi elle yenilemek için tepsi menüsünde **Şimdi yenile** ya da Ayarlar p
 
 ## Kaldırma
 
-`Kalender-Kaldir.exe` dosyasını çalıştırın (ya da Ayarlar penceresindeki **Kaldır**
-düğmesini kullanın). Kaldırma sırasında:
+Üç yoldan biriyle:
 
-- Kalender kurulmadan önceki duvar kağıdınız geri yüklenir,
-- Ayar ve önbellek klasörünün silinip silinmeyeceği sorulur.
+- **Ayarlar > Genel > Kalender'i kaldır**
+- Windows **Ayarlar > Uygulamalar** listesinden Kalender'i seçip **Kaldır**
+- Doğrudan: `%LOCALAPPDATA%\Kalender\app\Kalender.exe --kaldir`
+
+Açılan pencerede **Ayarlarımı ve yerel veri kopyamı da sil** kutusu vardır. İşaretlemezseniz
+ayarlarınız kalır ve Kalender'i sonra yeniden kurduğunuzda her şey yerinde olur.
+
+Kaldırma sırasında:
+
+- Kalender'den önceki duvar kağıdınız geri yüklenir,
+- Başlat menüsü kısayolu, açılışta başlatma kaydı ve uygulamalar listesindeki kayıt silinir,
+- Uygulama dosyaları (ve seçtiyseniz ayarlarınız) birkaç saniye sonra silinir.
 
 ## Şu anki durum
 
@@ -243,9 +269,21 @@ Proje aşama aşama geliştiriliyor.
 | 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Tamam |
 | 5 | Noktacıklar, fare üstünde açılan gün kutusu | Tamam |
 | 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Tamam |
-| 7 | Kurulum dosyası, README, sürüm etiketi | Sırada |
+| 7 | Kurulum dosyası, README, sürüm etiketi | Tamam |
 
 ## Sürüm geçmişi
+
+### 1.0.0
+
+Şartnamedeki yedi aşamanın tamamı bitti.
+
+- Tek dosya kurulum: `Kalender-Kurulum.exe` hem uygulama hem kurucu. `%LOCALAPPDATA%\Kalender\app`
+  altına kurar, Başlat menüsü kısayolu ekler, açılış kaydını yazar ve Windows'un uygulamalar
+  listesine kaydeder. Yönetici hakkı istemez.
+- Kaldırma: önceki duvar kağıdını geri yükler, kayıtları ve kısayolu siler; ayarların
+  silinip silinmeyeceğini sorar. Ayarlar penceresinden, Windows uygulamalar listesinden ya da
+  `--kaldir` ile çalıştırılabilir.
+- Güncelleme, çalışan Kalender'i kendiliğinden kapatıp dosyayı değiştirir; ayarlara dokunmaz.
 
 ### 0.6.0 (geliştirme)
 

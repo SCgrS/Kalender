@@ -56,7 +56,10 @@ internal static class StartupManager
     }
 
     /// <summary>Ayara göre kaydı yazar ya da siler.</summary>
-    public static void Apply(bool enabled)
+    public static void Apply(bool enabled) => Apply(enabled, Environment.ProcessPath);
+
+    /// <summary>Belirli bir dosya için kaydı yazar ya da siler (kurulum sırasında gerekir).</summary>
+    public static void Apply(bool enabled, string? exePath)
     {
         try
         {
@@ -73,7 +76,7 @@ internal static class StartupManager
                 return;
             }
 
-            string? exe = Environment.ProcessPath;
+            string? exe = exePath;
             if (string.IsNullOrEmpty(exe))
             {
                 Log.Warn("Çalıştırılabilir dosyanın yolu okunamadı; açılış kaydı yazılamadı.");

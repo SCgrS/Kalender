@@ -304,6 +304,8 @@
                             <TextBlock x:Name="VersionText" VerticalAlignment="Center" />
                             <Button Content="Sürümler sayfası" Margin="16,0,0,0" MinWidth="140"
                                     Click="OnOpenReleases" />
+                            <Button x:Name="UninstallButton" Content="Kalender'i kaldır"
+                                    Margin="10,0,0,0" MinWidth="140" Click="OnUninstall" />
                         </StackPanel>
                         <TextBlock Style="{StaticResource Aciklama}" Margin="0,8,0,0"
                                    Text="Kalender kendini otomatik güncellemez. Yeni sürüm çıktığında sürümler sayfasından indirebilirsiniz." />

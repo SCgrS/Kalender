@@ -828,6 +828,35 @@ public partial class SettingsWindow : Window
 
     private void OnOpenLogFolder(object sender, RoutedEventArgs e) => Ac(Paths.LogFolder);
 
+    /// <summary>
+    /// Kaldırma penceresini ayrı bir süreçte açar. Kaldırma sırasında çalışan
+    /// Kalender kapatılacağı için işi bu sürece yaptıramayız.
+    /// </summary>
+    private void OnUninstall(object sender, RoutedEventArgs e)
+    {
+        if (!Installer.IsInstalled)
+        {
+            MessageBox.Show(this,
+                "Kalender kurulu değil; şu an taşınabilir olarak çalışıyor. "
+                + "Kapatmak için tepsi menüsünden Çıkış'ı kullanabilirsiniz.",
+                "Kalender", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                Installer.InstalledExe, "--kaldir")
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Kaldırma penceresi açılamadı.", ex);
+        }
+    }
+
     private void OnOpenReleases(object sender, RoutedEventArgs e) => Ac(ReleasesUrl);
 
     /// <summary>Klasörü ya da adresi kullanıcının varsayılan uygulamasında açar.</summary>

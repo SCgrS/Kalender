@@ -1,6 +1,8 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Kalender.Core;
+using Kalender.Ui;
 
 namespace Kalender;
 
@@ -26,6 +28,12 @@ public partial class App : Application
             // Sessiz çalışır: kaldırma aracı kendi penceresini gösterecek.
             Desktop.WallpaperService.Restore();
             Shutdown();
+            return;
+        }
+
+        // Kurulum ve kaldırma: yayınlanan tek dosya hem uygulama hem kurucudur.
+        if (TryRunSetup(e.Args))
+        {
             return;
         }
 
@@ -76,6 +84,44 @@ public partial class App : Application
                 MessageBoxImage.Error);
             Shutdown();
         }
+    }
+
+    /// <summary>
+    /// Uygulama kurulum ya da kaldırma kipinde mi açıldı?
+    ///
+    /// İki yol var: açık bir komut satırı anahtarı, ya da dosya adının
+    /// "Kurulum" içermesi. İkincisi sayesinde kullanıcı indirdiği
+    /// Kalender-Kurulum.exe dosyasına çift tıklayınca kurulum ekranı açılıyor;
+    /// ayrı bir kurulum programı indirmesi gerekmiyor.
+    /// </summary>
+    private bool TryRunSetup(string[] args)
+    {
+        bool install = args.Any(a => string.Equals(a, "--kur", StringComparison.OrdinalIgnoreCase));
+        bool uninstall = args.Any(a => string.Equals(a, "--kaldir", StringComparison.OrdinalIgnoreCase));
+
+        if (!install && !uninstall)
+        {
+            string name = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? string.Empty);
+
+            install = name.Contains("Kurulum", StringComparison.OrdinalIgnoreCase)
+                && !Core.Installer.RunningInstalled;
+
+            uninstall = name.Contains("Kaldir", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Kaldır", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!install && !uninstall)
+        {
+            return false;
+        }
+
+        Log.Level = LogLevel.Info;
+
+        var window = new SetupWindow(install ? SetupMode.Install : SetupMode.Uninstall);
+        window.Closed += (_, _) => Shutdown();
+        window.Show();
+
+        return true;
     }
 
     protected override void OnExit(ExitEventArgs e)
