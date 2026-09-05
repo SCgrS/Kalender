@@ -31,6 +31,9 @@ o günün Google Takvim etkinlikleri ile görevleri listelenir.
 
 Tek dosya, 63 MB. İçinde çalışması için gereken her şey var; ayrıca .NET kurmanız gerekmez.
 
+> Depo özel (private) olduğu için indirme bağlantısı yalnızca GitHub'da oturumu açık olan
+> yetkili hesaplarda çalışır. Tüm sürümler: [Sürümler sayfası](https://github.com/SCgrS/kalender/releases)
+
 1. Yukarıdaki bağlantıya tıklayıp dosyayı indirin.
 2. İndirilen `Kalender-Kurulum.exe` dosyasına **çift tıklayın**.
 3. Dosya imzalı olmadığı için Windows SmartScreen bir uyarı gösterebilir:
