@@ -156,6 +156,33 @@ menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
 Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınızın
 çözünürlüğü ya da ölçeği değişirse Kalender kendini yeniden kurar.
 
+### Genel
+
+- **Windows açılışında Kalender'i başlat** — varsayılan olarak açık. Kayıt yalnızca kendi
+  kullanıcı hesabınıza yazılır (`HKCU\...\Run`), yönetici hakkı istenmez. Kutunun altında
+  hangi dosyanın başlatılacağı yazar.
+- **Seçilen zemini Windows duvar kağıdı olarak da ayarla** — kapatırsanız Windows duvar
+  kağıdınıza hiç dokunulmaz.
+- **Günlük ayrıntısı** — normalde yalnızca hatalar yazılır. Bir sorun ararken *Bilgi* ya da
+  *Ayrıntılı* seçebilirsiniz. **Günlük klasörünü aç** düğmesi dosyaları gösterir.
+- **Sürüm** ve **Sürümler sayfası** — Kalender kendini otomatik güncellemez.
+
+## Tepsi menüsü
+
+Saatin yanındaki Kalender simgesine sağ tıklayın:
+
+| Satır | Ne yapar |
+| --- | --- |
+| Ayarlar | Ayarlar penceresini açar (simgeye sol tıklamak da açar) |
+| Şimdi yenile | Tatil listesini ve Google verisini hemen tazeler |
+| Takvimi gizle / göster | Takvimi çizmeyi durdurur; zemin kalır |
+| Takvimi yeniden çiz | Masaüstü katmanını sıfırdan kurar (kabuk takılırsa işe yarar) |
+| Eski duvar kağıdıma dön | Kalender'den önceki duvar kağıdını geri yükler ve eşitlemeyi kapatır |
+| Çıkış | Kalender'i kapatır |
+
+Simgenin üzerine gelince ipucunda Google bağlantı durumu yazar (bağlı / bağlı, çevrimdışı /
+bağlı değil).
+
 ## Gün kutusu
 
 Masaüstündeyken farenizi bir günün üzerine getirip kısa süre beklerseniz, Windows'un kendi
@@ -215,10 +242,19 @@ Proje aşama aşama geliştiriliyor.
 | 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Tamam |
 | 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Tamam |
 | 5 | Noktacıklar, fare üstünde açılan gün kutusu | Tamam |
-| 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Sırada |
-| 7 | Kurulum dosyası, README, sürüm etiketi | Bekliyor |
+| 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Tamam |
+| 7 | Kurulum dosyası, README, sürüm etiketi | Sırada |
 
 ## Sürüm geçmişi
+
+### 0.6.0 (geliştirme)
+
+- Ayarlara "Genel" bölümü eklendi: Windows açılışında başlatma, duvar kağıdı eşitlemesini
+  kapatma, günlük ayrıntısı, günlük klasörünü açma, sürüm numarası ve sürümler sayfası
+  bağlantısı.
+- Açılışta başlatma yalnızca kendi kullanıcı hesabınızın kaydına yazılır; yönetici hakkı
+  istenmez.
+- Ayarlar penceresinin başlığı "Kalender - Ayarlar" oldu.
 
 ### 0.5.1 (geliştirme)
 

@@ -3,7 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:Kalender.Ui"
-        Title="Kalender - Görünüm"
+        Title="Kalender - Ayarlar"
         Width="760" Height="820"
         MinWidth="700" MinHeight="560"
         WindowStartupLocation="CenterScreen"
@@ -268,6 +268,45 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- ================================================= GENEL -->
+                <Border Style="{StaticResource Bolum}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Baslik}" Text="Genel" />
+
+                        <CheckBox x:Name="StartupBox" Content="Windows açılışında Kalender'i başlat"
+                                  Checked="OnStartupChanged" Unchecked="OnStartupChanged" />
+                        <TextBlock x:Name="StartupNote" Style="{StaticResource Aciklama}" Margin="24,4,0,0" />
+
+                        <CheckBox x:Name="WallpaperSyncBox"
+                                  Content="Seçilen zemini Windows duvar kağıdı olarak da ayarla"
+                                  Checked="OnWallpaperSyncChanged" Unchecked="OnWallpaperSyncChanged" />
+                        <TextBlock Style="{StaticResource Aciklama}" Margin="24,4,0,0"
+                                   Text="Açılışta Kalender devreye girene kadar ekranın farklı görünmemesi için. Kapatırsanız Windows duvar kağıdınıza dokunulmaz." />
+
+                        <Separator Margin="0,14,0,12" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Günlük ayrıntısı" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <ComboBox x:Name="LogLevelCombo" Width="150" VerticalAlignment="Center"
+                                      SelectionChanged="OnLogLevelChanged" />
+                            <Button Content="Günlük klasörünü aç" Margin="14,0,0,0" MinWidth="160"
+                                    Click="OnOpenLogFolder" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Aciklama}"
+                                   Text="Normalde yalnızca hatalar yazılır. Bir sorunu araştırırken ayrıntıyı artırabilirsiniz; günlükler küçük tutulur ve eskiyenler silinir." />
+
+                        <Separator Margin="0,14,0,12" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="VersionText" VerticalAlignment="Center" />
+                            <Button Content="Sürümler sayfası" Margin="16,0,0,0" MinWidth="140"
+                                    Click="OnOpenReleases" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Aciklama}" Margin="0,8,0,0"
+                                   Text="Kalender kendini otomatik güncellemez. Yeni sürüm çıktığında sürümler sayfasından indirebilirsiniz." />
                     </StackPanel>
                 </Border>
 

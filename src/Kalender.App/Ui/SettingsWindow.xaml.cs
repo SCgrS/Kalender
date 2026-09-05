@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -26,6 +27,16 @@ public partial class SettingsWindow : Window
         (PhotoFit.Center, "Ortala"),
         (PhotoFit.Tile, "Döşe"),
     };
+
+    /// <summary>Günlük ayrıntı seçenekleri: (ayar değeri, görünen ad).</summary>
+    private static readonly (int Level, string Label)[] LogLevels =
+    {
+        (3, "Yalnız hatalar"),
+        (1, "Bilgi"),
+        (0, "Ayrıntılı"),
+    };
+
+    private const string ReleasesUrl = "https://github.com/SCgrS/kalender/releases";
 
     private readonly IAppearanceHost _host;
     private readonly DispatcherTimer _applyTimer;
@@ -57,6 +68,13 @@ public partial class SettingsWindow : Window
         {
             PollIntervalCombo.Items.Add(label);
         }
+
+        foreach ((int _, string label) in LogLevels)
+        {
+            LogLevelCombo.Items.Add(label);
+        }
+
+        VersionText.Text = "Sürüm " + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");
 
         BackgroundWheel.ColorChanged += OnBackgroundColorPicked;
         TextWheel.ColorChanged += OnTextColorPicked;
@@ -150,6 +168,14 @@ public partial class SettingsWindow : Window
                 ColorTools.Parse(S.Google.TaskColor, System.Drawing.Color.FromArgb(0x4C, 0x8D, 0xFF)));
 
             UpdateGoogleUi();
+
+            StartupBox.IsChecked = S.StartWithWindows;
+            UpdateStartupNote();
+
+            WallpaperSyncBox.IsChecked = S.SyncSystemWallpaper;
+
+            int logIndex = Array.FindIndex(LogLevels, l => l.Level == S.LogLevel);
+            LogLevelCombo.SelectedIndex = logIndex >= 0 ? logIndex : 0;
 
             DimSlider.Value = a.BackdropDim;
             DimText.Text = $"%{a.BackdropDim}";
@@ -744,6 +770,80 @@ public partial class SettingsWindow : Window
 
         LoadFromSettings();
         _host.ApplyAppearance();
+    }
+
+    // ---------------------------------------------------------------- genel
+
+    private void OnStartupChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        bool enabled = StartupBox.IsChecked == true;
+        S.StartWithWindows = enabled;
+        StartupManager.Apply(enabled);
+
+        UpdateStartupNote();
+        ScheduleApply();
+    }
+
+    private void UpdateStartupNote()
+    {
+        if (StartupBox.IsChecked != true)
+        {
+            StartupNote.Text = "Kalender'i her seferinde kendiniz açmanız gerekir.";
+            return;
+        }
+
+        StartupNote.Text = StartupManager.PointsToCurrentExe()
+            ? "Şu an çalışan dosya açılışta başlatılacak: " + Environment.ProcessPath
+            : "Açılış kaydı başka bir dosyayı gösteriyor. Bu kutuyu kapatıp yeniden açarsanız "
+              + "şu an çalışan dosyaya güncellenir.";
+    }
+
+    private void OnWallpaperSyncChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        S.SyncSystemWallpaper = WallpaperSyncBox.IsChecked == true;
+        ScheduleApply();
+    }
+
+    private void OnLogLevelChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || LogLevelCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        S.LogLevel = LogLevels[LogLevelCombo.SelectedIndex].Level;
+        Log.Level = (LogLevel)S.LogLevel;
+        ScheduleApply();
+    }
+
+    private void OnOpenLogFolder(object sender, RoutedEventArgs e) => Ac(Paths.LogFolder);
+
+    private void OnOpenReleases(object sender, RoutedEventArgs e) => Ac(ReleasesUrl);
+
+    /// <summary>Klasörü ya da adresi kullanıcının varsayılan uygulamasında açar.</summary>
+    private static void Ac(string target)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Açılamadı: " + target, ex);
+        }
     }
 
     // -------------------------------------------------------------- kapanış

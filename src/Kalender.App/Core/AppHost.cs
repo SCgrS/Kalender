@@ -221,6 +221,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             _layer.Rebuild();
         }
 
+        // Açılışta başlatma kaydını ayarla eşitle; kullanıcı yolunu değiştirmiş
+        // ya da uygulamayı taşımış olabilir.
+        StartupManager.Apply(_settings.Current.StartWithWindows);
+
         if (!_settings.Current.FirstRunDone)
         {
             _settings.Update(s => s.FirstRunDone = true);
