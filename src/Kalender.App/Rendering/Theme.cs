@@ -84,6 +84,38 @@ internal sealed class Theme
                 : Color.FromArgb(90, 255, 255, 255);
         }
 
+        // Kullanıcı ayarlardan tek tek renk verdiyse hesaplananın yerine geçer.
+        // Boş bırakılan her renk otomatik kalır; varsayılan hâl budur.
+        CalendarTextColors secim = ayarlar.Colors;
+        text = Override(secim.Weekday, text);
+        muted = Override(secim.Muted, muted);
+        holiday = Override(secim.Holiday, holiday);
+
+        // Dairenin saydamlığı hesabın bir parçası; kullanıcı renk verdiğinde de
+        // aynı yumuşaklıkta kalsın diye alfası korunuyor.
+        Color? dairesi = ParseOrNull(secim.TodayCircle);
+        if (dairesi is not null)
+        {
+            todayCircle = ColorTools.WithAlpha(dairesi.Value, todayCircle.A);
+        }
+
         return new Theme(background, text, muted, holiday, todayCircle, text);
+    }
+
+    /// <summary>Ayarda renk varsa onu, yoksa hesaplananı verir.</summary>
+    private static Color Override(string? hex, Color hesaplanan)
+        => ParseOrNull(hex) ?? hesaplanan;
+
+    private static Color? ParseOrNull(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return null;
+        }
+
+        // Bozuk bir değer varsayılana düşmeli, siyaha değil.
+        Color a = ColorTools.Parse(hex, Color.Black);
+        Color b = ColorTools.Parse(hex, Color.White);
+        return a == b ? a : null;
     }
 }

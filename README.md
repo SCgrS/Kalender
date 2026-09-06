@@ -162,6 +162,23 @@ menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
 - **Takvimin arkasını karart** — yalnızca fotoğraf zeminde. Yazılar okunmuyorsa
   takvimin arkasına yumuşak bir gölge koyar.
 
+### Takvim renkleri
+
+Masaüstündeki takvimin dört yazı rengi ayrı ayrı seçilebilir. Hepsi **Otomatik**
+başlar; otomatikken renk zemine ve yazı rengine göre kendiliğinden hesaplanır
+(bugüne kadarki davranış).
+
+- **Hafta günleri ve ay adı**
+- **Tatil ve hafta sonu günleri**
+- **Pasif günler** (önceki ve sonraki aydan taşanlar)
+- **Bugünün arkasındaki daire**
+
+Bir başlığın **Otomatik** işaretini kaldırdığınızda altındaki renk çarkı açılır ve
+rengi siz seçersiniz. Yeniden işaretlerseniz otomatik hesaba dönülür.
+
+Gün altındaki **noktacıkların rengi buraya dahil değildir**: onlar Google Takvim'deki
+takvim ve etkinlik renginden gelir, o yüzden burada değiştirilemez.
+
 ### Ekranlar
 
 - Takvimin **tüm ekranlarda**, **yalnız ana ekranda** ya da **seçtiğiniz
@@ -186,6 +203,10 @@ Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınız�
 - **Günlük ayrıntısı** — normalde yalnızca hatalar yazılır. Bir sorun ararken *Bilgi* ya da
   *Ayrıntılı* seçebilirsiniz. **Günlük klasörünü aç** düğmesi dosyaları gösterir.
 - **Sürüm** ve **Sürümler sayfası** — Kalender kendini otomatik güncellemez.
+
+Pencerenin altında, **Kapat**'ın yanında **Karanlık kip / Aydınlık kip** düğmesi vardır.
+İlk açılışta Windows'un uygulama teması izlenir; düğmeye bastığınızda seçiminiz saklanır.
+Bu ayar yalnızca ayarlar penceresinin görünümünü değiştirir, masaüstündeki takvimi etkilemez.
 
 ## Tepsi menüsü
 
@@ -221,9 +242,37 @@ Kutu şu koşulların **hepsi** sağlanmadan açılmaz:
 3. Tam ekran, sunum ya da oyun kipi olmamalı.
 4. İmleç aynı günün üzerinde en az 0,4 saniye durmuş olmalı.
 
+Kayıtlar arasında ince bir ayraç çizgisi vardır. Soldaki `Tüm gün ·` / `09:30 ·` sütunu
+bütün satırlarda aynı genişliktedir, böylece başlıklar aynı hizadan başlar; başlık iki
+satıra sarkarsa saat yazısı satırların ortasında durur.
+
 Hücreden çıkınca kutu yaklaşık 0,15 saniye içinde kapanır. O günde gösterilecek hiçbir şey
 yoksa kutu hiç açılmaz. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu
 kendisi düzeltir.
+
+## Takvimin üzerinde sağ tık
+
+Masaüstündeki takvimin üzerine sağ tıklayınca Kalender'in kendi menüsü açılır. Masaüstünün
+geri kalanında Windows'un kendi menüsü çıkmaya devam eder; oraya hiç dokunulmaz.
+
+| Satır | Ne yapar |
+| --- | --- |
+| *(gün) gününe git* | O günü Google Takvim'de gün görünümünde açar |
+| Önceki ay / Sonraki ay | Masaüstündeki takvimi bir ay geri ya da ileri alır |
+| Bu aya dön | İçinde bulunduğumuz aya döner (zaten oradaysanız soluk durur) |
+| Yeni etkinlik… | Google Takvim'in etkinlik ekranını o güne kurulu açar |
+| Yeni görev… | Google Takvim'i o günün görünümünde açar |
+| Ayarlar | Ayarlar penceresini açar |
+
+Başka bir aya gittiğinizde takvim **2 dakika sonra kendiliğinden bu aya döner**; masaüstünde
+yanlış ay asılı kalmaz. Bilgisayarın günü değişirse de bu aya dönülür.
+
+Sağ tıkladığınız nokta gün ızgarasının dışındaysa (ay adının ya da gün harflerinin üzeri)
+gün gerektiren satırlar o ayın tamamını hedefler.
+
+Bu menü açılabilsin diye Kalender'in fare olayını Windows'tan önce görmesi gerekiyor.
+Bunun için alt düzey bir fare kancası kullanılıyor, ama **kanca sürekli takılı durmuyor**:
+yalnızca imleç takvim bloğunun üzerindeyken takılıyor, blok dışına çıkınca sökülüyor.
 
 ## Resmi tatiller
 
@@ -237,8 +286,7 @@ kullanılmaya devam eder, hata penceresi çıkmaz.
   kutusunda görünür.
 - **Anneler Günü gibi kutlama/anma günleri** tatil sayılmaz, kırmızıya boyanmaz.
 
-Listeyi elle yenilemek için tepsi menüsünde **Şimdi yenile** ya da Ayarlar penceresindeki
-**Listeyi şimdi güncelle** düğmesi.
+Listeyi elle yenilemek için tepsi menüsündeki **Şimdi yenile**.
 
 > **Uyarı:** Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan
 > teyit ediniz.
@@ -274,7 +322,36 @@ Proje aşama aşama geliştiriliyor.
 | 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Tamam |
 | 7 | Kurulum dosyası, README, sürüm etiketi | Tamam |
 
+## Bilinen sınır: yinelenen görevler
+
+Google Takvim'de haftalık/aylık **yinelenen bir görev** oluşturduğunuzda, Google Görevler
+API'si bu görevin yalnızca sıradaki kopyasını veriyor; ileri tarihli kopyaları hiç
+döndürmüyor. Bu yüzden tarayıcıda gördüğünüz "her cuma Duruşma Kontrol" gibi görevler
+masaüstü takviminde yalnızca en yakın tarihte görünür.
+
+Bu, Kalender'in değil Google'ın API'sinin sınırı: Calendar API görevleri etkinlik olarak da
+vermiyor (yalnızca `default`, `focusTime` gibi türler dönüyor), o yüzden başka bir kaynaktan
+alma imkânı yok. Etkinlikler ve yinelenmeyen görevler her zaman eksiksiz görünür.
+
 ## Sürüm geçmişi
+
+### 1.1.0
+
+- **Takvimin üzerinde sağ tık menüsü**: güne git, önceki/sonraki ay, bu aya dön, yeni
+  etkinlik, yeni görev, ayarlar. Başka bir aya gidildiğinde 2 dakika sonra bu aya dönülür.
+  Masaüstünün geri kalanında Windows'un kendi menüsüne dokunulmaz.
+- **Google renkleri düzeltildi**: API hâlâ 2018 öncesi paleti döndürüyordu, arayüz ise
+  yenisini çiziyor. Artık iki taraf eşleniyor; noktacıklar tarayıcıdaki renkle aynı.
+- **Takvim renkleri ayarı**: hafta günleri/ay adı, tatil ve hafta sonu, pasif günler ve
+  bugünün dairesi ayrı ayrı seçilebiliyor; hepsi otomatik başlıyor.
+- **Ayarlar penceresine karanlık kip** eklendi; ilk açılışta Windows'un teması izleniyor.
+- **Gün kutusu düzeni**: kayıtlar arasına ayraç çizgi, ortak genişlikte saat sütunu
+  (başlıklar aynı hizadan başlıyor), iki satırlık kayıtlarda ortalanmış saat yazısı,
+  bir punto küçültülmüş "Tüm gün".
+- Ayarlardaki Google kurulum adımında `console.cloud.google.com` artık tıklanabilir.
+- Ayarlardan "Listeyi şimdi güncelle" düğmesi, son güncelleme bilgisi ve tatil günü sayısı
+  kaldırıldı; liste zaten kendiliğinden yenileniyor, tepsi menüsünde de "Şimdi yenile" var.
+- Yeni uygulama simgesi.
 
 ### 1.0.0
 

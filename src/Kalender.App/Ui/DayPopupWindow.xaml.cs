@@ -24,9 +24,19 @@ public partial class DayPopupWindow : Window
     /// <summary>Kutunun etrafındaki gölge payı (DIP). Konum hesabında düşülüyor.</summary>
     private const double ShadowMargin = 10;
 
+    /// <summary>Başlıkların punto ölçüsü.</summary>
+    private const double TitleFontSize = 12.5;
+
+    /// <summary>
+    /// "Tüm gün" ön eki saat ön eklerinden uzun; bir punto küçültünce sütun
+    /// daralıyor ve satır daha dengeli duruyor.
+    /// </summary>
+    private const double AllDayFontSize = 11.5;
+
     private static readonly Brush PrefixBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAE));
     private static readonly Brush TitleBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xED));
     private static readonly Brush HolidayBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0x6C, 0x6C));
+    private static readonly Brush SeparatorBrush = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
 
     private System.Drawing.Rectangle _anchor;
 
@@ -37,6 +47,7 @@ public partial class DayPopupWindow : Window
         PrefixBrush.Freeze();
         TitleBrush.Freeze();
         HolidayBrush.Freeze();
+        SeparatorBrush.Freeze();
 
         SourceInitialized += OnSourceInitialized;
         DpiChanged += (_, _) => Reposition();
@@ -91,16 +102,33 @@ public partial class DayPopupWindow : Window
     {
         Lines.Children.Clear();
 
+        bool ilk = true;
         foreach (DayEntry entry in content.Entries)
         {
+            // Kayıtlar arasına ince bir ayraç: hangi satırın nerede bittiği
+            // uzun başlıklarda gözle seçilemiyordu.
+            if (!ilk)
+            {
+                Lines.Children.Add(new Border
+                {
+                    Height = 1,
+                    Background = SeparatorBrush,
+                    Margin = new Thickness(0, 4, 0, 4),
+                });
+            }
+
+            ilk = false;
             Lines.Children.Add(BuildLine(entry, content));
         }
     }
 
     /// <summary>
     /// Bir satır: solda "10:30 ·" gibi kısa bir ön ek, sağda başlık.
-    /// Başlık sığmazsa ikinci satıra sarkar ve alt satır ön ekin altına değil,
-    /// başlığın hizasına gelir.
+    ///
+    /// Ön ek sütunu bütün satırlarda ortak genişliktedir (SharedSizeGroup);
+    /// böylece "Tüm gün" ile "12:20" yan yana geldiğinde başlıklar aynı
+    /// hizadan başlar. Başlık iki satıra sarkarsa ön ek satırların ortasında
+    /// durur, ilk satıra yapışmaz.
     /// </summary>
     private UIElement BuildLine(DayEntry entry, DayContent content)
     {
@@ -110,13 +138,15 @@ public partial class DayPopupWindow : Window
             return new TextBlock
             {
                 Text = Temizle(entry.Title),
-                FontSize = 12.5,
-                Margin = new Thickness(0, 2, 0, 4),
+                FontSize = TitleFontSize,
+                Margin = new Thickness(0, 2, 0, 2),
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = content.IsHoliday ? HolidayBrush : TitleBrush,
                 FontWeight = FontWeights.SemiBold,
             };
         }
+
+        bool allDay = entry.Kind != EntryKind.Timed || entry.Start is null;
 
         string prefix = entry.Kind switch
         {
@@ -126,22 +156,29 @@ public partial class DayPopupWindow : Window
         };
 
         var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = GridLength.Auto,
+            SharedSizeGroup = "Onek",
+        });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var prefixBlock = new TextBlock
         {
-            Text = prefix + " · ",
-            FontSize = 12.5,
+            Text = prefix + " ·",
+            FontSize = allDay ? AllDayFontSize : TitleFontSize,
             Foreground = PrefixBrush,
-            VerticalAlignment = VerticalAlignment.Top,
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 7, 0),
         };
 
         var titleBlock = new TextBlock
         {
             Text = Temizle(entry.Title),
-            FontSize = 12.5,
+            FontSize = TitleFontSize,
             Foreground = TitleBrush,
+            VerticalAlignment = VerticalAlignment.Center,
             // Başlığın tamamı görünsün; sığmazsa alt satıra sarksın.
             TextWrapping = TextWrapping.Wrap,
         };

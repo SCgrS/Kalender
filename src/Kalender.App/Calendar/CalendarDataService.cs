@@ -19,7 +19,7 @@ internal sealed class CalendarDataService
     private readonly ICalendarProvider? _provider;
     private readonly SettingsStore _settings;
 
-    private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
 
     public CalendarDataService(HolidayService holidays, ICalendarProvider? provider, SettingsStore settings)
     {
@@ -34,11 +34,22 @@ internal sealed class CalendarDataService
     public CalendarDataSnapshot Current { get; private set; } = CalendarDataSnapshot.Empty;
 
     /// <summary>Şu an gösterilen ayın kapsadığı gün aralığı.</summary>
-    public (DateOnly First, DateOnly Last) VisibleRange => CalendarLayout.GridRange(_today);
+    public (DateOnly First, DateOnly Last) VisibleRange => CalendarLayout.GridRange(_viewMonth);
 
-    public void SetToday(DateOnly today)
+    /// <summary>
+    /// Hangi ayın verisi hazırlanacağını belirler. Google'dan da yalnızca bu
+    /// aralık istenir; menüden başka bir aya gidildiğinde burası değişir.
+    /// </summary>
+    public void SetViewMonth(DateOnly month)
     {
-        _today = today;
+        var yeni = new DateOnly(month.Year, month.Month, 1);
+        if (yeni == _viewMonth)
+        {
+            Rebuild();
+            return;
+        }
+
+        _viewMonth = yeni;
         Rebuild();
     }
 

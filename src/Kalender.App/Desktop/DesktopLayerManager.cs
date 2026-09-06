@@ -12,6 +12,13 @@ namespace Kalender.Desktop;
 internal sealed record DayHit(DesktopWindow Window, DayCell Cell, Rectangle CellScreenBounds);
 
 /// <summary>
+/// Fare konumunun denk geldiği takvim bloğu. <see cref="Cell"/> yalnızca
+/// nokta gün ızgarasının içindeyse doludur; ay adının ya da gün adlarının
+/// üzerindeyken null kalır.
+/// </summary>
+internal sealed record CalendarBlockHit(CalendarLayout Layout, DayCell? Cell);
+
+/// <summary>
 /// Masaüstü katmanının tamamını yönetir: WorkerW'yi bulur, her monitör için
 /// bir çizim penceresi kurar, görüntüleri üretir ve ekran yapılandırması
 /// değiştiğinde her şeyi yeniden kurar.
@@ -41,6 +48,7 @@ internal sealed class DesktopLayerManager : IDisposable
     private Point _hostOrigin;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private DateTime _rebuildWindowStart = DateTime.MinValue;
     private DateTime _rebuildDeadline = DateTime.MinValue;
     private int _rebuildsInWindow;
@@ -85,6 +93,16 @@ internal sealed class DesktopLayerManager : IDisposable
     public void SetToday(DateOnly today)
     {
         _today = today;
+        Refresh();
+    }
+
+    /// <summary>
+    /// Ekranda hangi ayın çizileceğini belirler. Normalde içinde bulunduğumuz
+    /// aydır; sağ tık menüsünden ileri geri gidildiğinde geçici olarak değişir.
+    /// </summary>
+    public void SetViewMonth(DateOnly month)
+    {
+        _viewMonth = new DateOnly(month.Year, month.Month, 1);
         Refresh();
     }
 
@@ -248,6 +266,7 @@ internal sealed class DesktopLayerManager : IDisposable
                     placement,
                     _data,
                     _today,
+                    _viewMonth,
                     drawCalendar);
 
                 window.SetSurface(surface);
@@ -338,6 +357,38 @@ internal sealed class DesktopLayerManager : IDisposable
                 (int)cell.Bounds.Height);
 
             return new DayHit(window, cell, screenBounds);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Ekran koordinatındaki nokta takvim bloğunun (ay adı, gün adları ve
+    /// ızgara) üzerinde mi? Sağ tık menüsü bunu kullanır: menü blok üzerinde
+    /// açılır, masaüstünün geri kalanı Windows'a bırakılır.
+    /// </summary>
+    public CalendarBlockHit? HitTestBlock(Point screenPoint)
+    {
+        foreach ((MonitorTarget monitor, DesktopWindow window) in _screens)
+        {
+            if (!monitor.Bounds.Contains(screenPoint))
+            {
+                continue;
+            }
+
+            CalendarLayout? layout = window.Layout;
+            if (layout is null)
+            {
+                return null;
+            }
+
+            PointF local = window.ToLocal(screenPoint);
+            if (!layout.Bounds.Contains(local))
+            {
+                return null;
+            }
+
+            return new CalendarBlockHit(layout, layout.HitTest(local));
         }
 
         return null;

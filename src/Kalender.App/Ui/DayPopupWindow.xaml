@@ -24,6 +24,8 @@
         <Border.Effect>
             <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black" />
         </Border.Effect>
-        <StackPanel x:Name="Lines" MaxWidth="430" />
+        <!-- IsSharedSizeScope: bütün satırlarda "10:30 ·" ve "Tüm gün ·"
+             ön ekleri aynı genişlikte durur, böylece başlıklar aynı hizadan başlar. -->
+        <StackPanel x:Name="Lines" MaxWidth="430" Grid.IsSharedSizeScope="True" />
     </Border>
 </Window>

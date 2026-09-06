@@ -48,6 +48,7 @@ internal sealed class HoverWatcher : IDisposable
     private DateTime _enteredAt;
     private DateTime _leftAt = DateTime.MaxValue;
     private bool _shown;
+    private bool _overCalendar;
 
     public HoverWatcher(DesktopLayerManager layer, Func<CalendarDataSnapshot> data)
     {
@@ -64,12 +65,32 @@ internal sealed class HoverWatcher : IDisposable
     /// <summary>Kutu kapanmalı.</summary>
     public event Action? HideRequested;
 
+    /// <summary>
+    /// İmleç masaüstünde takvim bloğunun üzerine girdi (true) ya da çıktı (false).
+    /// Sağ tık kancası yalnızca "true" olduğu sürece takılı durur; masaüstünün
+    /// geri kalanında sistemin fare girdisine hiç dokunulmaz.
+    /// </summary>
+    public event Action<bool>? CalendarHoverChanged;
+
     public void Start() => _timer.Start();
 
     public void Stop()
     {
         _timer.Stop();
         Reset();
+        SetCalendarHover(false);
+    }
+
+    /// <summary>İmlecin takvim bloğu üzerinde olma durumu değiştiyse haber verir.</summary>
+    private void SetCalendarHover(bool inside)
+    {
+        if (inside == _overCalendar)
+        {
+            return;
+        }
+
+        _overCalendar = inside;
+        CalendarHoverChanged?.Invoke(inside);
     }
 
     /// <summary>Veri ya da katman değiştiğinde açık kutu geçersizdir.</summary>
@@ -94,10 +115,16 @@ internal sealed class HoverWatcher : IDisposable
 
             var point = new Point(cursor.X, cursor.Y);
 
-            if (!PointerIsOnDesktop(cursor)
-                || ForegroundCovers(point)
-                || NativeMethods.IsMouseButtonDown()
-                || !NotificationsAllowed())
+            bool masaustuGorunuyor = PointerIsOnDesktop(cursor)
+                && !ForegroundCovers(point)
+                && NotificationsAllowed();
+
+            // Sağ tık kancası fare tuşu basılıyken de takılı kalmalı: karar
+            // basma anında verilir, bırakma anında uygulanır. Bu yüzden blok
+            // denetimi tuş denetiminden önce yapılıyor.
+            SetCalendarHover(masaustuGorunuyor && _layer.HitTestBlock(point) is not null);
+
+            if (!masaustuGorunuyor || NativeMethods.IsMouseButtonDown())
             {
                 Reset();
                 return;
@@ -245,5 +272,9 @@ internal sealed class HoverWatcher : IDisposable
         }
     }
 
-    public void Dispose() => _timer.Stop();
+    public void Dispose()
+    {
+        _timer.Stop();
+        SetCalendarHover(false);
+    }
 }

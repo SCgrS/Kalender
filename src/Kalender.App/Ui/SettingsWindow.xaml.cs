@@ -80,6 +80,15 @@ public partial class SettingsWindow : Window
         TextWheel.ColorChanged += OnTextColorPicked;
         TaskColorWheel.ColorChanged += OnTaskColorPicked;
 
+        WeekdayWheel.ColorChanged += c => PickCalendarColor(k => k.Weekday = ColorWheel.ToHex(c));
+        HolidayWheel.ColorChanged += c => PickCalendarColor(k => k.Holiday = ColorWheel.ToHex(c));
+        MutedWheel.ColorChanged += c => PickCalendarColor(k => k.Muted = ColorWheel.ToHex(c));
+        TodayCircleWheel.ColorChanged += c => PickCalendarColor(k => k.TodayCircle = ColorWheel.ToHex(c));
+
+        // Pencere ilk kez açılıyorsa Windows'un uygulama teması izlenir;
+        // kullanıcı düğmeyle değiştirdiyse onun seçimi saklanır.
+        ApplyWindowTheme(S.DarkSettingsWindow ?? UiTema.WindowsKaranlikMi());
+
         BuildPresets();
         BuildMonitorRows();
         LoadFromSettings();
@@ -87,8 +96,32 @@ public partial class SettingsWindow : Window
         // Çözünürlük ya da ölçek değişirse satırlardaki ölçüler eskir; taşıma
         // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
         _host.MonitorsChanged += OnMonitorsChanged;
-        _host.HolidaysUpdated += OnHolidaysUpdated;
         _host.GoogleStateChanged += OnGoogleStateChanged;
+    }
+
+    // ------------------------------------------------------ pencere teması
+
+    private bool _darkWindow;
+
+    private void ApplyWindowTheme(bool dark)
+    {
+        _darkWindow = dark;
+        UiTema.Uygula(this, dark);
+        ThemeButton.Content = dark ? "Aydınlık kip" : "Karanlık kip";
+    }
+
+    private void OnToggleTheme(object sender, RoutedEventArgs e)
+    {
+        ApplyWindowTheme(!_darkWindow);
+        S.DarkSettingsWindow = _darkWindow;
+        ScheduleApply();
+    }
+
+    /// <summary>Metin içindeki bağlantıyı varsayılan tarayıcıda açar.</summary>
+    private void OnLinkClicked(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        Ac(e.Uri.ToString());
+        e.Handled = true;
     }
 
     private void OnGoogleStateChanged() => Dispatcher.BeginInvoke(() =>
@@ -112,8 +145,6 @@ public partial class SettingsWindow : Window
             LoadFromSettings();
         });
     }
-
-    private void OnHolidaysUpdated() => Dispatcher.BeginInvoke(UpdateHolidayStatus);
 
     private AppSettings S => _host.Settings.Current;
 
@@ -155,7 +186,8 @@ public partial class SettingsWindow : Window
             SaturdayRedBox.IsChecked = a.SaturdayIsRed;
 
             HolidaysBox.IsChecked = S.Holidays.Enabled;
-            UpdateHolidayStatus();
+
+            LoadCalendarColors();
 
             ClientIdBox.Text = S.Google.ClientId ?? string.Empty;
             ClientSecretBox.Text = S.Google.ClientSecret ?? string.Empty;
@@ -462,33 +494,132 @@ public partial class SettingsWindow : Window
         ScheduleApply();
     }
 
-    private async void OnRefreshHolidays(object sender, RoutedEventArgs e)
-    {
-        RefreshHolidaysButton.IsEnabled = false;
-        HolidayStatusText.Text = "İndiriliyor…";
+    // ------------------------------------------------------ takvim renkleri
 
-        try
+    /// <summary>
+    /// Dört renk ayarını denetimlere yansıtır. Ayar boşsa "otomatik" işaretli
+    /// kalır ve çarkta o an hesaplanan renk gösterilir; kullanıcı otomatiği
+    /// kapattığında elinde makul bir başlangıç rengi olur.
+    /// </summary>
+    private void LoadCalendarColors()
+    {
+        CalendarTextColors c = S.Appearance.Colors;
+        var theme = Theme.From(S.Appearance);
+
+        Bind(WeekdayAutoBox, WeekdayColorExpander, WeekdayWheel, c.Weekday, theme.Text);
+        Bind(HolidayAutoBox, HolidayColorExpander, HolidayWheel, c.Holiday, theme.Holiday);
+        Bind(MutedAutoBox, MutedColorExpander, MutedWheel, c.Muted, theme.Muted);
+        Bind(TodayCircleAutoBox, TodayCircleExpander, TodayCircleWheel, c.TodayCircle, theme.TodayCircle);
+
+        static void Bind(CheckBox box, Expander expander, ColorWheel wheel,
+            string? value, System.Drawing.Color hesaplanan)
         {
-            await _host.RefreshHolidaysAsync(force: true);
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Tatil listesi elle yenilenemedi.", ex);
-        }
-        finally
-        {
-            RefreshHolidaysButton.IsEnabled = true;
-            UpdateHolidayStatus();
+            bool otomatik = string.IsNullOrWhiteSpace(value);
+
+            box.IsChecked = otomatik;
+            expander.IsEnabled = !otomatik;
+            expander.IsExpanded = !otomatik;
+
+            wheel.SelectedColor = WpfImaging.ToMedia(
+                otomatik ? hesaplanan : ColorTools.Parse(value, hesaplanan));
         }
     }
 
-    private void UpdateHolidayStatus()
+    /// <summary>Çarktan bir renk seçildi: ayarı yaz, otomatik işaretini kaldır.</summary>
+    private void PickCalendarColor(Action<CalendarTextColors> uygula)
     {
-        DateTimeOffset? last = _host.HolidaysLastFetchUtc;
+        if (_loading)
+        {
+            return;
+        }
 
-        HolidayStatusText.Text = last is null
-            ? "Liste henüz indirilmedi."
-            : $"Son güncelleme: {last.Value.ToLocalTime():d MMMM yyyy HH:mm} · {_host.HolidayCount} tatil günü";
+        uygula(S.Appearance.Colors);
+
+        _loading = true;
+        try
+        {
+            WeekdayAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.Weekday);
+            HolidayAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.Holiday);
+            MutedAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.Muted);
+            TodayCircleAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.TodayCircle);
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        ScheduleApply();
+    }
+
+    private void OnWeekdayAutoChanged(object sender, RoutedEventArgs e)
+        => SetCalendarColorAuto(WeekdayAutoBox, WeekdayColorExpander, k => k.Weekday = null);
+
+    private void OnHolidayColorAutoChanged(object sender, RoutedEventArgs e)
+        => SetCalendarColorAuto(HolidayAutoBox, HolidayColorExpander, k => k.Holiday = null);
+
+    private void OnMutedColorAutoChanged(object sender, RoutedEventArgs e)
+        => SetCalendarColorAuto(MutedAutoBox, MutedColorExpander, k => k.Muted = null);
+
+    private void OnTodayCircleAutoChanged(object sender, RoutedEventArgs e)
+        => SetCalendarColorAuto(TodayCircleAutoBox, TodayCircleExpander, k => k.TodayCircle = null);
+
+    /// <summary>
+    /// "Otomatik" işaretlendiğinde ayarı boşaltır, kaldırıldığında çarkta duran
+    /// rengi yazar; böylece kutunun işaretini kaldırmak görünümü sıçratmaz.
+    /// </summary>
+    private void SetCalendarColorAuto(CheckBox box, Expander expander, Action<CalendarTextColors> temizle)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        bool otomatik = box.IsChecked == true;
+        expander.IsEnabled = !otomatik;
+        expander.IsExpanded = !otomatik;
+
+        if (otomatik)
+        {
+            temizle(S.Appearance.Colors);
+            ScheduleApply();
+
+            // Otomatik renk yeniden hesaplandı; çarklar da onu göstersin.
+            _applyTimer.Stop();
+            _host.ApplyAppearance();
+            _loading = true;
+            try
+            {
+                LoadCalendarColors();
+            }
+            finally
+            {
+                _loading = false;
+            }
+
+            return;
+        }
+
+        // Otomatik kapatıldı: çarkta duran renk artık kalıcı seçim.
+        ColorWheel wheel = (ColorWheel)expander.Content;
+        PickCalendarColor(k =>
+        {
+            if (ReferenceEquals(wheel, WeekdayWheel))
+            {
+                k.Weekday = ColorWheel.ToHex(wheel.SelectedColor);
+            }
+            else if (ReferenceEquals(wheel, HolidayWheel))
+            {
+                k.Holiday = ColorWheel.ToHex(wheel.SelectedColor);
+            }
+            else if (ReferenceEquals(wheel, MutedWheel))
+            {
+                k.Muted = ColorWheel.ToHex(wheel.SelectedColor);
+            }
+            else
+            {
+                k.TodayCircle = ColorWheel.ToHex(wheel.SelectedColor);
+            }
+        });
     }
 
     // --------------------------------------------------------------- Google
@@ -882,7 +1013,6 @@ public partial class SettingsWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _host.MonitorsChanged -= OnMonitorsChanged;
-        _host.HolidaysUpdated -= OnHolidaysUpdated;
         _host.GoogleStateChanged -= OnGoogleStateChanged;
         _applyTimer.Stop();
 

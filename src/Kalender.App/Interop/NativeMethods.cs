@@ -107,6 +107,9 @@ internal static class NativeMethods
 
     public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT lprcMonitor, IntPtr dwData);
 
+    /// <summary>Alt düzey fare kancasının geri çağırma imzası.</summary>
+    public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
     // ---------------------------------------------------------------- sabitler
 
     // Pencere mesajları
@@ -126,7 +129,9 @@ internal static class NativeMethods
     public const uint WM_NCHITTEST = 0x0084;
     public const uint WM_COMMAND = 0x0111;
     public const uint WM_TIMER = 0x0113;
+    public const uint WM_LBUTTONDOWN = 0x0201;
     public const uint WM_LBUTTONUP = 0x0202;
+    public const uint WM_RBUTTONDOWN = 0x0204;
     public const uint WM_RBUTTONUP = 0x0205;
     public const uint WM_POWERBROADCAST = 0x0218;
     public const uint WM_WTSSESSION_CHANGE = 0x02B1;
@@ -438,6 +443,31 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SystemParametersInfoW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, StringBuilder pvParam, uint fWinIni);
+
+    // ---------------------------------------------------------- fare kancası
+
+    /// <summary>Alt düzey fare kancası türü.</summary>
+    public const int WH_MOUSE_LL = 14;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SetWindowsHookExW", SetLastError = true)]
+    public static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
     // ------------------------------------------------------------ kernel32.dll
 

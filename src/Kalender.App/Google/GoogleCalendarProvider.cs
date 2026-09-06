@@ -84,6 +84,10 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
             if (bundle is not null)
             {
+                // Diskteki kopya eski paletle yazılmış olabilir; ağa çıkmadan
+                // önce de renkler Google Takvim'dekiyle aynı görünsün.
+                RemapColors(bundle);
+
                 Data = bundle;
                 Log.Info($"Google önbelleği yüklendi: {bundle.Events.Count} etkinlik, {bundle.Tasks.Count} görev.");
             }
@@ -91,6 +95,29 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         catch (Exception ex)
         {
             Log.Warn("Google önbelleği okunamadı.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Önbellekteki renkleri güncel Google Takvim paletine çevirir.
+    /// Eşleşme bulunmayan renkler olduğu gibi kalır, ikinci kez çevrilmezler.
+    /// </summary>
+    private static void RemapColors(ProviderBundle bundle)
+    {
+        foreach (ProviderCalendar calendar in bundle.Calendars)
+        {
+            calendar.ColorHex = GoogleColorPalette.ToCurrent(calendar.ColorHex) ?? calendar.ColorHex;
+        }
+
+        foreach (ProviderEvent e in bundle.Events)
+        {
+            e.ColorHex = GoogleColorPalette.ToCurrent(e.ColorHex) ?? e.ColorHex;
+        }
+
+        foreach (string key in bundle.EventColors.Keys.ToList())
+        {
+            bundle.EventColors[key] = GoogleColorPalette.ToCurrent(bundle.EventColors[key])
+                ?? bundle.EventColors[key];
         }
     }
 
@@ -461,7 +488,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                     + $"?dueMin={Uri.EscapeDataString(dueMin)}&dueMax={Uri.EscapeDataString(dueMax)}"
                     + "&maxResults=100"
                     + (updatedMin is null
-                        ? "&showCompleted=false&showHidden=false&showDeleted=false"
+                        ? "&showCompleted=false&showHidden=true&showDeleted=false"
                         : "&showCompleted=true&showHidden=true&showDeleted=true"
                           + $"&updatedMin={Uri.EscapeDataString(Rfc3339(updatedMin.Value.UtcDateTime))}")
                     + "&fields=" + Uri.EscapeDataString("items(id,title,due,status,deleted,hidden),nextPageToken")
@@ -487,8 +514,10 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
                     string key = item.Id + "@" + list.Id;
 
+                    // "hidden" burada eleme ölçütü değil: Google, yinelenen bir
+                    // görevin ileri tarihli kopyalarını gizli işaretleyebiliyor.
+                    // Tamamlanmışlığa "status" alanından karar veriyoruz.
                     bool gone = item.Deleted == true
-                        || item.Hidden == true
                         || string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase);
 
                     if (gone || !TryParseDue(item.Due, out DateOnly due))
@@ -516,6 +545,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             .Where(t => !string.IsNullOrWhiteSpace(t.Title))
             .OrderBy(t => t.Due)
             .ToList();
+
+        // Google Görevler API'si yinelenen görevlerin ileri tarihli kopyalarını
+        // her zaman vermiyor; hangi günlerin geldiğini görebilmek için yazıyoruz.
+        Log.Debug($"Görevler ({from:dd.MM}-{to:dd.MM}): {bundle.Tasks.Count} açık görev · "
+            + string.Join(", ", bundle.Tasks.Select(t => t.Due.ToString("dd.MM"))));
     }
 
     // ------------------------------------------------------------- yardımcı
@@ -648,6 +682,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             : new DateTimeOffset(value, TimeZoneInfo.Local.GetUtcOffset(value))
                 .ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Google'dan gelen rengi kullanılabilir hâle getirir: başına # koyar ve
+    /// API'nin hâlâ döndürdüğü eski paleti, Google Takvim'in ekranda
+    /// kullandığı güncel renge çevirir.
+    /// </summary>
     private static string? Normalize(string? hex)
     {
         if (string.IsNullOrWhiteSpace(hex))
@@ -655,8 +694,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             return null;
         }
 
-        string s = hex.Trim();
-        return s.StartsWith('#') ? s : "#" + s;
+        return GoogleColorPalette.ToCurrent(hex);
     }
 
     public void Dispose()

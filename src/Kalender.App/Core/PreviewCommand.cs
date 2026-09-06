@@ -62,7 +62,7 @@ internal static class PreviewCommand
 
             // Önizleme yalnızca tatilleri gösterir; Google verisi için oturum gerekir.
             var data = new CalendarDataService(holidays, provider: null, settings);
-            data.SetToday(today);
+            data.SetViewMonth(today);
 
             MonitorTarget monitor = MonitorEnumerator.All().FirstOrDefault(m => m.IsPrimary)
                 ?? MonitorEnumerator.All().First();
@@ -73,7 +73,7 @@ internal static class PreviewCommand
 
             using var renderer = new DesktopSurfaceRenderer();
             using DesktopSurface surface = renderer.Render(
-                monitor.Bounds.Size, settings.Current, placement, data.Current, today, drawCalendar: true);
+                monitor.Bounds.Size, settings.Current, placement, data.Current, today, today, drawCalendar: true);
 
             string? folder = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(folder))

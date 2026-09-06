@@ -30,8 +30,11 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     /// <summary>Takvimin ekran kenarına en fazla yaklaşabileceği pay (ölçek 1.0 iken piksel).</summary>
     private const float EdgeMargin = 12f;
 
+    /// <param name="today">Bugünün tarihi; yalnızca daire çizilecek günü belirler.</param>
+    /// <param name="viewMonth">Çizilecek ay. Normalde bugünün ayı, menüden gezinirken başka bir ay.</param>
     public DesktopSurface Render(Size pixelSize, AppSettings settings,
-        MonitorPlacement placement, CalendarDataSnapshot data, DateOnly today, bool drawCalendar)
+        MonitorPlacement placement, CalendarDataSnapshot data, DateOnly today, DateOnly viewMonth,
+        bool drawCalendar)
     {
         var bitmap = new Bitmap(Math.Max(pixelSize.Width, 1), Math.Max(pixelSize.Height, 1),
             PixelFormat.Format32bppPArgb);
@@ -53,7 +56,7 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
                 // takvim de birlikte küçülüp büyüsün.
                 float scale = CalendarScale.For(pixelSize, placement.ScalePercent);
                 PointF origin = ResolveOrigin(pixelSize, scale, placement);
-                layout = CalendarLayout.Create(today, scale, origin);
+                layout = CalendarLayout.Create(viewMonth, scale, origin);
 
                 PaintBackdrop(g, layout, settings.Appearance, scale);
                 _calendar.Paint(g, layout, theme, settings.Appearance, data, today);

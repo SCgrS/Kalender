@@ -7,18 +7,6 @@ using Kalender.Interop;
 
 namespace Kalender.Tray;
 
-/// <summary>Tepsi menüsündeki tek bir satır.</summary>
-/// <param name="Id">Tıklandığında bildirilecek kimlik. 0 ayraç anlamına gelir.</param>
-/// <param name="Text">Görünen metin.</param>
-/// <param name="Enabled">Tıklanabilir mi?</param>
-/// <param name="Checked">Yanında işaret olsun mu?</param>
-internal sealed record TrayMenuItem(uint Id, string Text, bool Enabled = true, bool Checked = false)
-{
-    public static TrayMenuItem Separator => new(0, string.Empty);
-
-    public bool IsSeparator => Id == 0;
-}
-
 /// <summary>
 /// Bildirim alanı (tepsi) simgesi. Üçüncü parti bir kütüphane yerine doğrudan
 /// Shell_NotifyIcon kullanılıyor; hem bağımlılık eklemiyor hem de Explorer
@@ -41,7 +29,7 @@ internal sealed class TrayIcon : IDisposable
     }
 
     /// <summary>Menü açılmadan hemen önce çağrılır; güncel satırları vermelidir.</summary>
-    public Func<IReadOnlyList<TrayMenuItem>>? MenuBuilder { get; set; }
+    public Func<IReadOnlyList<PopupMenuItem>>? MenuBuilder { get; set; }
 
     /// <summary>Menüden bir satır seçildi.</summary>
     public event Action<uint>? MenuItemClicked;
@@ -121,61 +109,16 @@ internal sealed class TrayIcon : IDisposable
 
     private void ShowMenu(int x, int y)
     {
-        IReadOnlyList<TrayMenuItem>? items = MenuBuilder?.Invoke();
+        IReadOnlyList<PopupMenuItem>? items = MenuBuilder?.Invoke();
         if (items is null || items.Count == 0)
         {
             return;
         }
 
-        IntPtr menu = NativeMethods.CreatePopupMenu();
-        if (menu == IntPtr.Zero)
+        uint secim = PopupMenu.Show(_hwnd, x, y, items);
+        if (secim != 0)
         {
-            return;
-        }
-
-        try
-        {
-            foreach (TrayMenuItem item in items)
-            {
-                if (item.IsSeparator)
-                {
-                    NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, UIntPtr.Zero, null);
-                    continue;
-                }
-
-                uint flags = NativeMethods.MF_STRING;
-                if (!item.Enabled)
-                {
-                    flags |= NativeMethods.MF_GRAYED | NativeMethods.MF_DISABLED;
-                }
-
-                if (item.Checked)
-                {
-                    flags |= NativeMethods.MF_CHECKED;
-                }
-
-                NativeMethods.AppendMenu(menu, flags, new UIntPtr(item.Id), item.Text);
-            }
-
-            // Menünün dışına tıklanınca kapanabilmesi için pencerenin ön planda
-            // olması gerekir; kapandıktan sonra da bir mesajla serbest bırakılır.
-            NativeMethods.SetForegroundWindow(_hwnd);
-
-            uint secim = NativeMethods.TrackPopupMenuEx(
-                menu,
-                NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_NONOTIFY,
-                x, y, _hwnd, IntPtr.Zero);
-
-            NativeMethods.PostMessage(_hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
-
-            if (secim != 0)
-            {
-                MenuItemClicked?.Invoke(secim);
-            }
-        }
-        finally
-        {
-            NativeMethods.DestroyMenu(menu);
+            MenuItemClicked?.Invoke(secim);
         }
     }
 

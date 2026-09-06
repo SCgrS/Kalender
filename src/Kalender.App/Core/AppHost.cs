@@ -24,6 +24,20 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private const uint MenuRestoreWallpaper = 5;
     private const uint MenuExit = 9;
 
+    // Takvimin üzerindeki sağ tık menüsü
+    private const uint MenuGoToDay = 11;
+    private const uint MenuPrevMonth = 12;
+    private const uint MenuNextMonth = 13;
+    private const uint MenuThisMonth = 14;
+    private const uint MenuNewEvent = 15;
+    private const uint MenuNewTask = 16;
+
+    /// <summary>
+    /// Başka bir aya gidildikten sonra kendiliğinden bu aya dönme süresi.
+    /// Takvim masaüstünün bir parçası; uzun süre yanlış ayda kalmamalı.
+    /// </summary>
+    private static readonly TimeSpan ViewResetDelay = TimeSpan.FromMinutes(2);
+
     private readonly SettingsStore _settings = new();
     private AppMessageWindow? _messages;
     private TrayIcon? _tray;
@@ -38,7 +52,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private HoverWatcher? _hover;
     private DayPopupWindow? _popup;
     private SettingsWindow? _settingsWindow;
+    private CalendarRightClickHook? _rightClick;
+    private System.Windows.Threading.DispatcherTimer? _viewResetTimer;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
+    private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private bool _layerWarningShown;
 
     /// <summary>Kullanıcı çıkışı seçtiğinde tetiklenir.</summary>
@@ -46,9 +63,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>Ekran listesi değişti; ayarlar penceresi kendini tazelemeli.</summary>
     public event Action? MonitorsChanged;
-
-    /// <summary>Tatil listesi yenilendi.</summary>
-    public event Action? HolidaysUpdated;
 
     /// <summary>Google bağlantı durumu ya da verisi değişti.</summary>
     public event Action? GoogleStateChanged;
@@ -116,10 +130,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _poller?.Start();
     }
 
-    public DateTimeOffset? HolidaysLastFetchUtc => _holidays?.LastFetchUtc;
-
-    public int HolidayCount => _holidays?.Count ?? 0;
-
     public SettingsStore Settings => _settings;
 
     /// <summary>
@@ -177,7 +187,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _dayWatcher.DayChanged += date =>
         {
             _layer.SetToday(date);
-            _calendarData.SetToday(date);
+
+            // Gün değiştiyse gezinilen ay artık geçerli değil; bu aya dönüyoruz.
+            GoToCurrentMonth();
         };
 
         _calendarData.Changed += snapshot =>
@@ -190,7 +202,32 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _hover = new HoverWatcher(_layer, () => _data);
         _hover.ShowRequested += OnPopupRequested;
         _hover.HideRequested += () => _popup?.HidePopup();
+
+        // Sağ tık menüsü: kanca yalnız imleç takvimin üzerindeyken takılı durur.
+        _rightClick = new CalendarRightClickHook(
+            Application.Current?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher,
+            point => _layer.HitTestBlock(point) is not null);
+        _rightClick.RightClicked += OnCalendarRightClick;
+        _hover.CalendarHoverChanged += inside =>
+        {
+            if (inside)
+            {
+                _rightClick.Arm();
+            }
+            else
+            {
+                _rightClick.Disarm();
+            }
+        };
+
         _hover.Start();
+
+        _viewResetTimer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Background)
+        {
+            Interval = ViewResetDelay,
+        };
+        _viewResetTimer.Tick += (_, _) => GoToCurrentMonth();
 
         // Tatil listesi arka planda inebiliyor; arayüz iş parçacığına taşıyoruz.
         _holidays.Updated += OnHolidaysUpdated;
@@ -198,7 +235,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Önce diskteki liste yükleniyor (ağa çıkmadan), sonra gerekiyorsa
         // arka planda tazeleniyor. Böylece açılış internete bağlı değil.
         _holidays.LoadCache();
-        _calendarData.SetToday(_dayWatcher.Today);
+        _calendarData.SetViewMonth(_viewMonth);
 
         _googleAuth.StateChanged += OnGoogleStateChanged;
         _poller.StatusChanged += UpdateTrayTooltip;
@@ -234,6 +271,147 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         // Açılışı bekletmeden tatil listesini tazele.
         _ = RefreshHolidaysAsync(force: false);
+    }
+
+    // ------------------------------------------------------- sağ tık menüsü
+
+    /// <summary>
+    /// Takvimin üzerinde sağ tıklandı. Menü, imlecin altındaki güne göre
+    /// kurulur; gün ızgarasının dışındaysa (ay adı, gün adları) gün gerektiren
+    /// satırlar görünen ayı hedefler.
+    /// </summary>
+    private void OnCalendarRightClick(System.Drawing.Point screenPoint)
+    {
+        try
+        {
+            if (_messages is null || _layer is null)
+            {
+                return;
+            }
+
+            CalendarBlockHit? hit = _layer.HitTestBlock(screenPoint);
+            if (hit is null)
+            {
+                return;
+            }
+
+            DateOnly? gun = hit.Cell?.Date;
+            bool buAyda = _viewMonth == CurrentMonth;
+
+            var items = new List<PopupMenuItem>
+            {
+                gun is null
+                    ? new PopupMenuItem(MenuGoToDay,
+                        $"{TurkishNames.MonthNameTitle(_viewMonth.Month)} {_viewMonth.Year} ayını Google Takvim'de aç")
+                    : new PopupMenuItem(MenuGoToDay,
+                        $"{TurkishNames.LongDate(gun.Value)} gününe git"),
+                PopupMenuItem.Separator,
+                new PopupMenuItem(MenuPrevMonth,
+                    "Önceki ay: " + TurkishNames.MonthNameTitle(_viewMonth.AddMonths(-1).Month)),
+                new PopupMenuItem(MenuNextMonth,
+                    "Sonraki ay: " + TurkishNames.MonthNameTitle(_viewMonth.AddMonths(1).Month)),
+                new PopupMenuItem(MenuThisMonth, "Bu aya dön", Enabled: !buAyda),
+                PopupMenuItem.Separator,
+                new PopupMenuItem(MenuNewEvent, "Yeni etkinlik…"),
+                new PopupMenuItem(MenuNewTask, "Yeni görev…"),
+                PopupMenuItem.Separator,
+                new PopupMenuItem(MenuSettings, "Ayarlar"),
+            };
+
+            // Menü açılırken gün kutusu ekranda kalmasın.
+            _popup?.HidePopup();
+
+            uint secim = PopupMenu.Show(_messages.Handle, screenPoint.X, screenPoint.Y, items);
+
+            switch (secim)
+            {
+                case MenuGoToDay:
+                    Ac(gun is null ? GoogleLinks.Month(_viewMonth) : GoogleLinks.Day(gun.Value));
+                    break;
+
+                case MenuPrevMonth:
+                    ShiftMonth(-1);
+                    break;
+
+                case MenuNextMonth:
+                    ShiftMonth(1);
+                    break;
+
+                case MenuThisMonth:
+                    GoToCurrentMonth();
+                    break;
+
+                case MenuNewEvent:
+                    Ac(GoogleLinks.NewEvent(gun));
+                    break;
+
+                case MenuNewTask:
+                    Ac(GoogleLinks.NewTask(gun));
+                    break;
+
+                case MenuSettings:
+                    OpenSettings();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Takvim sağ tık menüsü açılamadı.", ex);
+        }
+    }
+
+    private static DateOnly CurrentMonth => new(DateTime.Now.Year, DateTime.Now.Month, 1);
+
+    /// <summary>Görünen ayı ileri ya da geri kaydırır ve geri dönüş sayacını kurar.</summary>
+    private void ShiftMonth(int delta)
+    {
+        _viewMonth = _viewMonth.AddMonths(delta);
+        ApplyViewMonth();
+
+        _viewResetTimer?.Stop();
+        _viewResetTimer?.Start();
+    }
+
+    /// <summary>İçinde bulunduğumuz aya döner ve sayacı durdurur.</summary>
+    private void GoToCurrentMonth()
+    {
+        _viewResetTimer?.Stop();
+
+        if (_viewMonth == CurrentMonth)
+        {
+            return;
+        }
+
+        _viewMonth = CurrentMonth;
+        ApplyViewMonth();
+    }
+
+    /// <summary>Görünen ayı çizime ve veri katmanına uygular.</summary>
+    private void ApplyViewMonth()
+    {
+        _layer?.SetViewMonth(_viewMonth);
+        _calendarData?.SetViewMonth(_viewMonth);
+        _hover?.Reset();
+
+        // Yeni ayın verisi Google'dan istenmeli; aralık değiştiği için tam
+        // yenileme kendiliğinden yapılıyor.
+        _ = RefreshGoogleAsync(force: false);
+    }
+
+    /// <summary>Adresi ya da klasörü kullanıcının varsayılan uygulamasında açar.</summary>
+    private static void Ac(string target)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Açılamadı: " + target, ex);
+        }
     }
 
     /// <summary>Gün kutusunu açar. Pencere bir kez kurulup yeniden kullanılır.</summary>
@@ -299,7 +477,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             _settings.Update(s => s.Holidays.LastFetchUtc = _holidays?.LastFetchUtc);
             _calendarData?.Rebuild();
-            HolidaysUpdated?.Invoke();
         });
     }
 
@@ -369,22 +546,20 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
     }
 
-    private IReadOnlyList<TrayMenuItem> BuildMenu()
+    private IReadOnlyList<PopupMenuItem> BuildMenu()
     {
         bool hidden = _settings.Current.CalendarHidden;
 
         return new[]
         {
-            new TrayMenuItem(MenuSettings, "Ayarlar"),
-
-            // Şimdilik yalnız tatil listesini yeniler; 4. aşamada Google verisi de katılacak.
-            new TrayMenuItem(MenuRefresh, "Şimdi yenile"),
-            TrayMenuItem.Separator,
-            new TrayMenuItem(MenuToggleCalendar, hidden ? "Takvimi göster" : "Takvimi gizle"),
-            new TrayMenuItem(MenuRedraw, "Takvimi yeniden çiz"),
-            new TrayMenuItem(MenuRestoreWallpaper, "Eski duvar kağıdıma dön"),
-            TrayMenuItem.Separator,
-            new TrayMenuItem(MenuExit, "Çıkış"),
+            new PopupMenuItem(MenuSettings, "Ayarlar"),
+            new PopupMenuItem(MenuRefresh, "Şimdi yenile"),
+            PopupMenuItem.Separator,
+            new PopupMenuItem(MenuToggleCalendar, hidden ? "Takvimi göster" : "Takvimi gizle"),
+            new PopupMenuItem(MenuRedraw, "Takvimi yeniden çiz"),
+            new PopupMenuItem(MenuRestoreWallpaper, "Eski duvar kağıdıma dön"),
+            PopupMenuItem.Separator,
+            new PopupMenuItem(MenuExit, "Çıkış"),
         };
     }
 
@@ -488,7 +663,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     public void Dispose()
     {
         _settingsWindow?.Close();
+        _viewResetTimer?.Stop();
         _hover?.Dispose();
+        _rightClick?.Dispose();
         _popup?.Close();
         _poller?.Dispose();
         _google?.Dispose();

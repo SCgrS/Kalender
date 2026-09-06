@@ -70,6 +70,28 @@ internal sealed class MonitorPlacement
     public MonitorPlacement Clone() => (MonitorPlacement)MemberwiseClone();
 }
 
+/// <summary>
+/// Takvim yazılarının renkleri. Her biri boş bırakılabilir; boşken renk
+/// zemine ve yazı rengine göre kendiliğinden hesaplanır (varsayılan davranış).
+///
+/// Noktacıkların rengi burada yok: onlar Google Takvim'deki takvim ve
+/// etkinlik renklerinden gelir, o yüzden elle değiştirilemez.
+/// </summary>
+internal sealed class CalendarTextColors
+{
+    /// <summary>Ay adı, gün adları ve içinde bulunulan ayın normal günleri.</summary>
+    public string? Weekday { get; set; }
+
+    /// <summary>Hafta sonu ve resmi tatil günlerinin rakamları ile gün adları.</summary>
+    public string? Holiday { get; set; }
+
+    /// <summary>Önceki ve sonraki aya taşan (soluk) günler.</summary>
+    public string? Muted { get; set; }
+
+    /// <summary>Bugünün arkasındaki dolu daire.</summary>
+    public string? TodayCircle { get; set; }
+}
+
 /// <summary>Görünüm ayarları.</summary>
 internal sealed class AppearanceSettings
 {
@@ -85,6 +107,9 @@ internal sealed class AppearanceSettings
 
     /// <summary>Elle seçilmiş yazı rengi (#RRGGBB).</summary>
     public string TextColor { get; set; } = "#FFFFFF";
+
+    /// <summary>Takvim yazılarının renk seçimleri; boş alanlar otomatik hesaplanır.</summary>
+    public CalendarTextColors Colors { get; set; } = new();
 
     /// <summary>Cumartesi de pazar gibi kırmızı gösterilsin mi?</summary>
     public bool SaturdayIsRed { get; set; } = true;
@@ -172,6 +197,12 @@ internal sealed class AppSettings
 
     /// <summary>İlk çalıştırmada karşılama bilgisi gösterildi mi?</summary>
     public bool FirstRunDone { get; set; }
+
+    /// <summary>
+    /// Ayarlar penceresinin görünümü: null ise Windows'un uygulama teması
+    /// izlenir, sonra kullanıcının seçimi (true = karanlık) saklanır.
+    /// </summary>
+    public bool? DarkSettingsWindow { get; set; }
 
     [JsonIgnore]
     public MonitorPlacement DefaultPlacement { get; } = new();
