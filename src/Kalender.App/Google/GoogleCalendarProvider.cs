@@ -217,6 +217,10 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 {
                     bundle.EventColors = await FetchColorsAsync(token, cancel).ConfigureAwait(false);
                 }
+
+                // Etiket renkleri kullanıcı tarafından değiştirilebiliyor;
+                // her tam yenilemede tazeleniyor.
+                bundle.EventLabels = await FetchEventLabelsAsync(token, bundle, cancel).ConfigureAwait(false);
             }
 
             DateTimeOffset? updatedMin = doFull ? null : Data.LastSyncUtc;
@@ -329,6 +333,67 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         return map;
     }
 
+    /// <summary>
+    /// Takvimlerdeki etkinlik etiketlerini ve gerçek renklerini toplar.
+    ///
+    /// Google, eski 11 renklik listeyi "etkinlik etiketi" sistemiyle değiştirdi:
+    /// kullanıcı takvime kendi renklerini tanımlıyor. Etkinlikte yalnızca
+    /// etiketin kimliği geliyor; rengi burada, takvim kaynağında duruyor.
+    /// Eski colorId alanı bu etkinliklerde en yakın palet rengini gösteriyor,
+    /// yani ona bakarsak ekranda Google'dakinden başka bir renk çiziyoruz.
+    /// </summary>
+    private async Task<Dictionary<string, string>> FetchEventLabelsAsync(string token, ProviderBundle bundle,
+        CancellationToken cancel)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        IReadOnlyList<string> wanted = SelectedCalendarIds(bundle);
+
+        foreach (ProviderCalendar calendar in bundle.Calendars)
+        {
+            if (!wanted.Contains(calendar.Id))
+            {
+                continue;
+            }
+
+            string url = $"{CalendarBase}/calendars/{Uri.EscapeDataString(calendar.Id)}"
+                + "?fields=" + Uri.EscapeDataString("labelProperties(eventLabels(id,backgroundColor))");
+
+            CalendarResource? resource;
+            try
+            {
+                resource = await GetAsync<CalendarResource>(url, token, cancel).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound
+                or HttpStatusCode.Forbidden or HttpStatusCode.BadRequest)
+            {
+                // Etiket alanını tanımayan ya da erişilemeyen takvimi atlıyoruz;
+                // o takvimde eski renk davranışı sürer.
+                Log.Debug($"Etkinlik etiketleri alınamadı ({calendar.Name}): {ex.StatusCode}");
+                continue;
+            }
+
+            foreach (EventLabelEntry label in resource?.LabelProperties?.EventLabels
+                ?? new List<EventLabelEntry>())
+            {
+                if (string.IsNullOrEmpty(label.Id))
+                {
+                    continue;
+                }
+
+                // Etiket rengi kullanıcının kendi seçtiği güncel değer;
+                // eski palet çevrimine sokulmaz.
+                string hex = (label.BackgroundColor ?? string.Empty).Trim();
+                if (hex.Length > 0)
+                {
+                    map[label.Id] = hex.StartsWith('#') ? hex : "#" + hex;
+                }
+            }
+        }
+
+        Log.Debug($"Etkinlik etiketi rengi: {map.Count} adet.");
+        return map;
+    }
+
     private async Task<List<ProviderTaskList>> FetchTaskListsAsync(string token, CancellationToken cancel)
     {
         var result = new List<ProviderTaskList>();
@@ -398,11 +463,15 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 string url = $"{CalendarBase}/calendars/{Uri.EscapeDataString(calendar.Id)}/events"
                     + $"?timeMin={Uri.EscapeDataString(timeMin)}&timeMax={Uri.EscapeDataString(timeMax)}"
                     + "&singleEvents=true&maxResults=2500"
+
+                    // Etkinlik etiketlerinin kimliği ancak bu parametreyle geliyor;
+                    // yoksa Google eski colorId'yi, yani en yakın palet rengini veriyor.
+                    + "&eventLabelVersion=1"
                     + (updatedMin is null
                         ? "&showDeleted=false"
                         : $"&showDeleted=true&updatedMin={Uri.EscapeDataString(Rfc3339(updatedMin.Value.UtcDateTime))}")
                     + "&fields=" + Uri.EscapeDataString(
-                        "items(id,summary,status,colorId,eventType,start,end),nextPageToken")
+                        "items(id,summary,status,colorId,eventLabelId,eventType,start,end),nextPageToken")
                     + Page(pageToken);
 
                 EventsResponse? page;
@@ -442,7 +511,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                         continue;
                     }
 
-                    ProviderEvent? converted = Convert(item, calendar, bundle.EventColors);
+                    ProviderEvent? converted = Convert(item, calendar, bundle.EventColors, bundle.EventLabels);
                     if (converted is not null)
                     {
                         byId[key] = converted;
@@ -567,12 +636,21 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     }
 
     private static ProviderEvent? Convert(EventEntry item, ProviderCalendar calendar,
-        IReadOnlyDictionary<string, string> colors)
+        IReadOnlyDictionary<string, string> colors, IReadOnlyDictionary<string, string> labels)
     {
+        // Renk önceliği: etkinlik etiketi > eski renk kimliği > takvimin rengi.
+        // Etiket varken eski colorId en yakın palet rengini gösteriyor, yani
+        // ona bakarsak Google'da gördüğünüzden başka bir renk çizeriz.
         string color = calendar.ColorHex;
+
         if (!string.IsNullOrEmpty(item.ColorId) && colors.TryGetValue(item.ColorId, out string? own))
         {
             color = own;
+        }
+
+        if (!string.IsNullOrEmpty(item.EventLabelId) && labels.TryGetValue(item.EventLabelId, out string? label))
+        {
+            color = label;
         }
 
         // Tüm gün etkinlikler

@@ -82,6 +82,12 @@ internal sealed class ProviderBundle
 
     /// <summary>Google'ın renk kimliği -> onaltılık renk. Neredeyse hiç değişmez.</summary>
     public Dictionary<string, string> EventColors { get; set; } = new();
+
+    /// <summary>
+    /// Etkinlik etiketi kimliği -> onaltılık renk. Kullanıcının Google Takvim'de
+    /// kendi tanımladığı renkler burada durur ve eski renk listesinin yerini alır.
+    /// </summary>
+    public Dictionary<string, string> EventLabels { get; set; } = new();
 }
 
 /// <summary>

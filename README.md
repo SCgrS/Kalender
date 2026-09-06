@@ -335,6 +335,17 @@ alma imkânı yok. Etkinlikler ve yinelenmeyen görevler her zaman eksiksiz gör
 
 ## Sürüm geçmişi
 
+### 1.1.1
+
+- **Etkinlik etiketi renkleri.** Google Takvim'de kendi renklerinizi tanımlayıp
+  etkinliklere verdiyseniz (Google bunlara "etkinlik etiketi" diyor), Kalender artık o
+  renkleri birebir çiziyor. Önceden bu etkinlikler ekranda bambaşka görünüyordu: Calendar
+  API'si, etiketli bir etkinlik için eski renk listesinden **en yakın** rengi bildiriyor
+  (örneğin `#6E72C3` etiketi için `#46d6db`), gerçek renk ise takvim kaynağındaki
+  `labelProperties.eventLabels` alanında duruyor. Kalender artık etkinlik isteğine
+  `eventLabelVersion=1` ekliyor, etkinlikten gelen `eventLabelId` ile etiketin gerçek
+  rengini eşleştiriyor. Renk sırası: etiket rengi → eski renk kimliği → takvimin rengi.
+
 ### 1.1.0
 
 - **Takvimin üzerinde sağ tık menüsü**: güne git, önceki/sonraki ay, bu aya dön, yeni
