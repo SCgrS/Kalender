@@ -117,6 +117,13 @@ internal sealed class AppearanceSettings
     /// <summary>Fotoğraf kipinde takvimin arkasına uygulanan karartma (0-100).</summary>
     public int BackdropDim { get; set; }
 
+    /// <summary>
+    /// Gün kutusunun zemin opaklığı (40-100). Yalnızca kutunun zeminini ve
+    /// kenarlığını etkiler; yazılar her değerde tam opak kalır, yoksa saydam
+    /// zeminde okunmuyorlar.
+    /// </summary>
+    public int DayPopupOpacity { get; set; } = 95;
+
     /// <summary>Genel fotoğraf yolu (monitöre özel yol yoksa bu kullanılır).</summary>
     public string? PhotoPath { get; set; }
 

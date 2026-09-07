@@ -19,7 +19,7 @@
 
     <!-- Windows'un kendi ipucu balonları gibi: koyu zemin, ince kenarlık,
          küçük köşe yuvarlaklığı, gölge, küçük punto. -->
-    <Border Margin="10" CornerRadius="6" Padding="12,9"
+    <Border x:Name="Kutu" Margin="10" CornerRadius="6" Padding="12,9"
             Background="#F21F2227" BorderThickness="1" BorderBrush="#4A505A">
         <Border.Effect>
             <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="Black" />

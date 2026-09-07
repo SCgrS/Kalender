@@ -62,6 +62,12 @@ public partial class DayPopupWindow : Window
     /// </summary>
     private static readonly Color DefaultMuted = Color.FromRgb(0x8D, 0x8F, 0x93);
 
+    /// <summary>Kutunun zemin rengi; opaklık ayarı bunun alfasını değiştirir.</summary>
+    private static readonly Color SurfaceColor = Color.FromRgb(0x1F, 0x22, 0x27);
+
+    /// <summary>Kutunun kenarlık rengi; o da zeminle birlikte saydamlaşır.</summary>
+    private static readonly Color BorderColor = Color.FromRgb(0x4A, 0x50, 0x5A);
+
     private static readonly Brush TitleBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xED));
     private static readonly Brush HolidayBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0x6C, 0x6C));
     private static readonly Brush SeparatorBrush = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
@@ -118,6 +124,29 @@ public partial class DayPopupWindow : Window
             var brush = new SolidColorBrush(_mutedColor);
             brush.Freeze();
             _completedBrush = brush;
+        }
+    }
+
+    /// <summary>
+    /// Kutunun zemin opaklığı (40-100). Yalnızca zemin ve kenarlık saydamlaşır;
+    /// yazılar tam opak kalır, yoksa masaüstünün üzerinde okunmuyorlar.
+    /// </summary>
+    internal int BackgroundOpacity
+    {
+        set
+        {
+            byte alpha = (byte)Math.Round(Math.Clamp(value, 40, 100) * 2.55);
+
+            var surface = new SolidColorBrush(
+                Color.FromArgb(alpha, SurfaceColor.R, SurfaceColor.G, SurfaceColor.B));
+            surface.Freeze();
+
+            var border = new SolidColorBrush(
+                Color.FromArgb(alpha, BorderColor.R, BorderColor.G, BorderColor.B));
+            border.Freeze();
+
+            Kutu.Background = surface;
+            Kutu.BorderBrush = border;
         }
     }
 

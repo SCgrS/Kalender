@@ -465,6 +465,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
             // Tamamlanmış kayıtların grisi takvimdekiyle aynı olsun.
             _popup.MutedColor = Rendering.Theme.From(_settings.Current.Appearance).Muted;
+            _popup.BackgroundOpacity = _settings.Current.Appearance.DayPopupOpacity;
             _popup.ShowFor(content, cellBounds);
         }
         catch (Exception ex)

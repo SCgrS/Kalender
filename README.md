@@ -119,6 +119,8 @@ anında masaüstüne uygulanır; kaydetmeniz gerekmez.
   günler**, **Bugünün arkasındaki daire**. Hepsi **Otomatik** başlar; işareti kaldırınca renk
   çarkı açılır. Gün altındaki noktacıklar buraya dahil değildir; renkleri Google'dan gelir.
 - **Resmi tatiller** — **Resmi tatilleri kırmızı göster**.
+- **Gün kutusu** — **Kutunun opaklığı** kaydırıcısı (%40–100). Küçülttükçe kutunun zemini
+  saydamlaşır ve altındaki duvar kağıdı görünür; yazılar her değerde tam opak kalır.
 - **Google Takvim ve Görevler** — yukarıdaki bölümde anlatıldı.
 - **Ekranlar** — **Tüm ekranlarda**, **Yalnız ana ekranda** ya da **Seçtiğim ekranlarda**
   (**Bu ekranda göster** kutusu). Her ekran için **Takvimi taşı** (sürükleyip bırakın;
@@ -157,6 +159,9 @@ saati bilinmeyen görevler (`Tüm gün`); saati bilinen görevler saat sırasın
 Kutu yalnızca imlecin altında masaüstünün kendisi varken, fare tuşu basılı değilken ve tam
 ekran/sunum kipi yokken açılır. Gösterilecek bir şey yoksa hiç açılmaz; hücreden çıkınca
 kapanır. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu kendisi düzeltir.
+
+Kutunun zemini varsayılan olarak %95 opaktır. **Ayarlar > Gün kutusu > Kutunun opaklığı**
+ile %40'a kadar indirebilirsiniz; yazılar her değerde tam opak kalır.
 
 ## Takvimin üzerinde sağ tık
 

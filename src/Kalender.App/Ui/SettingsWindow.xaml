@@ -185,6 +185,27 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ============================================ GÜN KUTUSU -->
+                <Border Style="{StaticResource Bolum}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource Baslik}" Text="Gün kutusu" />
+                        <TextBlock Style="{StaticResource Aciklama}"
+                                   Text="Farenizi masaüstünde bir günün üzerinde beklettiğinizde açılan kutu." />
+
+                        <TextBlock Style="{StaticResource AltBaslik}" Margin="0,12,0,0"
+                                   Text="Kutunun opaklığı" />
+                        <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,6"
+                                   Text="Küçülttükçe kutunun zemini saydamlaşır ve altındaki duvar kağıdı görünür. Yazılar her değerde tam opak kalır." />
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="PopupOpacitySlider" Width="260" Minimum="40" Maximum="100"
+                                    TickFrequency="5" IsSnapToTickEnabled="True"
+                                    VerticalAlignment="Center" ValueChanged="OnPopupOpacityChanged" />
+                            <TextBlock x:Name="PopupOpacityText" Width="56" Margin="12,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- ================================================ GOOGLE -->
                 <Border Style="{StaticResource Bolum}">
                     <StackPanel>

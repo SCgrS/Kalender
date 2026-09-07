@@ -213,6 +213,10 @@ public partial class SettingsWindow : Window
             DimText.Text = $"%{a.BackdropDim}";
             DimPanel.IsEnabled = photoMode;
 
+            int popupOpacity = Math.Clamp(a.DayPopupOpacity, 40, 100);
+            PopupOpacitySlider.Value = popupOpacity;
+            PopupOpacityText.Text = $"%{popupOpacity}";
+
             AllScreensRadio.IsChecked = a.DisplayTarget == DisplayTarget.AllScreens;
             PrimaryOnlyRadio.IsChecked = a.DisplayTarget == DisplayTarget.PrimaryOnly;
             SelectedScreensRadio.IsChecked = a.DisplayTarget == DisplayTarget.SelectedScreens;
@@ -478,6 +482,30 @@ public partial class SettingsWindow : Window
         }
 
         S.Appearance.BackdropDim = (int)Math.Round(e.NewValue);
+        ScheduleApply();
+    }
+
+    /// <summary>
+    /// Gün kutusunun opaklığı. Takvim görüntüsünü değiştirmediği için
+    /// masaüstüne yeniden yazılmaz; ayar bir sonraki kutu açılışında geçerlidir.
+    /// </summary>
+    private void OnPopupOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // XAML yüklenirken Minimum atanır atanmaz değer 0'dan 40'a çekiliyor ve
+        // bu olay yandaki metin kutusu daha oluşmadan bir kez tetikleniyor.
+        if (PopupOpacityText is null)
+        {
+            return;
+        }
+
+        PopupOpacityText.Text = $"%{(int)Math.Round(e.NewValue)}";
+
+        if (_loading)
+        {
+            return;
+        }
+
+        S.Appearance.DayPopupOpacity = (int)Math.Round(e.NewValue);
         ScheduleApply();
     }
 
