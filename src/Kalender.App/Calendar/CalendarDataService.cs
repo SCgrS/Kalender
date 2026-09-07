@@ -69,7 +69,7 @@ internal sealed class CalendarDataService
 
         foreach ((DateOnly day, List<DayEntry> entries) in days)
         {
-            RemoveDuplicateTasks(entries);
+            MergeDuplicateTasks(entries);
             entries.Sort((a, b) => a.SortKey.CompareTo(b.SortKey));
 
             holidayNames.TryGetValue(day, out HolidayInfo? holiday);
@@ -170,23 +170,58 @@ internal sealed class CalendarDataService
     }
 
     /// <summary>
-    /// Aynı gün içinde başlığı bir görevle birebir aynı olan etkinlikleri atar.
+    /// Aynı gün içinde başlığı bir görevle birebir aynı olan etkinlikleri
+    /// görevin içine katar.
     ///
     /// Google Görevler'i hem Tasks API'sinden hem de takvim etkinliği olarak
-    /// döndürebiliyor. Etkinlik tarafını eventType alanına bakarak zaten
-    /// süzüyoruz; bu, o süzgecin tutmadığı durumlar için ağ. Görev kaydı
-    /// korunuyor çünkü asıl kaynak o.
+    /// döndürebiliyor; ikisi birden gösterilirse aynı kayıt iki kez çıkıyor.
+    /// Görev kaydını tutuyoruz, çünkü tamamlanmışlık bilgisi yalnızca orada.
+    /// Ama **saat** yalnızca etkinlik tarafında: Görevler API'si görevin
+    /// saatini hiç vermiyor, `due` her zaman gecenin yarısı geliyor. O yüzden
+    /// atmadan önce saati görevin üstüne alıyoruz.
     /// </summary>
-    private static void RemoveDuplicateTasks(List<DayEntry> entries)
+    private static void MergeDuplicateTasks(List<DayEntry> entries)
     {
+        if (entries.All(e => e.Kind != EntryKind.Task))
+        {
+            return;
+        }
+
+        // Başlık -> etkinlikten gelen saat. Aynı başlıkta birden çok kayıt
+        // varsa ilk saatli olan geçerli.
+        var times = new Dictionary<string, TimeOnly>(StringComparer.Ordinal);
+        foreach (DayEntry e in entries)
+        {
+            if (e.Kind == EntryKind.Timed && e.Start is TimeOnly start)
+            {
+                times.TryAdd(Normalize(e.Title), start);
+            }
+        }
+
         var taskTitles = entries
             .Where(e => e.Kind == EntryKind.Task)
             .Select(e => Normalize(e.Title))
             .ToHashSet(StringComparer.Ordinal);
 
-        if (taskTitles.Count == 0)
+        for (int i = 0; i < entries.Count; i++)
         {
-            return;
+            DayEntry entry = entries[i];
+            if (entry.Kind != EntryKind.Task || entry.Start is not null)
+            {
+                continue;
+            }
+
+            if (times.TryGetValue(Normalize(entry.Title), out TimeOnly saat))
+            {
+                entries[i] = new DayEntry
+                {
+                    Kind = entry.Kind,
+                    Title = entry.Title,
+                    Start = saat,
+                    DotColor = entry.DotColor,
+                    Completed = entry.Completed,
+                };
+            }
         }
 
         entries.RemoveAll(e => e.Kind is EntryKind.Timed or EntryKind.AllDay

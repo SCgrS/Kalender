@@ -241,6 +241,14 @@ internal sealed class HoverWatcher : IDisposable
             && point.Y >= rect.Top && point.Y < rect.Bottom;
     }
 
+    /// <summary>
+    /// Ekran koordinatındaki noktada masaüstünün kendisi mi duruyor? Sağ tık
+    /// kancası da buna bakıyor: takvimin üstünde ama bir pencerenin (örneğin
+    /// açık menünün) altında kalan noktalarda tıklamayı yutmamalıyız.
+    /// </summary>
+    internal static bool IsOnDesktopSurface(Point point)
+        => PointerIsOnDesktop(new NativeMethods.POINT { X = point.X, Y = point.Y });
+
     /// <summary>İmlecin altındaki pencere masaüstü zincirinden mi?</summary>
     private static bool PointerIsOnDesktop(NativeMethods.POINT cursor)
     {

@@ -165,14 +165,11 @@ public partial class DayPopupWindow : Window
             };
         }
 
-        bool allDay = entry.Kind != EntryKind.Timed || entry.Start is null;
-
-        string prefix = entry.Kind switch
-        {
-            EntryKind.Timed => entry.Start?.ToString("HH\\:mm") ?? "Tüm gün",
-            EntryKind.Task => "Görev",
-            _ => "Tüm gün",
-        };
+        // Ön ek yalnızca saati anlatır: saat biliniyorsa saat, bilinmiyorsa
+        // "Tüm gün". Kaydın görev mi etkinlik mi olduğu ön ekte yazmıyor;
+        // rengi ve noktacığı bunu zaten söylüyor.
+        bool allDay = entry.Start is null;
+        string prefix = entry.Start?.ToString("HH\\:mm") ?? "Tüm gün";
 
         Brush accent = entry.Completed
             ? CompletedBrush

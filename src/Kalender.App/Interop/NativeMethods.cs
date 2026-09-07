@@ -372,8 +372,28 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr WindowFromPoint(POINT Point);
 
+    /// <summary>Açık olan menüyü kapatır. Menüyü başka bir noktada yeniden açarken gerekiyor.</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool EndMenu();
+
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    /// <summary>
+    /// İki iş parçacığının girdi kuyruğunu birbirine bağlar. Ön plana geçme
+    /// kilidini aşmak için gerekiyor: Windows, ön planda olmayan bir sürecin
+    /// SetForegroundWindow çağrısını sessizce yok sayıyor.
+    /// </summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AttachThreadInput(uint attachTo, uint attachFrom, [MarshalAs(UnmanagedType.Bool)] bool attach);
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);

@@ -54,6 +54,15 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private CalendarRightClickHook? _rightClick;
     private System.Windows.Threading.DispatcherTimer? _viewResetTimer;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
+
+    /// <summary>Takvimin üzerindeki menü şu an açık mı?</summary>
+    private bool _menuOpen;
+
+    /// <summary>İmleç şu an takvim bloğunun üzerinde mi?</summary>
+    private bool _hoverInside;
+
+    /// <summary>Açık menü kapanır kapanmaz bu noktada yeni menü açılacak.</summary>
+    private System.Drawing.Point? _pendingMenuPoint;
     private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private bool _layerWarningShown;
 
@@ -204,18 +213,14 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Sağ tık menüsü: kanca yalnız imleç takvimin üzerindeyken takılı durur.
         _rightClick = new CalendarRightClickHook(
             Application.Current?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher,
-            point => _layer.HitTestBlock(point) is not null);
+            // Noktanın masaüstünde olması da şart: takvimin üstünde duran bir
+            // pencere (örneğin bizim açık menümüz) varken tıklamayı yutmamalıyız.
+            point => HoverWatcher.IsOnDesktopSurface(point) && _layer.HitTestBlock(point) is not null);
         _rightClick.RightClicked += OnCalendarRightClick;
         _hover.CalendarHoverChanged += inside =>
         {
-            if (inside)
-            {
-                _rightClick.Arm();
-            }
-            else
-            {
-                _rightClick.Disarm();
-            }
+            _hoverInside = inside;
+            UpdateRightClickHook();
         };
 
         _hover.Start();
@@ -273,6 +278,16 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                 return;
             }
 
+            if (_menuOpen)
+            {
+                // Menü zaten açıkken başka bir güne sağ tıklandı. Açık menüyü
+                // kapatıyoruz; kapanınca aşağıdaki kuyruk yenisini o günün
+                // üzerinde açacak. Yoksa ikinci tık hiçbir şey yapmıyordu.
+                _pendingMenuPoint = screenPoint;
+                NativeMethods.EndMenu();
+                return;
+            }
+
             CalendarBlockHit? hit = _layer.HitTestBlock(screenPoint);
             if (hit is null)
             {
@@ -305,7 +320,27 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             // Menü açılırken gün kutusu ekranda kalmasın.
             _popup?.HidePopup();
 
-            uint secim = PopupMenu.Show(_messages.Handle, screenPoint.X, screenPoint.Y, items);
+            uint secim;
+            _menuOpen = true;
+            try
+            {
+                secim = PopupMenu.Show(_messages.Handle, screenPoint.X, screenPoint.Y, items);
+            }
+            finally
+            {
+                _menuOpen = false;
+
+                // Menü açıkken imleç menünün üzerindeydi, yani "takvimden
+                // çıkıldı" sayılıyordu ve kancayı sökmeyi ertelemiştik.
+                UpdateRightClickHook();
+            }
+
+            if (_pendingMenuPoint is System.Drawing.Point sonraki)
+            {
+                _pendingMenuPoint = null;
+                _ = Application.Current?.Dispatcher.BeginInvoke(() => OnCalendarRightClick(sonraki));
+                return;
+            }
 
             switch (secim)
             {
@@ -341,6 +376,29 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         catch (Exception ex)
         {
             Log.Warn("Takvim sağ tık menüsü açılamadı.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Sağ tık kancası takılı mı olmalı? İmleç takvimin üzerindeyken ya da
+    /// bizim menümüz açıkken evet, başka her durumda hayır. Menü açıkken
+    /// sökülürse sonraki sağ tık kabuğa gidiyor ve Windows'un masaüstü menüsü
+    /// bizimkinin üstüne biniyor.
+    /// </summary>
+    private void UpdateRightClickHook()
+    {
+        if (_rightClick is null)
+        {
+            return;
+        }
+
+        if (_hoverInside || _menuOpen)
+        {
+            _rightClick.Arm();
+        }
+        else
+        {
+            _rightClick.Disarm();
         }
     }
 

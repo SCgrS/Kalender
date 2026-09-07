@@ -347,6 +347,10 @@ Calendar API de yardımcı olmuyor: görevleri etkinlik olarak döndürmüyor (y
 onu görev yerine **yinelenen etkinlik** olarak kurun; etkinliklerin bütün kopyaları API'den
 eksiksiz geliyor. Etkinlikler ve yinelenmeyen görevler her zaman tam görünür.
 
+Aynı sınır görevlerin **saati** için de geçerli: API'de `due` alanı her zaman gecenin yarısı
+gelir, saat bilgisi hiç verilmez. Kalender saati ancak Google o görevi takvim etkinliği
+olarak da döndürüyorsa gösterebiliyor; döndürmüyorsa görev "Tüm gün" görünür.
+
 ## Takvim ekrana nasıl çiziliyor?
 
 Kalender her monitör için zemini ve takvimi tek bir tam ekran görüntüde birleştirir ve bunu
@@ -368,6 +372,28 @@ bunu fark etmesinin bir yolu da yok, her adım başarılı görünüyor. Duvar k
 Windows'un desteklediği yol: her sürümde çalışıyor.
 
 ## Sürüm geçmişi
+
+### 1.4.0
+
+- **Görevlerde saat.** Gün kutusunda görevlerin başında artık "Görev" değil, varsa
+  **saati** yazıyor. Saat, Görevler API'sinden gelmiyor (orada `due` her zaman gecenin
+  yarısı); Google bazı görevleri takvim etkinliği olarak da döndürüyor ve saat orada
+  duruyor. Eskiden o etkinlik kopyası çöpe atılıyordu, artık saati görevin üstüne
+  alınıp öyle atılıyor. Saati hiçbir yerde geçmeyen görevler "Tüm gün" olarak görünür.
+- Saati bilinen bir görev artık listenin en altında değil, saat sırasında doğru yerinde
+  duruyor.
+- **Sağ tık menüsü düzeltildi.** İki ayrı hata vardı:
+  - Menü açıkken imleç menünün üzerinde kaldığı için "takvimden çıkıldı" sayılıyor ve
+    sağ tık kancası sökülüyordu. Sonraki sağ tık kabuğa gidip **Windows'un masaüstü
+    menüsünü** açıyor, iki menü üst üste biniyordu. Kanca artık menü açık olduğu sürece
+    takılı kalıyor.
+  - Menü dışarı tıklayınca (hatta Esc'e basınca) kapanmıyor, ekranda asılı kalıyordu.
+    Sebebi, sahibi pencerenin ön plana alınamamasıydı: sağ tıklamayı alt düzey kancayla
+    yuttuğumuz için Windows Kalender'i "son girdiyi alan süreç" saymıyor ve
+    `SetForegroundWindow` çağrısını sessizce yok sayıyor. Artık ön plandaki pencerenin
+    iş parçacığıyla girdi kuyruğu bir anlığına birleştirilip ön plana geçiliyor.
+- Menü açıkken başka bir güne sağ tıklamak artık çalışıyor: açık menü kapanıp yenisi o
+  günün üzerinde açılıyor.
 
 ### 1.3.0
 

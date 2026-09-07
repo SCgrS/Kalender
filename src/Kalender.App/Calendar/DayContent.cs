@@ -37,8 +37,14 @@ internal sealed class DayEntry
     /// </summary>
     public bool Completed { get; init; }
 
-    /// <summary>Aynı gün içinde sıralama anahtarı.</summary>
-    public (int, int) SortKey => ((int)Kind, Start.HasValue ? (Start.Value.Hour * 60) + Start.Value.Minute : 0);
+    /// <summary>
+    /// Aynı gün içinde sıralama anahtarı. Saati bilinen bir görev, "en altta"
+    /// değil saatli kayıtların arasında doğru yerinde durur; kutuya bakan kişi
+    /// günü baştan sona saat sırasıyla okuyabilsin.
+    /// </summary>
+    public (int, int) SortKey => (
+        Kind == EntryKind.Task && Start.HasValue ? (int)EntryKind.Timed : (int)Kind,
+        Start.HasValue ? (Start.Value.Hour * 60) + Start.Value.Minute : 0);
 }
 
 /// <summary>Bir günün bütün içeriği.</summary>
