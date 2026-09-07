@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using Kalender.Calendar;
 using Kalender.Core;
 using Kalender.Interop;
@@ -33,7 +34,19 @@ public partial class DayPopupWindow : Window
     /// </summary>
     private const double AllDayFontSize = 11.5;
 
-    private static readonly Brush PrefixBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAE));
+    /// <summary>Ön ekin sonundaki yuvarlağın çapı (DIP).</summary>
+    private const double BulletSize = 6;
+
+    /// <summary>
+    /// Renkli bir ön ekin koyu zeminde okunabilmesi için gereken en düşük
+    /// parlaklık. Google'ın koyu takvim renkleri bunun altında kalabiliyor.
+    /// </summary>
+    private const double MinAccentLuminance = 0.34;
+
+    private static readonly Color CompletedColor = Color.FromRgb(0x9A, 0xA3, 0xAE);
+
+    private static readonly Brush PrefixBrush = new SolidColorBrush(CompletedColor);
+    private static readonly Brush CompletedBrush = new SolidColorBrush(CompletedColor);
     private static readonly Brush TitleBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xED));
     private static readonly Brush HolidayBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0x6C, 0x6C));
     private static readonly Brush SeparatorBrush = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
@@ -45,6 +58,7 @@ public partial class DayPopupWindow : Window
         InitializeComponent();
 
         PrefixBrush.Freeze();
+        CompletedBrush.Freeze();
         TitleBrush.Freeze();
         HolidayBrush.Freeze();
         SeparatorBrush.Freeze();
@@ -123,12 +137,17 @@ public partial class DayPopupWindow : Window
     }
 
     /// <summary>
-    /// Bir satır: solda "10:30 ·" gibi kısa bir ön ek, sağda başlık.
+    /// Bir satır: solda "10:30 •" gibi kısa bir ön ek, sağda başlık.
     ///
     /// Ön ek sütunu bütün satırlarda ortak genişliktedir (SharedSizeGroup);
     /// böylece "Tüm gün" ile "12:20" yan yana geldiğinde başlıklar aynı
     /// hizadan başlar. Başlık iki satıra sarkarsa ön ek satırların ortasında
     /// durur, ilk satıra yapışmaz.
+    ///
+    /// Ön ek ve sonundaki yuvarlak, kaydın takvimdeki rengini taşır: kutuya
+    /// bakan kişi hangi kaydın hangi takvimden geldiğini gün altındaki
+    /// noktacıklarla eşleştirebilsin. Tamamlanmış görevlerde renk yerine gri
+    /// kullanılır.
     /// </summary>
     private UIElement BuildLine(DayEntry entry, DayContent content)
     {
@@ -155,6 +174,10 @@ public partial class DayPopupWindow : Window
             _ => "Tüm gün",
         };
 
+        Brush accent = entry.Completed
+            ? CompletedBrush
+            : AccentBrush(entry.DotColor);
+
         var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
         grid.ColumnDefinitions.Add(new ColumnDefinition
         {
@@ -165,31 +188,92 @@ public partial class DayPopupWindow : Window
 
         var prefixBlock = new TextBlock
         {
-            Text = prefix + " ·",
+            Text = prefix,
             FontSize = allDay ? AllDayFontSize : TitleFontSize,
-            Foreground = PrefixBrush,
-            TextAlignment = TextAlignment.Right,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = accent,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+        };
+
+        // Eskiden buradaki nokta bir metin karakteriydi ("·") ve ön ekle aynı
+        // renkteydi. Artık gerçek bir yuvarlak: hem biraz daha büyük hem de
+        // gün altındaki noktacıkla aynı renkte.
+        var bullet = new Ellipse
+        {
+            Width = BulletSize,
+            Height = BulletSize,
+            Fill = accent,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(5, 0, 0, 0),
+        };
+
+        // Yuvarlak her satırda aynı düşey çizgide dursun, metin de kalan yerin
+        // ortasına gelsin: "Tüm gün" ile "11:30" aynı günde buluştuğunda ortak
+        // sütun en uzun metne göre genişliyor ve kısa saat sola yapışık,
+        // boşlukta asılı duruyordu.
+        var prefixPanel = new Grid
+        {
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 7, 0),
         };
+
+        prefixPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        prefixPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        Grid.SetColumn(prefixBlock, 0);
+        Grid.SetColumn(bullet, 1);
+        prefixPanel.Children.Add(prefixBlock);
+        prefixPanel.Children.Add(bullet);
 
         var titleBlock = new TextBlock
         {
             Text = Temizle(entry.Title),
             FontSize = TitleFontSize,
-            Foreground = TitleBrush,
+            Foreground = entry.Completed ? CompletedBrush : TitleBrush,
             VerticalAlignment = VerticalAlignment.Center,
             // Başlığın tamamı görünsün; sığmazsa alt satıra sarksın.
             TextWrapping = TextWrapping.Wrap,
         };
 
-        Grid.SetColumn(prefixBlock, 0);
+        Grid.SetColumn(prefixPanel, 0);
         Grid.SetColumn(titleBlock, 1);
-        grid.Children.Add(prefixBlock);
+        grid.Children.Add(prefixPanel);
         grid.Children.Add(titleBlock);
 
         return grid;
     }
+
+    /// <summary>
+    /// Kaydın takvim rengini kutuda kullanılabilir hâle getirir. Google'ın koyu
+    /// renkleri (koyu mor, koyu yeşil) kutunun koyu zemininde okunmuyor;
+    /// yeterince aydınlanana kadar beyaza doğru karıştırıyoruz. Rengi olmayan
+    /// kayıtlar eski gri ön ek rengine düşer.
+    /// </summary>
+    private static Brush AccentBrush(System.Drawing.Color source)
+    {
+        if (source.A == 0)
+        {
+            return PrefixBrush;
+        }
+
+        var color = Color.FromRgb(source.R, source.G, source.B);
+
+        for (int i = 0; i < 6 && Luminance(color) < MinAccentLuminance; i++)
+        {
+            color = Color.FromRgb(
+                (byte)(color.R + ((255 - color.R) * 0.25)),
+                (byte)(color.G + ((255 - color.G) * 0.25)),
+                (byte)(color.B + ((255 - color.B) * 0.25)));
+        }
+
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    private static double Luminance(Color c)
+        => ((0.2126 * c.R) + (0.7152 * c.G) + (0.0722 * c.B)) / 255.0;
 
     /// <summary>
     /// Başlıktaki boşlukları tekleştirir. Google'dan gelen başlıklarda sekme ve

@@ -195,9 +195,11 @@ internal sealed class CalendarPainter : IDisposable
         Theme theme, StringFormat format, float scale)
     {
         // Tatiller nokta üretmez; kırmızı rakam zaten bunu anlatıyor.
+        // Tamamlanmış görevler kendi renklerini değil, pasif günlerin grisini
+        // alır: bitmiş bir iş göz ucuyla bakıldığında geri planda kalsın.
         var colors = content.Entries
             .Where(e => e.Kind != EntryKind.Holiday)
-            .Select(e => e.DotColor)
+            .Select(e => e.Completed ? theme.Muted : e.DotColor)
             .ToList();
 
         if (colors.Count == 0)

@@ -326,14 +326,26 @@ Proje aşama aşama geliştiriliyor.
 
 ## Bilinen sınır: yinelenen görevler
 
-Google Takvim'de haftalık/aylık **yinelenen bir görev** oluşturduğunuzda, Google Görevler
-API'si bu görevin yalnızca sıradaki kopyasını veriyor; ileri tarihli kopyaları hiç
-döndürmüyor. Bu yüzden tarayıcıda gördüğünüz "her cuma Duruşma Kontrol" gibi görevler
-masaüstü takviminde yalnızca en yakın tarihte görünür.
+Google Takvim'de **yinelenen bir görev** oluşturduğunuzda, Google Görevler API'si o görevin
+yalnızca *tek* kaydını veriyor: en son kopyayı. İleri tarihli kopyalar API'de hiç yok, üstelik
+kaydın içinde yineleme kuralı da bulunmuyor. Tarayıcıdaki Google Takvim ileri tarihleri kendi
+içinde hesaplayıp çiziyor; dışarıdan bir uygulamanın buna erişimi yok.
 
-Bu, Kalender'in değil Google'ın API'sinin sınırı: Calendar API görevleri etkinlik olarak da
-vermiyor (yalnızca `default`, `focusTime` gibi türler dönüyor), o yüzden başka bir kaynaktan
-alma imkânı yok. Etkinlikler ve yinelenmeyen görevler her zaman eksiksiz görünür.
+Somut örnek (7 Eylül 2026'da bu hesapta ölçüldü): "Toz torbası değiş." görevinin API'deki tek
+kaydı `due: 2026-09-06`, `status: completed`. Tarayıcıda aynı görev 27 Eylül'de de görünüyor.
+API yanıtında `recurrence` benzeri hiçbir alan yok:
+
+```json
+{ "title": "Toz torbası değiş.", "status": "completed",
+  "due": "2026-09-06T00:00:00.000Z", "completed": "2026-09-06T19:41:28.323Z", "hidden": true }
+```
+
+Calendar API de yardımcı olmuyor: görevleri etkinlik olarak döndürmüyor (yalnızca `default`,
+`focusTime` gibi türler geliyor). Yani bu, Kalender'in değil Google'ın sınırı.
+
+**Ne yapılabilir?** Tekrar eden bir işin masaüstünde her seferinde görünmesini istiyorsanız
+onu görev yerine **yinelenen etkinlik** olarak kurun; etkinliklerin bütün kopyaları API'den
+eksiksiz geliyor. Etkinlikler ve yinelenmeyen görevler her zaman tam görünür.
 
 ## Takvim ekrana nasıl çiziliyor?
 
@@ -356,6 +368,22 @@ bunu fark etmesinin bir yolu da yok, her adım başarılı görünüyor. Duvar k
 Windows'un desteklediği yol: her sürümde çalışıyor.
 
 ## Sürüm geçmişi
+
+### 1.3.0
+
+- **Tamamlanmış görevler artık görünüyor.** Google Görevler API'si tamamlanan görevleri
+  "gizli" işaretlediği için Kalender onları hiç almıyordu; oysa Google Takvim gösteriyor.
+  Artık `showCompleted` + `showHidden` ile isteniyorlar ve **gri** çiziliyorlar: gün
+  altındaki noktacık pasif günlerin grisinde, gün kutusunda satırın tamamı gri.
+- **Gün kutusunda renk.** Sol taraftaki "Tüm gün" / "11:30" / "Görev" ön eki artık kaydın
+  takvimdeki rengini taşıyor ve yarı kalın yazılıyor. Sonundaki nokta bir metin karakteri
+  değil, gerçek bir yuvarlak: biraz daha büyük ve aynı renkte. Böylece kutudaki satırla gün
+  altındaki noktacık gözle eşleşiyor.
+- **Ön ek hizası.** Aynı günde "Tüm gün" ile "11:30" buluştuğunda sütun en uzun metne göre
+  genişliyor ve kısa saat sola yapışık, boşlukta asılı duruyordu. Artık yuvarlaklar her
+  satırda aynı düşey çizgide, metin de kalan yerin ortasında.
+- Görevlerin takvim etkinliği olarak ikinci kez görünmesi (aynı gün, aynı başlık) zaten
+  ayıklanıyordu; tamamlanmış görevler de gelince bu ayıklama onlar için de çalışıyor.
 
 ### 1.2.0
 

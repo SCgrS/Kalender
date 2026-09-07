@@ -164,6 +164,7 @@ internal sealed class CalendarDataService
                 Kind = EntryKind.Task,
                 Title = task.Title,
                 DotColor = dot,
+                Completed = task.Completed,
             });
         }
     }

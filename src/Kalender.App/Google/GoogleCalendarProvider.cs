@@ -556,9 +556,14 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 string url = $"{TasksBase}/lists/{Uri.EscapeDataString(list.Id)}/tasks"
                     + $"?dueMin={Uri.EscapeDataString(dueMin)}&dueMax={Uri.EscapeDataString(dueMax)}"
                     + "&maxResults=100"
+                    // Tamamlanmış görevler de isteniyor: Google Takvim onları
+                    // gösteriyor, Kalender de göstersin (gri olarak). Tamamlanan
+                    // bir görev Google'da "hidden" işaretlendiği için showHidden
+                    // olmadan hiç gelmiyor.
+                    + "&showCompleted=true&showHidden=true"
                     + (updatedMin is null
-                        ? "&showCompleted=false&showHidden=true&showDeleted=false"
-                        : "&showCompleted=true&showHidden=true&showDeleted=true"
+                        ? "&showDeleted=false"
+                        : "&showDeleted=true"
                           + $"&updatedMin={Uri.EscapeDataString(Rfc3339(updatedMin.Value.UtcDateTime))}")
                     + "&fields=" + Uri.EscapeDataString("items(id,title,due,status,deleted,hidden),nextPageToken")
                     + Page(pageToken);
@@ -583,13 +588,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
                     string key = item.Id + "@" + list.Id;
 
-                    // "hidden" burada eleme ölçütü değil: Google, yinelenen bir
-                    // görevin ileri tarihli kopyalarını gizli işaretleyebiliyor.
-                    // Tamamlanmışlığa "status" alanından karar veriyoruz.
-                    bool gone = item.Deleted == true
-                        || string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase);
-
-                    if (gone || !TryParseDue(item.Due, out DateOnly due))
+                    // "hidden" eleme ölçütü değil: Google tamamlanan görevleri
+                    // ve yinelenen görevlerin kopyalarını gizli işaretliyor.
+                    // Tamamlanmışlığa "status" alanından karar veriyoruz ve
+                    // eleme değil, renk sebebi sayıyoruz.
+                    if (item.Deleted == true || !TryParseDue(item.Due, out DateOnly due))
                     {
                         byId.Remove(key);
                         continue;
@@ -601,6 +604,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                         ListId = list.Id,
                         Title = (item.Title ?? string.Empty).Trim(),
                         Due = due,
+                        Completed = string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase),
                     };
                 }
 
@@ -617,7 +621,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
         // Google Görevler API'si yinelenen görevlerin ileri tarihli kopyalarını
         // her zaman vermiyor; hangi günlerin geldiğini görebilmek için yazıyoruz.
-        Log.Debug($"Görevler ({from:dd.MM}-{to:dd.MM}): {bundle.Tasks.Count} açık görev · "
+        Log.Debug($"Görevler ({from:dd.MM}-{to:dd.MM}): {bundle.Tasks.Count} görev "
+            + $"({bundle.Tasks.Count(t => t.Completed)} tamamlanmış) · "
             + string.Join(", ", bundle.Tasks.Select(t => t.Due.ToString("dd.MM"))));
     }
 

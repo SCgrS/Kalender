@@ -54,6 +54,12 @@ internal sealed class ProviderTask
     public string Title { get; set; } = string.Empty;
 
     public DateOnly Due { get; set; }
+
+    /// <summary>
+    /// Görev tamamlandı mı? Tamamlanmış görevler de gösteriliyor (Google Takvim
+    /// de gösteriyor), ama gri çiziliyorlar.
+    /// </summary>
+    public bool Completed { get; set; }
 }
 
 /// <summary>Sağlayıcıdan gelen verinin tamamı; önbelleğe de bu yazılır.</summary>

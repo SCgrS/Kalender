@@ -31,6 +31,12 @@ internal sealed class DayEntry
     /// <summary>Gün altındaki noktacığın rengi. Tatiller nokta üretmez.</summary>
     public Color DotColor { get; init; }
 
+    /// <summary>
+    /// Tamamlanmış bir görev mi? Öyleyse hem noktacık hem gün kutusundaki
+    /// satır, kendi renginin yerine soluk griyle çiziliyor.
+    /// </summary>
+    public bool Completed { get; init; }
+
     /// <summary>Aynı gün içinde sıralama anahtarı.</summary>
     public (int, int) SortKey => ((int)Kind, Start.HasValue ? (Start.Value.Hour * 60) + Start.Value.Minute : 0);
 }
