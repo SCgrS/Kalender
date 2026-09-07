@@ -21,6 +21,9 @@ internal sealed record PopupMenuItem(uint Id, string Text, bool Enabled = true, 
 /// </summary>
 internal static class PopupMenu
 {
+    /// <summary>Windows'un menü pencerelerinin sınıf adı.</summary>
+    private const string MenuClassName = "#32768";
+
     /// <summary>
     /// Menüyü ekran koordinatında açar ve seçilen satırın kimliğini döndürür.
     /// Hiçbir şey seçilmezse 0 döner.
@@ -65,6 +68,9 @@ internal static class PopupMenu
             // Menünün dışına tıklanınca (ve Esc'e basınca) kapanabilmesi için
             // sahibi pencerenin ön planda olması şart. Aksi hâlde menü çiziliyor
             // ama girdi almıyor: ne tıklama ne Esc kapatıyor, ekranda asılı kalıyor.
+            // Kabuğun (ya da başka bir uygulamanın) açık menüsü varsa önce onu
+            // kapatıyoruz; yoksa iki menü üst üste kalıyor.
+            CloseOtherMenus();
             BringToForeground(owner);
 
             uint secim = NativeMethods.TrackPopupMenuEx(
@@ -80,6 +86,37 @@ internal static class PopupMenu
         finally
         {
             NativeMethods.DestroyMenu(menu);
+        }
+    }
+
+    /// <summary>
+    /// Başka bir uygulamanın açık menüsünü kapatır.
+    ///
+    /// Takvimin üzerindeki sağ tıklamayı alt düzey kancayla yutuyoruz. Kabuk o
+    /// tıklamayı hiç görmediği için, o sırada açık duran masaüstü menüsü
+    /// kendiliğinden kapanmıyordu: Windows'un menüsü solda, Kalender'inki sağda,
+    /// ikisi birden ekranda kalıyordu.
+    ///
+    /// Menü penceresine WM_CLOSE gönderiyoruz. WM_CANCELMODE denendi ve bu
+    /// yapıda menüyü kapatmıyor; WM_CLOSE kapatıyor. PostMessage kullanılıyor,
+    /// böylece kabuk yanıt vermese bile burada beklemiyoruz.
+    /// </summary>
+    private static void CloseOtherMenus()
+    {
+        try
+        {
+            IntPtr menu = IntPtr.Zero;
+            while ((menu = NativeMethods.FindWindowEx(IntPtr.Zero, menu, MenuClassName, null)) != IntPtr.Zero)
+            {
+                if (NativeMethods.IsWindowVisible(menu))
+                {
+                    NativeMethods.PostMessage(menu, NativeMethods.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Açık menüler kapatılamadı: " + ex.Message);
         }
     }
 

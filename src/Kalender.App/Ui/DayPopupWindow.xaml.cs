@@ -43,22 +43,29 @@ public partial class DayPopupWindow : Window
     /// </summary>
     private const double MinAccentLuminance = 0.34;
 
-    private static readonly Color CompletedColor = Color.FromRgb(0x9A, 0xA3, 0xAE);
+    /// <summary>
+    /// Rengi olmayan ön eklerin ve tamamlanmış kayıtların varsayılan grisi.
+    /// Takvimdeki pasif gün grisiyle aynı ton; <see cref="MutedColor"/> ile
+    /// takvimin o anki temasından gelen renge güncelleniyor.
+    /// </summary>
+    private static readonly Color DefaultMuted = Color.FromRgb(0x8D, 0x8F, 0x93);
 
-    private static readonly Brush PrefixBrush = new SolidColorBrush(CompletedColor);
-    private static readonly Brush CompletedBrush = new SolidColorBrush(CompletedColor);
+    private static readonly Brush PrefixBrush = new SolidColorBrush(DefaultMuted);
     private static readonly Brush TitleBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xED));
     private static readonly Brush HolidayBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0x6C, 0x6C));
     private static readonly Brush SeparatorBrush = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
 
     private System.Drawing.Rectangle _anchor;
 
+    /// <summary>Tamamlanmış kayıtların fırçası; <see cref="MutedColor"/> ile değişir.</summary>
+    private Brush _completedBrush = new SolidColorBrush(DefaultMuted);
+
     public DayPopupWindow()
     {
         InitializeComponent();
 
         PrefixBrush.Freeze();
-        CompletedBrush.Freeze();
+        _completedBrush.Freeze();
         TitleBrush.Freeze();
         HolidayBrush.Freeze();
         SeparatorBrush.Freeze();
@@ -78,6 +85,16 @@ public partial class DayPopupWindow : Window
                 | NativeMethods.WS_EX_NOACTIVATE
                 | NativeMethods.WS_EX_TRANSPARENT
                 | NativeMethods.WS_EX_TOOLWINDOW));
+    }
+
+    /// <summary>
+    /// Tamamlanmış kayıtların rengi. Takvimin kendi pasif gün grisi veriliyor;
+    /// böylece gün altındaki gri noktacıkla kutudaki gri satır birebir aynı
+    /// tonda oluyor. İki ayrı gri yan yana gelince göze batıyordu.
+    /// </summary>
+    internal System.Drawing.Color MutedColor
+    {
+        set => _completedBrush = AccentBrush(value);
     }
 
     /// <summary>Kutuyu verilen günün içeriğiyle, verilen hücrenin yanında gösterir.</summary>
@@ -172,7 +189,7 @@ public partial class DayPopupWindow : Window
         string prefix = entry.Start?.ToString("HH\\:mm") ?? "Tüm gün";
 
         Brush accent = entry.Completed
-            ? CompletedBrush
+            ? _completedBrush
             : AccentBrush(entry.DotColor);
 
         var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
@@ -227,7 +244,7 @@ public partial class DayPopupWindow : Window
         {
             Text = Temizle(entry.Title),
             FontSize = TitleFontSize,
-            Foreground = entry.Completed ? CompletedBrush : TitleBrush,
+            Foreground = entry.Completed ? _completedBrush : TitleBrush,
             VerticalAlignment = VerticalAlignment.Center,
             // Başlığın tamamı görünsün; sığmazsa alt satıra sarksın.
             TextWrapping = TextWrapping.Wrap,

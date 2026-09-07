@@ -3,6 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Globalization;
 using Kalender.Calendar;
+using Kalender.Core;
 using Kalender.Settings;
 
 namespace Kalender.Rendering;
@@ -155,18 +156,24 @@ internal sealed class CalendarPainter : IDisposable
                     radius * 2f);
             }
 
+            string dayText = cell.Date.Day.ToString(CultureInfo.InvariantCulture);
+
             Color color = ResolveDayColor(cell, content, theme, appearance, isToday);
             using (var brush = new SolidBrush(color))
             {
                 float y = cell.Center.Y + (0.35f * font.Size) - ascent;
-                g.DrawString(
-                    cell.Date.Day.ToString(CultureInfo.InvariantCulture),
-                    font, brush, new PointF(cell.Center.X, y), format);
+
+                // Rakamı boyanan kısmına göre ortalıyoruz. GDI+ yazıyı ilerleme
+                // genişliğine göre ortalıyor; "1" rakamının yan boşluğu geniş
+                // olduğu için "17" hücrede ortalıyken gözle sağa kaçık duruyor
+                // ve altındaki noktacıklarla aynı eksende görünmüyordu.
+                float kayma = InkShift(dayText, font, format);
+                g.DrawString(dayText, font, brush, new PointF(cell.Center.X - kayma, y), format);
             }
 
             if (content is not null && content.Entries.Count > 0)
             {
-                DrawDots(g, cell, content, plusFont, theme, format, scale);
+                DrawDots(g, cell, content, plusFont, theme, scale);
             }
         }
     }
@@ -192,7 +199,7 @@ internal sealed class CalendarPainter : IDisposable
     }
 
     private void DrawDots(Graphics g, DayCell cell, DayContent content, Font plusFont,
-        Theme theme, StringFormat format, float scale)
+        Theme theme, float scale)
     {
         // Tatiller nokta üretmez; kırmızı rakam zaten bunu anlatıyor.
         // Tamamlanmış görevler kendi renklerini değil, pasif günlerin grisini
@@ -212,11 +219,16 @@ internal sealed class CalendarPainter : IDisposable
         int shown = colors.Count <= 4 ? colors.Count : 3;
         int overflow = colors.Count - shown;
 
+        using var solaYasli = TypographicFormat(StringAlignment.Near);
+
         string? plusText = overflow > 0 ? $"+{overflow}" : null;
         float plusWidth = 0f;
+        float plusInkLeft = 0f;
         if (plusText is not null)
         {
-            plusWidth = g.MeasureString(plusText, plusFont, PointF.Empty, format).Width + gap;
+            RectangleF ink = InkBounds(plusText, plusFont, solaYasli);
+            plusInkLeft = ink.X;
+            plusWidth = ink.Width + gap;
         }
 
         float totalWidth = (shown * diameter) + ((shown - 1) * gap) + plusWidth;
@@ -232,9 +244,51 @@ internal sealed class CalendarPainter : IDisposable
 
         if (plusText is not null)
         {
+            // Sola yaslı çiziyoruz: son noktacıktan sonraki boşluğun bittiği yer,
+            // yazının boyanan ilk pikselinin geleceği yer. Ortalı çizip ilerleme
+            // genişliğine güvenmek kümeyi birkaç piksel kaydırıyordu.
             using var brush = new SolidBrush(theme.Muted);
             float ty = cell.Center.Y + (DotsOffsetY * scale) + (0.35f * plusFont.Size) - Ascent(plusFont);
-            g.DrawString(plusText, plusFont, brush, new PointF(x + (plusWidth - gap) / 2f, ty), format);
+            g.DrawString(plusText, plusFont, brush, new PointF(x - plusInkLeft, ty), solaYasli);
+        }
+    }
+
+    /// <summary>
+    /// Ortalanarak çizilen bir yazının boyanan kısmının, ilerleme kutusunun
+    /// ortasından ne kadar kaydığı (artı değer sağa kayma).
+    /// </summary>
+    private float InkShift(string text, Font font, StringFormat format)
+    {
+        RectangleF ink = InkBounds(text, font, format);
+        return ink.Width > 0 ? ink.X + (ink.Width / 2f) : 0f;
+    }
+
+    /// <summary>
+    /// Yazının gerçekten boyanan sınırları, çizim noktasına göre.
+    ///
+    /// Ölçüm için <see cref="GraphicsPath"/> kullanılıyor: glif dış hatlarını
+    /// verdiği için sonuç boyanan piksellerle örtüşüyor.
+    /// <see cref="Graphics.MeasureString(string, Font)"/> ilerleme genişliğini,
+    /// <see cref="Graphics.MeasureCharacterRanges"/> ise karakter kutusunu
+    /// veriyor; ikisi de yan boşlukları içerdiği için hizalamaya yaramıyor.
+    /// </summary>
+    private RectangleF InkBounds(string text, Font font, StringFormat format)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return RectangleF.Empty;
+        }
+
+        try
+        {
+            using var path = new GraphicsPath();
+            path.AddString(text, _family, (int)font.Style, font.Size, PointF.Empty, format);
+            return path.PointCount == 0 ? RectangleF.Empty : path.GetBounds();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Yazı sınırları ölçülemedi: " + ex.Message);
+            return RectangleF.Empty;
         }
     }
 

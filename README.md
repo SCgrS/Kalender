@@ -373,6 +373,23 @@ Windows'un desteklediği yol: her sürümde çalışıyor.
 
 ## Sürüm geçmişi
 
+### 1.4.1
+
+- **Gün rakamı artık gerçekten ortalı.** GDI+ yazıyı ilerleme genişliğine göre
+  ortalıyor; "1" rakamının yan boşluğu geniş olduğu için "17" gibi günler hücrede
+  birkaç piksel sağa kaçıyor ve altındaki noktacıklarla aynı eksende durmuyordu.
+  Rakam artık glif dış hatlarından ölçülüp boyanan kısmına göre ortalanıyor.
+  Aynı ölçüm "+2" için de kullanılıyor.
+- **Gri tonlar eşitlendi.** Gün kutusunda tamamlanmış kayıtlar mavimsi bir gri
+  (#9AA3AE), takvimde ise pasif gün grisi kullanılıyordu; yan yana gelince iki
+  ayrı gri göze batıyordu. Kutu artık takvimin kendi grisini kullanıyor.
+- **Kabuğun açık menüsü kapanıyor.** Masaüstüne sağ tıklayıp Windows menüsünü
+  açtıktan sonra takvime sağ tıklayınca iki menü birden ekranda kalıyordu:
+  takvim üzerindeki sağ tıklamayı alt düzey kancayla yuttuğumuz için kabuk o
+  tıklamayı hiç görmüyor ve menüsünü kapatmıyordu. Kalender kendi menüsünü
+  açmadan önce açık menüleri kapatıyor. (WM_CANCELMODE bu yapıda menüyü
+  kapatmıyor, WM_CLOSE kapatıyor.)
+
 ### 1.4.0
 
 - **Görevlerde saat.** Gün kutusunda görevlerin başında artık "Görev" değil, varsa
