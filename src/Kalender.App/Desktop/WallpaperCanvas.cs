@@ -95,9 +95,7 @@ internal sealed class WallpaperCanvas
             EnsureImportQuality();
 
             // Görüntüler ekranın tam piksel ölçüsünde üretiliyor; "Doldur"
-            // yerleşimiyle bire bir oturuyorlar. Resim kipi kapalıysa (düz renk
-            // duvar kağıdı) hiçbir şey görünmez, o yüzden açıyoruz.
-            wallpaper.Enable(true);
+            // yerleşimiyle bire bir oturuyorlar.
             wallpaper.SetPosition(DesktopWallpaperPosition.Fill);
 
             IReadOnlyList<string> devicePaths = ReadDevicePaths(wallpaper);
@@ -126,6 +124,13 @@ internal sealed class WallpaperCanvas
 
             if (written > 0)
             {
+                // Resim kipi kapalıysa (kullanıcı düz renk duvar kağıdı
+                // kullanıyorsa) yazdığımız görüntü ekrana hiç çıkmaz, o yüzden
+                // açıyoruz. Bu çağrı ilk görüntü yazıldıktan SONRA yapılmalı:
+                // ortada hiç resim yokken kabuk açacak dosyayı bulamıyor ve
+                // 0x80070002 ile hata veriyor.
+                WallpaperService.EnableImages(wallpaper);
+
                 HasPainted = true;
                 CleanUnusedFiles();
             }

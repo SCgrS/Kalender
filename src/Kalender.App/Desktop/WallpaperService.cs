@@ -50,6 +50,27 @@ internal static class WallpaperService
     private const string DesktopKey = @"Control Panel\Desktop";
     private const string QualityValue = "JPEGImportQuality";
 
+    /// <summary>
+    /// Duvar kağıdında resim kipini açar.
+    ///
+    /// Dikkat: bu çağrı ancak ortada gerçekten bir duvar kağıdı dosyası varken
+    /// çalışır. Kullanıcı düz renk kullanıyorsa (kayıtlı bir resim yolu yoksa)
+    /// kabuk açacak dosyayı bulamıyor ve 0x80070002 ile hata veriyor. Bu yüzden
+    /// çağrı her zaman resim yazıldıktan sonra yapılır ve başarısızlığı
+    /// ölümcül sayılmaz: görüntü zaten yerine kondu.
+    /// </summary>
+    internal static void EnableImages(IDesktopWallpaper wallpaper)
+    {
+        try
+        {
+            wallpaper.Enable(true);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Duvar kağıdı resim kipi açılamadı: " + ex.Message);
+        }
+    }
+
     /// <summary>İlk değişiklikten önce mevcut durumu bir kez yedekler.</summary>
     internal static void EnsureBackup(IDesktopWallpaper wallpaper)
     {
@@ -144,7 +165,6 @@ internal static class WallpaperService
             }
             else
             {
-                wallpaper.Enable(true);
                 wallpaper.SetPosition((DesktopWallpaperPosition)backup.Position);
 
                 if (backup.PerMonitor.Count > 0)
@@ -161,6 +181,9 @@ internal static class WallpaperService
                 {
                     wallpaper.SetWallpaper(null, backup.Wallpaper);
                 }
+
+                // Resim kipi ancak eski yol geri konduktan sonra açılabiliyor.
+                EnableImages(wallpaper);
             }
 
             RestoreImportQuality(backup.JpegImportQuality);
