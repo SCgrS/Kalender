@@ -1,214 +1,136 @@
 # Kalender
 
-Windows masaüstünde, doğrudan duvar kağıdına işlenen aylık takvim. Takvim duvar kağıdının
-gerçekten bir parçası olur: üzerine klasör koyabilir, tıklayabilir, sürükleyerek çoklu seçim
-yapabilirsiniz — takvim hiçbir şeye karışmaz, çünkü ortada bir pencere yoktur.
+Kalender, Windows masaüstünde doğrudan duvar kağıdına işlenen aylık bir takvimdir. Zemin ve
+takvim tek bir görüntüde birleştirilip Windows'un kendi duvar kağıdı olarak uygulanır; ortada
+bir pencere olmadığı için masaüstünde klasör açmak, simge sürüklemek, çoklu seçim yapmak
+hiçbir şekilde etkilenmez.
 
-Günlerin üzerine gelince, Windows'un kendi ipucu balonları tarzında küçük bir kutu açılır ve
-o günün Google Takvim etkinlikleri ile görevleri listelenir.
+Fareyle bir günün üzerinde kısa süre beklediğinizde o günün Google Takvim etkinlikleri ile
+görevleri küçük bir kutuda listelenir. Google hesabına yalnızca okuma izniyle bağlanılır.
 
 ![Ekran görüntüsü](docs/ekran-goruntusu.png)
 
 ## Ne yapar
 
-- Zemini ve aylık takvimi tek bir görüntüde birleştirip Windows duvar kağıdı olarak uygular;
-  ayrı bir pencere açmaz, masaüstünün çizimine hiç karışmaz.
-- Pazar günleri, isteğe bağlı olarak cumartesiler ve resmi tatiller kırmızı gösterilir.
-- Gün rakamının altında, o güne düşen etkinlikler için küçük renkli noktacıklar çıkar.
-- Fareyle bir günün üzerinde kısa süre beklediğinizde o günün etkinlikleri ve görevleri listelenir.
-- Zemin düz renk ya da kendi fotoğrafınız olabilir; her monitör için ayrı ayarlanabilir.
+- Zemini ve aylık takvimi tek görüntüde birleştirip Windows duvar kağıdı olarak uygular.
+- Pazar günleri, isteğe bağlı olarak cumartesiler ve Türkiye resmi tatilleri kırmızı gösterilir.
+- Gün rakamının altında, o güne düşen etkinlik ve görevler için renkli noktacıklar çıkar.
+- Bir günün üzerinde beklediğinizde o günün tatili, etkinlikleri ve görevleri listelenir.
+- Takvimin üzerine sağ tıklayınca güne gitme, ay değiştirme ve yeni kayıt açma menüsü çıkar.
+- Zemin düz renk ya da kendi fotoğrafınız olabilir; konum, boyut ve fotoğraf her monitör için
+  ayrı ayarlanır.
 - Kalender kapalıyken duvar kağıdında takvimsiz zemin kalır; ekran farklı görünmez.
-
-## Gereksinimler
-
-- Windows 10 (20H2 ve üzeri) veya Windows 11
-- 64 bit (x64) işlemci
-- Kurulum için yönetici hakkı **gerekmez**
 
 ## Kurulum
 
 ### [⬇ Kalender-Kurulum.exe indir](https://github.com/SCgrS/Kalender/releases/latest/download/Kalender-Kurulum.exe)
 
-Tek dosya, 63 MB. İçinde çalışması için gereken her şey var; ayrıca .NET kurmanız gerekmez.
+Tek dosya, 63 MB. Çalışması için gereken her şey içinde; ayrıca .NET kurmanız gerekmez.
+Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit; yönetici hakkı gerekmez.
 
 > Depo özel (private) olduğu için indirme bağlantısı yalnızca GitHub'da oturumu açık olan
 > yetkili hesaplarda çalışır. Tüm sürümler: [Sürümler sayfası](https://github.com/SCgrS/Kalender/releases)
 
 1. Yukarıdaki bağlantıya tıklayıp dosyayı indirin.
 2. İndirilen `Kalender-Kurulum.exe` dosyasına **çift tıklayın**.
-3. Dosya imzalı olmadığı için Windows SmartScreen bir uyarı gösterebilir:
-   **Daha fazla bilgi** yazısına tıklayın, sonra çıkan **Yine de çalıştır** düğmesine basın.
+3. Dosya imzalı olmadığı için Windows SmartScreen uyarı gösterebilir: **Daha fazla bilgi**
+   yazısına tıklayın, sonra **Yine de çalıştır** düğmesine basın.
 4. Açılan pencerede **Kur**'a basın. Kurulum birkaç saniye sürer, ardından Kalender başlar.
 
-Kurulum, yönetici hakkı istemez ve sistem klasörlerine hiçbir şey yazmaz:
+Kurulum sistem klasörlerine hiçbir şey yazmaz:
 
 - Uygulama `%LOCALAPPDATA%\Kalender\app` klasörüne kopyalanır.
 - Başlat menüsüne **Kalender** kısayolu eklenir.
-- Windows açılışında kendiliğinden başlaması için yalnızca kendi kullanıcı kaydınıza
-  (`HKCU\...\Run`) yazılır.
-- Windows'un "Uygulamalar ve özellikler" listesine kaydedilir, oradan da kaldırabilirsiniz.
-
-Ayarlarınız ve yerel veri kopyanız `%LOCALAPPDATA%\Kalender` altında, uygulama klasörünün
-**dışında** durur; güncelleme yaptığınızda korunur.
+- Windows açılışında başlaması için yalnızca kendi kullanıcı kaydınıza (`HKCU\...\Run`) yazılır.
+- Windows'un **Uygulamalar** listesine kaydedilir; oradan da kaldırabilirsiniz.
 
 ### Güncelleme
 
-Yeni sürümün `Kalender-Kurulum.exe` dosyasını indirip çalıştırmanız yeterli. Çalışan Kalender
-kendiliğinden kapatılır, dosya değiştirilir, ayarlarınıza dokunulmaz.
+Kalender kendini otomatik güncellemez. Yeni sürümün `Kalender-Kurulum.exe` dosyasını indirip
+çalıştırın, açılan pencerede **Güncelle**'ye basın. Çalışan Kalender kendiliğinden kapatılır,
+dosya değiştirilir; ayarlarınız uygulama klasörünün dışında durduğu için korunur.
 
 ## Google Takvim ve Görevler bağlantısı
 
-Kalender, Google hesabınıza **yalnızca okuma** izniyle bağlanır; etkinlik veya görev eklemez,
-silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur.
-
-Bunun için kendi Google Cloud istemci kimliğinizi oluşturmanız gerekiyor. Bir kerelik bir
-işlem, yaklaşık beş dakika sürüyor. Aynı adımlar Kalender'in Ayarlar penceresinde de yazılı.
+Kalender Google hesabınıza **yalnızca okuma** izniyle bağlanır; etkinlik veya görev eklemez,
+silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur. Bunun için
+kendi Google Cloud istemci kimliğinizi oluşturmanız gerekir (bir kerelik, yaklaşık beş dakika).
+Aynı adımlar Ayarlar penceresinde **Client ID nasıl alınır?** başlığı altında da yazılıdır.
 
 ### 1. Google Cloud projesi oluşturun
 
-1. [console.cloud.google.com](https://console.cloud.google.com) adresine kendi Google
-   hesabınızla girin.
-2. Sayfanın üstündeki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu)
-   tıklayın, açılan pencerede **Yeni proje**'ye basın.
-3. Proje adına `Kalender` yazıp **Oluştur**'a basın. Proje oluşunca yine üstteki seçiciden
-   bu projeyi seçin.
+1. [console.cloud.google.com](https://console.cloud.google.com) adresine Google hesabınızla girin.
+2. Üstteki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu) tıklayın, **Yeni
+   proje**'ye basın, ada `Kalender` yazıp **Oluştur**'a basın. Sonra seçiciden bu projeyi seçin.
 
-### 2. Gerekli iki API'yi açın
+### 2. İki API'yi açın
 
-1. Sol üstteki menüden **API'ler ve Hizmetler > Kitaplık**'a girin.
-2. Arama kutusuna `Google Calendar API` yazın, çıkan sonuca tıklayın, **Etkinleştir**'e basın.
-3. Kitaplığa geri dönüp bu kez `Google Tasks API` arayın ve onu da **Etkinleştir**'e basın.
+1. Sol menüden **API'ler ve Hizmetler > Kitaplık**'a girin.
+2. Arama kutusuna `Google Calendar API` yazın, sonuca tıklayın, **Etkinleştir**'e basın.
+3. Kitaplığa dönüp `Google Tasks API` arayın, onu da **Etkinleştir**'e basın.
 
 ### 3. İzin ekranını hazırlayın
 
-Google bu bölümü yeniledi; artık adı **Google Auth Platform**. Sol menüden
-**API'ler ve Hizmetler > OAuth izin ekranı**'na girdiğinizde bu sayfaya yönlendirilirsiniz.
+Sol menüden **API'ler ve Hizmetler > OAuth izin ekranı**'na girin; Google sizi **Google Auth
+Platform** sayfasına yönlendirir.
 
-1. Sayfanın ortasındaki **Get started** (Başlayın) düğmesine basın.
-2. **App Information**: uygulama adına `Kalender`, destek e-postası olarak kendi adresinizi
-   seçin → **Next**.
-3. **Audience**: **External** (Harici) → **Next**.
-4. **Contact Information**: kendi e-posta adresinizi yazın → **Next**.
-5. **Finish**: kullanıcı verisi ilkesini kabul eden kutuyu işaretleyin → **Continue** →
-   **Create**.
-6. Sol menüden **Audience**'a girip aşağıdaki **Test users** bölümünde **+ Add users** ile
-   kendi e-posta adresinizi ekleyin ve kaydedin. Bu önemli: eklemezseniz Google onay
-   ekranında sizi reddeder.
+1. **Get started**'a basın.
+2. **App Information**: uygulama adı `Kalender`, destek e-postası kendi adresiniz → **Next**.
+3. **Audience**: **External** → **Next**. **Contact Information**: e-posta adresiniz → **Next**.
+4. **Finish**: ilkeyi kabul eden kutuyu işaretleyin → **Continue** → **Create**.
+5. Sol menüden **Audience**'a girin, **Test users** bölümünde **+ Add users** ile kendi
+   e-posta adresinizi ekleyip kaydedin. Eklemezseniz Google onay ekranında sizi reddeder.
 
 ### 4. İstemci kimliğini oluşturun
 
-1. Sol menüden **Clients** (İstemciler) → **+ Create client**.
-2. Application type (Uygulama türü): **Desktop app** (Masaüstü uygulaması).
-3. Ada `Kalender` yazıp **Create**'e basın.
-4. Çıkan pencerede **Client ID** ve **Client secret** yazar. İkisini de kopyalayın
-   (pencereyi kapatsanız bile Clients listesinden yeniden açabilirsiniz).
-
-> Daha eski bir Google Cloud arayüzü görüyorsanız aynı işler **API'ler ve Hizmetler >
-> OAuth izin ekranı** ve **API'ler ve Hizmetler > Kimlik bilgileri > OAuth istemci kimliği**
-> altındadır.
+1. Sol menüden **Clients** → **+ Create client**.
+2. Application type: **Desktop app**. Ad: `Kalender` → **Create**.
+3. Çıkan pencerede **Client ID** ve **Client secret** yazar; ikisini de kopyalayın. Pencereyi
+   kapatsanız bile Clients listesinden yeniden açabilirsiniz.
 
 ### 5. Kalender'e yapıştırın
 
 1. Tepsi simgesine tıklayıp **Ayarlar**'ı açın, **Google Takvim ve Görevler** bölümüne inin.
-2. İki değeri ilgili kutulara yapıştırın.
-3. **Google'a bağlan**'a basın. Tarayıcıda Google onay ekranı açılır.
+2. İki değeri **İstemci kimliği (Client ID)** ve **İstemci gizli anahtarı (Client secret)**
+   kutularına yapıştırın.
+3. **Google'a bağlan**'a basın; tarayıcıda Google onay ekranı açılır.
 4. "Google bu uygulamayı doğrulamadı" uyarısı çıkarsa **Gelişmiş > Kalender'e git (güvenli
-   değil)** yolunu izleyin. Bu uyarı, uygulamanın Google tarafından incelenmemiş olmasından
-   kaynaklanır; kendi projenizde kendi hesabınızla çalıştığınız için beklenen bir durumdur.
-5. İzin verdikten sonra tarayıcıda "Kalender bağlandı" yazısını görünce sekmeyi
-   kapatabilirsiniz.
+   değil)** yolunu izleyin; uygulama Google'ca incelenmediği için bu uyarı beklenen bir durum.
+5. İzin verince tarayıcıda "Kalender bağlandı" yazısını görürsünüz; sekmeyi kapatabilirsiniz.
 
-Bağlandıktan sonra Ayarlar penceresinde hangi takvimlerin ve hangi görev listelerinin
-gösterileceğini, verinin ne sıklıkla yenileneceğini (30 saniye ile 24 saat arası) ve görev
-noktacıklarının rengini seçebilirsiniz.
-
-**Bağlantıyı kesmek için:** Ayarlar > Google bölümü > **Bağlantıyı kes**. Bu, bilgisayarınızdaki
-yetki dosyasını ve yerel veri kopyasını siler.
-
-### Verileriniz nerede duruyor?
-
-- Google yetki anahtarı `%LOCALAPPDATA%\Kalender\google-token.dat` dosyasında, Windows'un
-  DPAPI'siyle **yalnızca sizin kullanıcı hesabınızın çözebileceği** şekilde şifrelenmiş durur.
-- Etkinlik ve görev kopyası `%LOCALAPPDATA%\Kalender\cache\google.json` dosyasındadır ve
-  yalnızca görünen ayı kapsar.
-- İstemci kimliği ve gizli anahtar uygulamanın içine gömülü **değildir**; sizin projenize aittir.
+Bağlandıktan sonra aynı bölümde **Ne sıklıkla yenilensin?** (30 saniye – 24 saat),
+**Gösterilecek takvimler**, **Gösterilecek görev listeleri** ve **Görev noktacığı rengi**
+seçenekleri açılır. Bağlantıyı koparmak için **Bağlantıyı kes**: yetki dosyası ve yerel veri
+kopyası silinir.
 
 ## Ayarlar
 
-Tepsi (saatin yanındaki bildirim alanı) simgesine **tıklayın** ya da sağ tıklayıp
-**Ayarlar**'ı seçin. Kalender zaten açıkken `Kalender.exe`'yi tekrar çalıştırmak da
-ayarları açar.
+Tepsi (saatin yanındaki bildirim alanı) simgesine **tıklayın** ya da sağ tıklayıp **Ayarlar**'ı
+seçin. Kalender açıkken `Kalender.exe`'yi yeniden çalıştırmak da ayarları açar. Her değişiklik
+anında masaüstüne uygulanır; kaydetmeniz gerekmez.
 
-Yaptığınız her değişiklik anında masaüstüne yansır; "Tamam"a basmanız gerekmez.
+- **Zemin** — **Hazır renkler** (koyudan açığa sekiz renk), **Kendi rengim** (renk çarkı;
+  `#2E3238` gibi kodu elle de yazabilirsiniz) ya da **Fotoğraf seç…**. Fotoğrafta **Yerleşim**:
+  Kapla, Sığdır, Ortala, Döşe.
+- **Yazı** — **Yazı rengini zemine göre otomatik seç** (fotoğraf zeminde rengi siz seçersiniz),
+  **Cumartesi de pazar gibi kırmızı olsun**, **Takvimin arkasını karart (fotoğraf zeminde)**
+  kaydırıcısı.
+- **Takvim renkleri** — **Hafta günleri ve ay adı**, **Tatil ve hafta sonu günleri**, **Pasif
+  günler**, **Bugünün arkasındaki daire**. Hepsi **Otomatik** başlar; işareti kaldırınca renk
+  çarkı açılır. Gün altındaki noktacıklar buraya dahil değildir; renkleri Google'dan gelir.
+- **Resmi tatiller** — **Resmi tatilleri kırmızı göster**.
+- **Google Takvim ve Görevler** — yukarıdaki bölümde anlatıldı.
+- **Ekranlar** — **Tüm ekranlarda**, **Yalnız ana ekranda** ya da **Seçtiğim ekranlarda**
+  (**Bu ekranda göster** kutusu). Her ekran için **Takvimi taşı** (sürükleyip bırakın;
+  kenarlara ve ortaya yaklaşınca hizalanır, %80–150 boyut, Esc vazgeçer), **Boyut** ve
+  **Bu ekrana fotoğraf…**.
+- **Genel** — **Windows açılışında Kalender'i başlat**, **Takvimi Windows duvar kağıdına
+  işle** (kapatırsanız duvar kağıdınıza dokunulmaz ama takvim de görünmez), **Günlük
+  ayrıntısı** (Yalnız hatalar / Bilgi / Ayrıntılı) ve **Günlük klasörünü aç**, **Sürümler
+  sayfası**, **Kalender'i kaldır**.
 
-### Zemin
-
-- **Hazır renkler** — koyudan açığa sekiz renk. Birine tıklayın, hemen uygulanır.
-- **Kendi rengim** — renk çarkından ton ve doygunluk, yandaki şeritten parlaklık
-  seçilir. Renk kodunu (`#2E3238` gibi) elle de yazabilirsiniz.
-- **Fotoğraf** — kendi resminizi zemin yapar. Yerleşim seçenekleri: Kapla, Sığdır,
-  Ortala, Döşe.
-
-Seçtiğiniz zemin, takvimle birlikte tek bir görüntüde birleştirilip Windows duvar kağıdı
-olarak uygulanır — takvimin masaüstünde görünmesini sağlayan şey budur. Kalender'i
-kapattığınızda duvar kağıdında takvimsiz zemin kalır. Kalender'den önceki duvar kağıdınıza
-dönmek için tepsi menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
-
-### Yazı
-
-- **Yazı rengini zemine göre otomatik seç** — düz renk zeminde açık/koyu yazı
-  kendiliğinden seçilir. Fotoğraf zeminde otomatik seçim yapılamaz, rengi siz
-  belirlersiniz.
-- **Cumartesi de pazar gibi kırmızı olsun** — varsayılan olarak açık.
-- **Takvimin arkasını karart** — yalnızca fotoğraf zeminde. Yazılar okunmuyorsa
-  takvimin arkasına yumuşak bir gölge koyar.
-
-### Takvim renkleri
-
-Masaüstündeki takvimin dört yazı rengi ayrı ayrı seçilebilir. Hepsi **Otomatik**
-başlar; otomatikken renk zemine ve yazı rengine göre kendiliğinden hesaplanır
-(bugüne kadarki davranış).
-
-- **Hafta günleri ve ay adı**
-- **Tatil ve hafta sonu günleri**
-- **Pasif günler** (önceki ve sonraki aydan taşanlar)
-- **Bugünün arkasındaki daire**
-
-Bir başlığın **Otomatik** işaretini kaldırdığınızda altındaki renk çarkı açılır ve
-rengi siz seçersiniz. Yeniden işaretlerseniz otomatik hesaba dönülür.
-
-Gün altındaki **noktacıkların rengi buraya dahil değildir**: onlar Google Takvim'deki
-takvim ve etkinlik renginden gelir, o yüzden burada değiştirilemez.
-
-### Ekranlar
-
-- Takvimin **tüm ekranlarda**, **yalnız ana ekranda** ya da **seçtiğiniz
-  ekranlarda** görünmesini seçebilirsiniz.
-- Her ekran için ayrı ayrı:
-  - **Takvimi taşı** — o ekranı kaplayan bir yerleştirme ekranı açar. Takvimi
-    sürükleyip bırakın; kenarlara ve ortaya yaklaşınca kendiliğinden hizalanır.
-    Aynı ekranda boyutu da (%80-150) ayarlayabilirsiniz. Esc: vazgeç.
-  - **Boyut** — takvimin büyüklüğü.
-  - **Bu ekrana fotoğraf…** — o ekrana özel zemin fotoğrafı.
-
-Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınızın
-çözünürlüğü ya da ölçeği değişirse Kalender kendini yeniden kurar.
-
-### Genel
-
-- **Windows açılışında Kalender'i başlat** — varsayılan olarak açık. Kayıt yalnızca kendi
-  kullanıcı hesabınıza yazılır (`HKCU\...\Run`), yönetici hakkı istenmez. Kutunun altında
-  hangi dosyanın başlatılacağı yazar.
-- **Takvimi Windows duvar kağıdına işle** — varsayılan olarak açık; takvimin masaüstünde
-  görünmesini bu sağlar. Kapatırsanız Windows duvar kağıdınıza hiç dokunulmaz, ama takvim de
-  masaüstünde görünmez.
-- **Günlük ayrıntısı** — normalde yalnızca hatalar yazılır. Bir sorun ararken *Bilgi* ya da
-  *Ayrıntılı* seçebilirsiniz. **Günlük klasörünü aç** düğmesi dosyaları gösterir.
-- **Sürüm** ve **Sürümler sayfası** — Kalender kendini otomatik güncellemez.
-
-Pencerenin altında, **Kapat**'ın yanında **Karanlık kip / Aydınlık kip** düğmesi vardır.
-İlk açılışta Windows'un uygulama teması izlenir; düğmeye bastığınızda seçiminiz saklanır.
-Bu ayar yalnızca ayarlar penceresinin görünümünü değiştirir, masaüstündeki takvimi etkilemez.
+Pencerenin altındaki **Karanlık kip / Aydınlık kip** düğmesi yalnızca ayarlar penceresinin
+görünümünü değiştirir; ilk açılışta Windows'un uygulama teması izlenir.
 
 ## Tepsi menüsü
 
@@ -218,80 +140,65 @@ Saatin yanındaki Kalender simgesine sağ tıklayın:
 | --- | --- |
 | Ayarlar | Ayarlar penceresini açar (simgeye sol tıklamak da açar) |
 | Şimdi yenile | Tatil listesini ve Google verisini hemen tazeler |
-| Takvimi gizle / göster | Takvimi çizmeyi durdurur; zemin kalır |
+| Takvimi gizle / Takvimi göster | Takvimi çizmeyi durdurur; zemin kalır |
 | Takvimi yeniden çiz | Görüntüyü sıfırdan üretip duvar kağıdına yeniden yazar |
 | Eski duvar kağıdıma dön | Kalender'den önceki duvar kağıdını geri yükler; takvim artık çizilmez |
 | Çıkış | Kalender'i kapatır |
 
-Simgenin üzerine gelince ipucunda Google bağlantı durumu yazar (bağlı / bağlı, çevrimdışı /
-bağlı değil).
+Simgenin ipucunda durum yazar: *Google bağlı*, *Google bağlı (çevrimdışı)*, *Google bağlı değil*.
 
 ## Gün kutusu
 
-Masaüstündeyken farenizi bir günün üzerine getirip kısa süre beklerseniz, Windows'un kendi
-ipucu balonlarına benzeyen küçük bir kutu açılır ve o günün içeriğini listeler:
+Farenizi bir günün üzerine getirip 0,4 saniye beklerseniz küçük bir kutu açılır: önce varsa
+resmi tatil, sonra tüm gün süren etkinlikler, sonra saatli etkinlikler (`09:30`), en altta
+saati bilinmeyen görevler (`Tüm gün`); saati bilinen görevler saat sırasında yerini alır.
+Ön ek ve yanındaki yuvarlak kaydın Google'daki rengini taşır; tamamlanmış görevler gri yazılır.
 
-- Önce varsa resmi tatil,
-- sonra tüm gün süren etkinlikler,
-- sonra saatli etkinlikler (saate göre sıralı, `09:30 · Başlık`),
-- en altta görevler (`Görev · Başlık`).
-
-Kutu şu koşulların **hepsi** sağlanmadan açılmaz:
-
-1. İmlecin altındaki pencere masaüstünün kendisi olmalı (üstte Word, Chrome gibi bir pencere
-   varsa açılmaz).
-2. Fare tuşlarından hiçbiri basılı olmamalı (seçim yaparken ya da simge sürüklerken açılmaz).
-3. Tam ekran, sunum ya da oyun kipi olmamalı.
-4. İmleç aynı günün üzerinde en az 0,4 saniye durmuş olmalı.
-
-Kayıtlar arasında ince bir ayraç çizgisi vardır. Soldaki `Tüm gün ·` / `09:30 ·` sütunu
-bütün satırlarda aynı genişliktedir, böylece başlıklar aynı hizadan başlar; başlık iki
-satıra sarkarsa saat yazısı satırların ortasında durur.
-
-Hücreden çıkınca kutu yaklaşık 0,15 saniye içinde kapanır. O günde gösterilecek hiçbir şey
-yoksa kutu hiç açılmaz. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu
-kendisi düzeltir.
+Kutu yalnızca imlecin altında masaüstünün kendisi varken, fare tuşu basılı değilken ve tam
+ekran/sunum kipi yokken açılır. Gösterilecek bir şey yoksa hiç açılmaz; hücreden çıkınca
+kapanır. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu kendisi düzeltir.
 
 ## Takvimin üzerinde sağ tık
 
-Masaüstündeki takvimin üzerine sağ tıklayınca Kalender'in kendi menüsü açılır. Masaüstünün
-geri kalanında Windows'un kendi menüsü çıkmaya devam eder; oraya hiç dokunulmaz.
+Masaüstündeki takvimin üzerine sağ tıklayınca Kalender'in kendi menüsü açılır. Masaüstünün geri
+kalanında Windows'un kendi menüsü çıkmaya devam eder.
 
 | Satır | Ne yapar |
 | --- | --- |
 | *(gün) gününe git* | O günü Google Takvim'de gün görünümünde açar |
-| Önceki ay / Sonraki ay | Masaüstündeki takvimi bir ay geri ya da ileri alır |
-| Bu aya dön | İçinde bulunduğumuz aya döner (zaten oradaysanız soluk durur) |
+| Önceki ay: … / Sonraki ay: … | Masaüstündeki takvimi bir ay geri ya da ileri alır |
+| Bu aya dön | İçinde bulunduğunuz aya döner (zaten oradaysanız soluk durur) |
 | Yeni etkinlik… | Google Takvim'in etkinlik ekranını o güne kurulu açar |
-| Yeni görev… | Google Takvim'i o günün görünümünde açar |
+| Yeni görev… | Google Takvim'i o günün görünümünde açar (görev için doğrudan adres yok) |
 | Ayarlar | Ayarlar penceresini açar |
 
-Başka bir aya gittiğinizde takvim **2 dakika sonra kendiliğinden bu aya döner**; masaüstünde
-yanlış ay asılı kalmaz. Bilgisayarın günü değişirse de bu aya dönülür.
-
-Sağ tıkladığınız nokta gün ızgarasının dışındaysa (ay adının ya da gün harflerinin üzeri)
-gün gerektiren satırlar o ayın tamamını hedefler.
-
-Bu menü açılabilsin diye Kalender'in fare olayını Windows'tan önce görmesi gerekiyor.
-Bunun için alt düzey bir fare kancası kullanılıyor, ama **kanca sürekli takılı durmuyor**:
-yalnızca imleç takvim bloğunun üzerindeyken takılıyor, blok dışına çıkınca sökülüyor.
+Başka bir aya gittiğinizde takvim **2 dakika sonra kendiliğinden bu aya döner**. Ay adının ya
+da gün harflerinin üzerine sağ tıklarsanız ilk satır *(ay) ayını Google Takvim'de aç* olur.
 
 ## Resmi tatiller
 
-Tatil listesi Google'ın herkese açık Türkiye resmi tatil takviminden (ICS) alınır; hesap
-ya da anahtar gerekmez. Liste bilgisayarınızda `%LOCALAPPDATA%\Kalender\cache` altında
-saklanır ve ayda bir yenilenir. İnternet olmadığında en son indirilen liste sessizce
-kullanılmaya devam eder, hata penceresi çıkmaz.
+Tatil listesi Google'ın herkese açık Türkiye resmi tatil takviminden (ICS) alınır; hesap ya da
+anahtar gerekmez. Liste bilgisayarınızda saklanır, 30 günde bir yenilenir; internet yokken en
+son indirilen liste sessizce kullanılır. Tam gün tatiller kırmızıdır; arifeler (yarım günler)
+kırmızı değildir, adları yalnızca gün kutusunda görünür; Anneler Günü gibi kutlama günleri
+tatil sayılmaz. Listeyi elle yenilemek için tepsi menüsündeki **Şimdi yenile**.
 
-- **Tam gün resmi tatiller** kırmızı gösterilir.
-- **Arifeler (yarım günler)** kırmızı gösterilmez, normal gün gibi durur. Adları gün
-  kutusunda görünür.
-- **Anneler Günü gibi kutlama/anma günleri** tatil sayılmaz, kırmızıya boyanmaz.
+> Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan teyit ediniz.
 
-Listeyi elle yenilemek için tepsi menüsündeki **Şimdi yenile**.
+## Verileriniz nerede duruyor?
 
-> **Uyarı:** Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan
-> teyit ediniz.
+Her şey `%LOCALAPPDATA%\Kalender` altındadır; başka hiçbir yere yazılmaz:
+
+- `ayarlar.json` — ayarlarınız (Google istemci kimliği ve gizli anahtar dahil).
+- `google-token.dat` — Google yetki anahtarı; Windows DPAPI ile **yalnızca sizin kullanıcı
+  hesabınızın çözebileceği** biçimde şifrelidir.
+- `cache\google.json` — görünen ayın etkinlik ve görev kopyası; `cache\tatiller.json` — tatiller.
+- `zemin\` — duvar kağıdı olarak uygulanan görüntüler; `onceki-duvar-kagidi.json` — Kalender'den
+  önceki duvar kağıdınızın yedeği; `logs\` — günlükler.
+
+Ağa yalnızca Google'ın Takvim ve Görevler API'lerine ve tatil ICS adresine çıkılır. Kayıt
+defterinde `HKCU\...\Run` (açılışta başlatma), `HKCU\...\Uninstall\Kalender` (uygulamalar
+listesi) ve `HKCU\Control Panel\Desktop\JPEGImportQuality` (yedeklenir, geri alınır) yazılır.
 
 ## Kaldırma
 
@@ -301,270 +208,21 @@ Listeyi elle yenilemek için tepsi menüsündeki **Şimdi yenile**.
 - Windows **Ayarlar > Uygulamalar** listesinden Kalender'i seçip **Kaldır**
 - Doğrudan: `%LOCALAPPDATA%\Kalender\app\Kalender.exe --kaldir`
 
-Açılan pencerede **Ayarlarımı ve yerel veri kopyamı da sil** kutusu vardır. İşaretlemezseniz
-ayarlarınız kalır ve Kalender'i sonra yeniden kurduğunuzda her şey yerinde olur.
+Açılan pencerede **Ayarlarımı ve yerel veri kopyamı da sil** kutusu vardır; işaretlemezseniz
+ayarlarınız kalır ve yeniden kurduğunuzda her şey yerinde olur. Kaldırma, Kalender'den önceki
+duvar kağıdınızı geri yükler; kısayolu, açılış kaydını, uygulamalar listesindeki kaydı ve
+birkaç saniye sonra dosyaları siler.
 
-Kaldırma sırasında:
+## Bilinen sınırlar
 
-- Kalender'den önceki duvar kağıdınız geri yüklenir,
-- Başlat menüsü kısayolu, açılışta başlatma kaydı ve uygulamalar listesindeki kayıt silinir,
-- Uygulama dosyaları (ve seçtiyseniz ayarlarınız) birkaç saniye sonra silinir.
-
-## Şu anki durum
-
-Proje aşama aşama geliştiriliyor.
-
-| Aşama | İçerik | Durum |
-| --- | --- | --- |
-| 1 | İskelet, WorkerW katmanı, düz renk zemin, statik takvim çizimi | Tamam |
-| 2 | Çoklu monitör, DPI, konum/boyut, temalar, renk seçici, fotoğraf | Tamam |
-| 3 | Resmi tatil listesi (ICS), önbellek, kırmızı günler | Tamam |
-| 4 | Google OAuth, takvim ve görev çekme, artımlı yoklama | Tamam |
-| 5 | Noktacıklar, fare üstünde açılan gün kutusu | Tamam |
-| 6 | Ayarlar penceresi, tepsi menüsü, açılışta başlatma | Tamam |
-| 7 | Kurulum dosyası, README, sürüm etiketi | Tamam |
-
-## Bilinen sınır: yinelenen görevler
-
-Google Takvim'de **yinelenen bir görev** oluşturduğunuzda, Google Görevler API'si o görevin
-yalnızca *tek* kaydını veriyor: en son kopyayı. İleri tarihli kopyalar API'de hiç yok, üstelik
-kaydın içinde yineleme kuralı da bulunmuyor. Tarayıcıdaki Google Takvim ileri tarihleri kendi
-içinde hesaplayıp çiziyor; dışarıdan bir uygulamanın buna erişimi yok.
-
-Somut örnek (7 Eylül 2026'da bu hesapta ölçüldü): "Toz torbası değiş." görevinin API'deki tek
-kaydı `due: 2026-09-06`, `status: completed`. Tarayıcıda aynı görev 27 Eylül'de de görünüyor.
-API yanıtında `recurrence` benzeri hiçbir alan yok:
-
-```json
-{ "title": "Toz torbası değiş.", "status": "completed",
-  "due": "2026-09-06T00:00:00.000Z", "completed": "2026-09-06T19:41:28.323Z", "hidden": true }
-```
-
-Calendar API de yardımcı olmuyor: görevleri etkinlik olarak döndürmüyor (yalnızca `default`,
-`focusTime` gibi türler geliyor). Yani bu, Kalender'in değil Google'ın sınırı.
-
-**Ne yapılabilir?** Tekrar eden bir işin masaüstünde her seferinde görünmesini istiyorsanız
-onu görev yerine **yinelenen etkinlik** olarak kurun; etkinliklerin bütün kopyaları API'den
-eksiksiz geliyor. Etkinlikler ve yinelenmeyen görevler her zaman tam görünür.
-
-Aynı sınır görevlerin **saati** için de geçerli: API'de `due` alanı her zaman gecenin yarısı
-gelir, saat bilgisi hiç verilmez. Kalender saati ancak Google o görevi takvim etkinliği
-olarak da döndürüyorsa gösterebiliyor; döndürmüyorsa görev "Tüm gün" görünür.
-
-## Takvim ekrana nasıl çiziliyor?
-
-Kalender her monitör için zemini ve takvimi tek bir tam ekran görüntüde birleştirir ve bunu
-Windows'un kendi duvar kağıdı olarak uygular. Görüntüler
-`%LOCALAPPDATA%\Kalender\zemin` altında tutulur.
-
-Görüntü yalnızca **içeriği değiştiğinde** yeniden yazılır: her turda ham piksellerin özeti
-alınır, özet aynıysa duvar kağıdına hiç dokunulmaz. Böylece Google yoklaması otuz saniyede
-bir dönse de masaüstü ancak gerçekten değişen bir şey olduğunda tazelenir.
-
-Gün kutusu ve takvim üzerindeki sağ tık menüsü bundan etkilenmez: ikisi de imleç konumunu
-kendisi izliyor ve takvimin ekranda hangi piksellerde durduğunu Kalender zaten biliyor.
-
-**Neden çizim penceresi değil?** 1.1.1'e kadar Kalender, Lively Wallpaper ve Wallpaper
-Engine gibi kabuğun `WorkerW` penceresine çocuk bir çizim penceresi asıyordu. Windows 11'in
-yeni yapılarında bu yöntem sessizce çalışmıyor: pencere kuruluyor, `IsWindowVisible` true
-dönüyor, çizim çağrıları başarı bildiriyor — ama tek piksel ekrana ulaşmıyor. Uygulamanın
-bunu fark etmesinin bir yolu da yok, her adım başarılı görünüyor. Duvar kağıdına yazmak
-Windows'un desteklediği yol: her sürümde çalışıyor.
-
-## Sürüm geçmişi
-
-### 1.4.1
-
-- **Gün rakamı artık gerçekten ortalı.** GDI+ yazıyı ilerleme genişliğine göre
-  ortalıyor; "1" rakamının yan boşluğu geniş olduğu için "17" gibi günler hücrede
-  birkaç piksel sağa kaçıyor ve altındaki noktacıklarla aynı eksende durmuyordu.
-  Rakam artık glif dış hatlarından ölçülüp boyanan kısmına göre ortalanıyor.
-  Aynı ölçüm "+2" için de kullanılıyor.
-- **Gri tonlar eşitlendi.** Gün kutusunda tamamlanmış kayıtlar mavimsi bir gri
-  (#9AA3AE), takvimde ise pasif gün grisi kullanılıyordu; yan yana gelince iki
-  ayrı gri göze batıyordu. Kutu artık takvimin kendi grisini kullanıyor.
-- **Kabuğun açık menüsü kapanıyor.** Masaüstüne sağ tıklayıp Windows menüsünü
-  açtıktan sonra takvime sağ tıklayınca iki menü birden ekranda kalıyordu:
-  takvim üzerindeki sağ tıklamayı alt düzey kancayla yuttuğumuz için kabuk o
-  tıklamayı hiç görmüyor ve menüsünü kapatmıyordu. Kalender kendi menüsünü
-  açmadan önce açık menüleri kapatıyor. (WM_CANCELMODE bu yapıda menüyü
-  kapatmıyor, WM_CLOSE kapatıyor.)
-
-### 1.4.0
-
-- **Görevlerde saat.** Gün kutusunda görevlerin başında artık "Görev" değil, varsa
-  **saati** yazıyor. Saat, Görevler API'sinden gelmiyor (orada `due` her zaman gecenin
-  yarısı); Google bazı görevleri takvim etkinliği olarak da döndürüyor ve saat orada
-  duruyor. Eskiden o etkinlik kopyası çöpe atılıyordu, artık saati görevin üstüne
-  alınıp öyle atılıyor. Saati hiçbir yerde geçmeyen görevler "Tüm gün" olarak görünür.
-- Saati bilinen bir görev artık listenin en altında değil, saat sırasında doğru yerinde
-  duruyor.
-- **Sağ tık menüsü düzeltildi.** İki ayrı hata vardı:
-  - Menü açıkken imleç menünün üzerinde kaldığı için "takvimden çıkıldı" sayılıyor ve
-    sağ tık kancası sökülüyordu. Sonraki sağ tık kabuğa gidip **Windows'un masaüstü
-    menüsünü** açıyor, iki menü üst üste biniyordu. Kanca artık menü açık olduğu sürece
-    takılı kalıyor.
-  - Menü dışarı tıklayınca (hatta Esc'e basınca) kapanmıyor, ekranda asılı kalıyordu.
-    Sebebi, sahibi pencerenin ön plana alınamamasıydı: sağ tıklamayı alt düzey kancayla
-    yuttuğumuz için Windows Kalender'i "son girdiyi alan süreç" saymıyor ve
-    `SetForegroundWindow` çağrısını sessizce yok sayıyor. Artık ön plandaki pencerenin
-    iş parçacığıyla girdi kuyruğu bir anlığına birleştirilip ön plana geçiliyor.
-- Menü açıkken başka bir güne sağ tıklamak artık çalışıyor: açık menü kapanıp yenisi o
-  günün üzerinde açılıyor.
-
-### 1.3.0
-
-- **Tamamlanmış görevler artık görünüyor.** Google Görevler API'si tamamlanan görevleri
-  "gizli" işaretlediği için Kalender onları hiç almıyordu; oysa Google Takvim gösteriyor.
-  Artık `showCompleted` + `showHidden` ile isteniyorlar ve **gri** çiziliyorlar: gün
-  altındaki noktacık pasif günlerin grisinde, gün kutusunda satırın tamamı gri.
-- **Gün kutusunda renk.** Sol taraftaki "Tüm gün" / "11:30" / "Görev" ön eki artık kaydın
-  takvimdeki rengini taşıyor ve yarı kalın yazılıyor. Sonundaki nokta bir metin karakteri
-  değil, gerçek bir yuvarlak: biraz daha büyük ve aynı renkte. Böylece kutudaki satırla gün
-  altındaki noktacık gözle eşleşiyor.
-- **Ön ek hizası.** Aynı günde "Tüm gün" ile "11:30" buluştuğunda sütun en uzun metne göre
-  genişliyor ve kısa saat sola yapışık, boşlukta asılı duruyordu. Artık yuvarlaklar her
-  satırda aynı düşey çizgide, metin de kalan yerin ortasında.
-- Görevlerin takvim etkinliği olarak ikinci kez görünmesi (aynı gün, aynı başlık) zaten
-  ayıklanıyordu; tamamlanmış görevler de gelince bu ayıklama onlar için de çalışıyor.
-
-### 1.2.0
-
-- **Takvim artık doğrudan duvar kağıdına işleniyor.** Windows 11'in yeni yapılarında
-  (25H2 ve sonrası) masaüstü katmanı yöntemi çalışmıyordu ve takvim hiç görünmüyordu;
-  uygulama hata da vermiyordu, çünkü kendi açısından her şey yolundaydı. Ayrıntısı bir
-  üstteki bölümde.
-- Gün kutusu, sağ tık menüsü, çoklu monitör, DPI ölçeği, fotoğraf zemin ve her monitör için
-  ayrı yerleşim aynen çalışıyor.
-- Duvar kağıdı görüntüsü yalnızca içeriği değiştiğinde yazılıyor; boştaki masaüstü hiç
-  tazelenmiyor.
-- Windows duvar kağıdını kendi önbelleğine JPEG olarak kopyaladığı ve varsayılan kalite ince
-  yazıları bulandırdığı için `JPEGImportQuality` 100'e çekiliyor. Önceki değer yedeğe yazılır,
-  "Eski duvar kağıdıma dön" ile geri gelir.
-- Kalender kapanırken takvimi duvar kağıdından siliyor; ertesi güne kalmış donmuş bir takvim
-  ekranda kalmıyor.
-- Ayarlardaki kutunun adı **Takvimi Windows duvar kağıdına işle** oldu.
-
-### 1.1.1
-
-- **Etkinlik etiketi renkleri.** Google Takvim'de kendi renklerinizi tanımlayıp
-  etkinliklere verdiyseniz (Google bunlara "etkinlik etiketi" diyor), Kalender artık o
-  renkleri birebir çiziyor. Önceden bu etkinlikler ekranda bambaşka görünüyordu: Calendar
-  API'si, etiketli bir etkinlik için eski renk listesinden **en yakın** rengi bildiriyor
-  (örneğin `#6E72C3` etiketi için `#46d6db`), gerçek renk ise takvim kaynağındaki
-  `labelProperties.eventLabels` alanında duruyor. Kalender artık etkinlik isteğine
-  `eventLabelVersion=1` ekliyor, etkinlikten gelen `eventLabelId` ile etiketin gerçek
-  rengini eşleştiriyor. Renk sırası: etiket rengi → eski renk kimliği → takvimin rengi.
-
-### 1.1.0
-
-- **Takvimin üzerinde sağ tık menüsü**: güne git, önceki/sonraki ay, bu aya dön, yeni
-  etkinlik, yeni görev, ayarlar. Başka bir aya gidildiğinde 2 dakika sonra bu aya dönülür.
-  Masaüstünün geri kalanında Windows'un kendi menüsüne dokunulmaz.
-- **Google renkleri düzeltildi**: API hâlâ 2018 öncesi paleti döndürüyordu, arayüz ise
-  yenisini çiziyor. Artık iki taraf eşleniyor; noktacıklar tarayıcıdaki renkle aynı.
-- **Takvim renkleri ayarı**: hafta günleri/ay adı, tatil ve hafta sonu, pasif günler ve
-  bugünün dairesi ayrı ayrı seçilebiliyor; hepsi otomatik başlıyor.
-- **Ayarlar penceresine karanlık kip** eklendi; ilk açılışta Windows'un teması izleniyor.
-- **Gün kutusu düzeni**: kayıtlar arasına ayraç çizgi, ortak genişlikte saat sütunu
-  (başlıklar aynı hizadan başlıyor), iki satırlık kayıtlarda ortalanmış saat yazısı,
-  bir punto küçültülmüş "Tüm gün".
-- Ayarlardaki Google kurulum adımında `console.cloud.google.com` artık tıklanabilir.
-- Ayarlardan "Listeyi şimdi güncelle" düğmesi, son güncelleme bilgisi ve tatil günü sayısı
-  kaldırıldı; liste zaten kendiliğinden yenileniyor, tepsi menüsünde de "Şimdi yenile" var.
-- Yeni uygulama simgesi.
-
-### 1.0.0
-
-Şartnamedeki yedi aşamanın tamamı bitti.
-
-- Tek dosya kurulum: `Kalender-Kurulum.exe` hem uygulama hem kurucu. `%LOCALAPPDATA%\Kalender\app`
-  altına kurar, Başlat menüsü kısayolu ekler, açılış kaydını yazar ve Windows'un uygulamalar
-  listesine kaydeder. Yönetici hakkı istemez.
-- Kaldırma: önceki duvar kağıdını geri yükler, kayıtları ve kısayolu siler; ayarların
-  silinip silinmeyeceğini sorar. Ayarlar penceresinden, Windows uygulamalar listesinden ya da
-  `--kaldir` ile çalıştırılabilir.
-- Güncelleme, çalışan Kalender'i kendiliğinden kapatıp dosyayı değiştirir; ayarlara dokunmaz.
-
-### 0.6.0 (geliştirme)
-
-- Ayarlara "Genel" bölümü eklendi: Windows açılışında başlatma, duvar kağıdı eşitlemesini
-  kapatma, günlük ayrıntısı, günlük klasörünü açma, sürüm numarası ve sürümler sayfası
-  bağlantısı.
-- Açılışta başlatma yalnızca kendi kullanıcı hesabınızın kaydına yazılır; yönetici hakkı
-  istenmez.
-- Ayarlar penceresinin başlığı "Kalender - Ayarlar" oldu.
-
-### 0.5.1 (geliştirme)
-
-- Gün kutusunda başlıklar artık kısaltılmıyor; sığmazsa alt satıra sarkıyor ve alt satır
-  saatin altına değil başlığın hizasına geliyor.
-- Aynı kayıt iki kez görünmüyordu düzeltildi: Google, süresi saatli olan Görevler'i Takvim
-  API'sinde de sıradan bir etkinlik olarak döndürebiliyor. Aynı gün ve aynı başlıktaki
-  etkinlik, görev kaydı varsa gösterilmiyor.
-- Çalışma konumu (workingLocation) kayıtları takvimde gösterilmiyor.
-
-### 0.5.0 (geliştirme)
-
-- Gün kutusu: fare bir günün üzerinde 0,4 saniye beklediğinde o günün tatili, etkinlikleri ve
-  görevleri listeleniyor. Kutu odak almıyor, tıklanmıyor, ekran kenarında konumunu düzeltiyor.
-- Kutu yalnızca masaüstü görünürken, fare tuşu basılı değilken ve tam ekran/sunum kipi
-  yokken açılıyor. O günde gösterilecek bir şey yoksa hiç açılmıyor.
-- Başlıklardaki sekme ve satır sonları tekleştirilip 40 karakterde kırpılıyor.
-
-### 0.4.0 (geliştirme)
-
-- Google Takvim ve Görevler bağlantısı: OAuth 2.0 + PKCE, loopback yönlendirme, yalnız okuma
-  izinleri. Uygulamaya hiçbir gizli anahtar gömülmedi; kullanıcı kendi istemci kimliğini verir.
-- Yetki anahtarı DPAPI ile şifreli saklanıyor; ayarlardan bağlantı kesilebiliyor.
-- Yalnızca görünen ay çekiliyor; yoklamalar artımlı (updatedMin) ve yanıtlar "fields" ile
-  kırpılıyor. Değişiklik yoksa yanıt birkaç yüz bayt.
-- Hangi takvimlerin ve görev listelerinin gösterileceği, yenileme aralığı (30 sn - 24 saat) ve
-  görev noktacığı rengi ayarlanabiliyor.
-- Gün rakamının altında noktacıklar: renk etkinliğin ya da takvimin kendi renginden geliyor,
-  dörtten fazlaysa 3 nokta + "+N".
-- Çevrimdışıyken hata gösterilmiyor; yerel kopya kullanılıyor ve durum tepsi ipucunda yazıyor.
-
-### 0.3.0 (geliştirme)
-
-- Resmi tatiller Google'ın açık ICS akışından indiriliyor, yerel olarak saklanıyor ve
-  ayda bir yenileniyor. İnternet yoksa önbellek sessizce kullanılıyor.
-- Tam gün tatiller kırmızı; arifeler normal, kutlama/anma günleri hariç.
-- Ayarlara "Resmi tatiller" bölümü ve dini bayram teyit uyarısı eklendi.
-- Tepsi menüsündeki "Şimdi yenile" artık çalışıyor.
-
-### 0.2.0 (geliştirme)
-
-- Görünüm ayarları penceresi: hazır renkler, renk çarkı, fotoğraf zemin, yazı rengi,
-  cumartesi rengi, takvim arkası karartma.
-- Takvim sürükleyerek yerleştirilebiliyor; kenarlara ve ortaya yapışıyor.
-- Konum, boyut ve fotoğraf her monitör için ayrı hatırlanıyor.
-- Ekran ölçeği (DPI), çözünürlük, monitör tak/çıkar, uzak masaüstü ve kilit açma
-  durumlarında katman kendini yeniden kuruyor.
-- Takvimin boyutu ekran ölçüsüyle orantılı: çözünürlük değişince takvim de
-  birlikte küçülüp büyüyor, ekrandaki oranı sabit kalıyor.
-
-### 0.1.0 (geliştirme)
-
-- İlk iskelet: masaüstü katmanı, düz renk zemin, aylık takvim çizimi, tepsi simgesi.
-
-## Geliştirme
-
-```
-dotnet build Kalender.sln -c Debug
-```
-
-Tek dosya, kendi kendine yeten yayın için:
-
-```
-powershell -ExecutionPolicy Bypass -File yayin.ps1
-```
-
-Belirli bir ayın takvimini arayüz açmadan bir PNG'ye çizdirmek için (görünüm ve tatil
-denetimlerinde işe yarıyor):
-
-```
-Kalender.exe --onizleme 2026-10 C:\gecici\ekim.png
-```
-
-Kullanılan üçüncü taraf bileşenler için [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasına bakın.
+- **Yinelenen görevler tek gün görünür.** Google Görevler API'si yinelenen bir görevin yalnızca
+  en son kopyasını verir; ileri tarihli kopyalar ve yineleme kuralı API'de yoktur. Görevlerde
+  saat de gelmez: Kalender saati ancak Google o görevi takvim etkinliği olarak da döndürüyorsa
+  gösterebilir, yoksa görev "Tüm gün" görünür. Tekrar eden işleri görev yerine **yinelenen
+  etkinlik** olarak kurun; etkinliklerin bütün kopyaları eksiksiz gelir.
+- **Takvim duvar kağıdının kendisidir.** Windows 11'in yeni yapılarında masaüstü katmanına
+  çizim sessizce çalışmadığı için Kalender zemini ve takvimi tek görüntüde birleştirip
+  `%LOCALAPPDATA%\Kalender\zemin` altına yazar ve duvar kağıdı yapar; görüntü yalnızca içeriği
+  değiştiğinde yenilenir. Windows duvar kağıdını JPEG olarak önbelleğe aldığı için
+  `JPEGImportQuality` 100'e çekilir. Duvar kağıdı bir ilkeyle kilitlenmişse takvim görünmez;
+  tepside bir uyarı balonu çıkar.
