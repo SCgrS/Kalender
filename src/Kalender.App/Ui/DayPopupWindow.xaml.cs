@@ -44,27 +44,44 @@ public partial class DayPopupWindow : Window
     private const double MinAccentLuminance = 0.34;
 
     /// <summary>
+    /// Bir rengin "aslında gri" sayılması için en yüksek kanal farkı. Bunun
+    /// altındaki renklerde göz bir renk seçmiyor, yalnızca açıklık görüyor.
+    /// </summary>
+    private const int NeutralTolerance = 16;
+
+    /// <summary>
+    /// Gri bir kayıt renginin kutunun kendi grisine çekilmesi için aradaki
+    /// parlaklık farkının kalması gereken sınır.
+    /// </summary>
+    private const double MutedBand = 0.18;
+
+    /// <summary>
     /// Rengi olmayan ön eklerin ve tamamlanmış kayıtların varsayılan grisi.
     /// Takvimdeki pasif gün grisiyle aynı ton; <see cref="MutedColor"/> ile
     /// takvimin o anki temasından gelen renge güncelleniyor.
     /// </summary>
     private static readonly Color DefaultMuted = Color.FromRgb(0x8D, 0x8F, 0x93);
 
-    private static readonly Brush PrefixBrush = new SolidColorBrush(DefaultMuted);
     private static readonly Brush TitleBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xEA, 0xED));
     private static readonly Brush HolidayBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0x6C, 0x6C));
     private static readonly Brush SeparatorBrush = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
 
     private System.Drawing.Rectangle _anchor;
 
-    /// <summary>Tamamlanmış kayıtların fırçası; <see cref="MutedColor"/> ile değişir.</summary>
+    /// <summary>
+    /// Kutunun grisi: tamamlanmış kayıtlar, rengi olmayan ön ekler ve griye
+    /// yakın takvim renkleri hep bunu kullanır. <see cref="MutedColor"/> ile
+    /// değişir.
+    /// </summary>
     private Brush _completedBrush = new SolidColorBrush(DefaultMuted);
+
+    /// <summary><see cref="_completedBrush"/>'ın rengi; gri karşılaştırması buna bakar.</summary>
+    private Color _mutedColor = DefaultMuted;
 
     public DayPopupWindow()
     {
         InitializeComponent();
 
-        PrefixBrush.Freeze();
         _completedBrush.Freeze();
         TitleBrush.Freeze();
         HolidayBrush.Freeze();
@@ -94,7 +111,14 @@ public partial class DayPopupWindow : Window
     /// </summary>
     internal System.Drawing.Color MutedColor
     {
-        set => _completedBrush = AccentBrush(value);
+        set
+        {
+            _mutedColor = Brighten(Color.FromRgb(value.R, value.G, value.B));
+
+            var brush = new SolidColorBrush(_mutedColor);
+            brush.Freeze();
+            _completedBrush = brush;
+        }
     }
 
     /// <summary>Kutuyu verilen günün içeriğiyle, verilen hücrenin yanında gösterir.</summary>
@@ -262,17 +286,34 @@ public partial class DayPopupWindow : Window
     /// Kaydın takvim rengini kutuda kullanılabilir hâle getirir. Google'ın koyu
     /// renkleri (koyu mor, koyu yeşil) kutunun koyu zemininde okunmuyor;
     /// yeterince aydınlanana kadar beyaza doğru karıştırıyoruz. Rengi olmayan
-    /// kayıtlar eski gri ön ek rengine düşer.
+    /// kayıtlar kutunun grisine düşer.
     /// </summary>
-    private static Brush AccentBrush(System.Drawing.Color source)
+    private Brush AccentBrush(System.Drawing.Color source)
     {
         if (source.A == 0)
         {
-            return PrefixBrush;
+            return _completedBrush;
         }
 
-        var color = Color.FromRgb(source.R, source.G, source.B);
+        Color color = Brighten(Color.FromRgb(source.R, source.G, source.B));
 
+        // Google'ın gri takvim renkleri (grafit gibi) kutudaki tamamlanmış
+        // kayıt grisinin bir tık yanına düşüyordu: aynı kutuda iki ayrı gri
+        // yan yana gelince göz bunu anlamlı bir ayrım sanıyor, oysa değil.
+        // Renk sayılmayacak kadar griye yakın olanları tek tona çekiyoruz.
+        if (IsNearMuted(color))
+        {
+            return _completedBrush;
+        }
+
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    /// <summary>Rengi, koyu zeminde okunacak kadar açılana dek beyaza doğru karıştırır.</summary>
+    private static Color Brighten(Color color)
+    {
         for (int i = 0; i < 6 && Luminance(color) < MinAccentLuminance; i++)
         {
             color = Color.FromRgb(
@@ -281,9 +322,26 @@ public partial class DayPopupWindow : Window
                 (byte)(color.B + ((255 - color.B) * 0.25)));
         }
 
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
+        return color;
+    }
+
+    /// <summary>
+    /// Renk, kutunun grisiyle karıştırılacak kadar ona yakın mı? İki koşul
+    /// birlikte aranıyor: rengin kendisi gri olacak (kanallar birbirine yakın)
+    /// ve açıklığı kutunun grisinden belirgin biçimde ayrılmayacak. Beyaz ya da
+    /// çok koyu bir gri bu sınırın dışında kalır, kendi tonunu korur.
+    /// </summary>
+    private bool IsNearMuted(Color color)
+    {
+        int max = Math.Max(color.R, Math.Max(color.G, color.B));
+        int min = Math.Min(color.R, Math.Min(color.G, color.B));
+
+        if (max - min > NeutralTolerance)
+        {
+            return false;
+        }
+
+        return Math.Abs(Luminance(color) - Luminance(_mutedColor)) <= MutedBand;
     }
 
     private static double Luminance(Color c)

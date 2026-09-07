@@ -19,9 +19,9 @@
     <!-- Kaynak dosyalar UTF-8; Turkce karakterler dogru okunsun diye acikca belirtiliyor. -->
     <CodePage>65001</CodePage>
 
-    <Version>1.4.2</Version>
-    <AssemblyVersion>1.4.2.0</AssemblyVersion>
-    <FileVersion>1.4.2.0</FileVersion>
+    <Version>1.4.3</Version>
+    <AssemblyVersion>1.4.3.0</AssemblyVersion>
+    <FileVersion>1.4.3.0</FileVersion>
     <Product>Kalender</Product>
     <Company>Kalender</Company>
     <Description>Masaustu duvar kagidina islenmis aylik takvim</Description>
