@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Window x:Class="Kalender.Ui.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -332,10 +332,10 @@
                         <TextBlock x:Name="StartupNote" Style="{StaticResource Aciklama}" Margin="24,4,0,0" />
 
                         <CheckBox x:Name="WallpaperSyncBox"
-                                  Content="Seçilen zemini Windows duvar kağıdı olarak da ayarla"
+                                  Content="Takvimi Windows duvar kağıdına işle"
                                   Checked="OnWallpaperSyncChanged" Unchecked="OnWallpaperSyncChanged" />
                         <TextBlock Style="{StaticResource Aciklama}" Margin="24,4,0,0"
-                                   Text="Açılışta Kalender devreye girene kadar ekranın farklı görünmemesi için. Kapatırsanız Windows duvar kağıdınıza dokunulmaz." />
+                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kağıdına yazılır. Kapatırsanız Windows duvar kağıdınıza hiç dokunulmaz, ama takvim de masaüstünde görünmez." />
 
                         <Separator Margin="0,14,0,12" />
 

@@ -42,7 +42,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private AppMessageWindow? _messages;
     private TrayIcon? _tray;
     private DesktopLayerManager? _layer;
-    private WallpaperService? _wallpaper;
     private DayChangeWatcher? _dayWatcher;
     private HolidayService? _holidays;
     private CalendarDataService? _calendarData;
@@ -155,7 +154,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         _messages = AppMessageWindow.Create();
         _layer = new DesktopLayerManager(_settings);
-        _wallpaper = new WallpaperService(_settings);
         _dayWatcher = new DayChangeWatcher();
         _holidays = new HolidayService();
         _googleAuth = new GoogleAuthenticator(new SettingsOAuthConfig(_settings));
@@ -241,22 +239,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _poller.StatusChanged += UpdateTrayTooltip;
         _poller.Start();
 
-        // Önce gerçek duvar kağıdını yazıyoruz: bir sonraki açılışta Kalender
-        // devreye girene kadar ekran doğru görünsün.
-        bool wallpaperChanged = _wallpaper.Apply();
-
         _layer.SetToday(_dayWatcher.Today);
-
-        if (wallpaperChanged)
-        {
-            // Duvar kağıdı değişince kabuk WorkerW'yi yıkıp yeniden kuruyor.
-            // Hemen kurarsak katmanımız o yıkıma yakalanır; kabuğun oturmasını bekliyoruz.
-            _layer.RequestRebuild("açılış (duvar kağıdı değişti)", TimeSpan.FromMilliseconds(2500));
-        }
-        else
-        {
-            _layer.Rebuild();
-        }
+        _layer.Rebuild();
 
         // Açılışta başlatma kaydını ayarla eşitle; kullanıcı yolunu değiştirmiş
         // ya da uygulamayı taşımış olabilir.
@@ -501,16 +485,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// <summary>Ayarlar değiştikten sonra çağrılır: zemini ve çizimi tazeler.</summary>
     public void ApplySettings()
     {
-        bool wallpaperChanged = _wallpaper?.Apply() ?? false;
-
-        if (wallpaperChanged)
-        {
-            _layer?.RequestRebuild("ayar değişti (duvar kağıdı yenilendi)", TimeSpan.FromMilliseconds(2500));
-        }
-        else
-        {
-            _layer?.Refresh();
-        }
+        // Takvim duvar kağıdının kendisine çiziliyor; ayar değişikliği doğrudan
+        // yeni bir görüntü demek. Zorluyoruz: duvar kağıdı eşitlemesi yeni
+        // açılmışsa görüntü aynı olsa bile yazılmalı.
+        _layer?.Rebuild(force: true);
     }
 
     /// <summary>Ayarlar penceresinin çağırdığı uygulama yolu: kaydet ve tazele.</summary>
@@ -582,7 +560,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                 break;
 
             case MenuRedraw:
-                _layer?.Rebuild();
+                _layer?.Rebuild(force: true);
                 break;
 
             case MenuRestoreWallpaper:
@@ -596,8 +574,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     }
 
     /// <summary>
-    /// Kalender kurulmadan önceki duvar kağıdını geri yükler ve zemin eşitlemesini
-    /// kapatır; yoksa bir sonraki açılışta yeniden değiştirilirdi.
+    /// Kalender kurulmadan önceki duvar kağıdını geri yükler ve duvar kağıdına
+    /// yazmayı kapatır; yoksa bir sonraki açılışta yeniden değiştirilirdi.
+    /// Takvim duvar kağıdına çizildiği için bu, takvimi de masaüstünden kaldırır.
     /// </summary>
     private void RestoreWallpaper()
     {
@@ -607,8 +586,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _tray?.ShowBalloon(
             "Kalender",
             ok
-                ? "Eski duvar kağıdınız geri yüklendi. Windows duvar kağıdı eşitlemesi kapatıldı."
-                : "Yedeklenmiş bir duvar kağıdı bulunamadı. Windows duvar kağıdı eşitlemesi yine de kapatıldı.",
+                ? "Eski duvar kağıdınız geri yüklendi. Takvim artık masaüstüne çizilmeyecek."
+                : "Yedeklenmiş bir duvar kağıdı bulunamadı. Takvim yine de artık masaüstüne çizilmeyecek.",
             warning: !ok);
     }
 
@@ -622,7 +601,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     private void OnShellRestarted()
     {
-        // Explorer yeniden başladığında WorkerW de yeniden üretilir.
+        // Explorer yeniden başlarken duvar kağıdını kendi önbelleğinden
+        // okuyor; bizim son yazdığımızı geri koymak için yeniden çiziyoruz.
         _layer?.RequestRebuild("Explorer yeniden başladı", TimeSpan.FromSeconds(2));
     }
 
@@ -652,11 +632,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
 
         _layerWarningShown = true;
-        Log.Warn("Masaüstü katmanı kurulamadı; yalnızca duvar kağıdı zemini uygulanıyor.");
+        Log.Warn("Takvim duvar kağıdına yazılamadı.");
 
         _tray?.ShowBalloon(
             "Kalender",
-            "Masaüstü katmanı bu Windows kurulumunda açılamadı. Zemin duvar kağıdı olarak uygulandı, ancak takvim çizilemiyor.",
+            "Takvim duvar kağıdına yazılamadı. Windows duvar kağıdı ayarı bir ilke (policy) ile kilitlenmiş olabilir.",
             warning: true);
     }
 

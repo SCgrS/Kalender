@@ -1,10 +1,9 @@
-using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using Kalender.Core;
 using Kalender.Interop;
-using Kalender.Settings;
+using Microsoft.Win32;
 
 namespace Kalender.Desktop;
 
@@ -28,185 +27,31 @@ internal sealed class WallpaperBackup
     /// </summary>
     public bool WallpaperEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Kayıttaki JPEGImportQuality değeri; hiç ayarlanmamışsa null.
+    /// Kalender bu değeri 100'e çekiyor, geri yüklerken eski haline döndürüyoruz.
+    /// </summary>
+    public int? JpegImportQuality { get; set; }
+
     /// <summary>Monitör aygıt yolu -> duvar kağıdı yolu.</summary>
     public Dictionary<string, string> PerMonitor { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
-/// Windows'un gerçek duvar kağıdını Kalender'in zeminiyle eşitler.
+/// Kullanıcının Kalender'den önceki duvar kağıdını yedekler ve geri yükler.
 ///
-/// Amaç, oturum açılışında Kalender devreye girene kadar geçen bir iki
-/// saniyede ekranın farklı görünmemesi. Buraya takvim çizilmez, yalnızca zemin.
-/// Kullanıcının önceki duvar kağıdı ilk değişiklikten önce yedeklenir ve
-/// kaldırma sırasında geri yüklenir.
+/// Kalender takvimi doğrudan duvar kağıdına işlediği için
+/// (<see cref="WallpaperCanvas"/>) kullanıcının kendi duvar kağıdının üstüne
+/// yazıyor. Bu yüzden ilk yazmadan önce eski durum bir kez kayda geçiriliyor;
+/// "eski duvar kağıdıma dön" ve kaldırma işlemi onu geri koyuyor.
 /// </summary>
-internal sealed class WallpaperService
+internal static class WallpaperService
 {
-    private readonly SettingsStore _settings;
-
-    public WallpaperService(SettingsStore settings)
-    {
-        _settings = settings;
-    }
-
-    /// <summary>Ayarlardaki zemini Windows duvar kağıdına yazar.</summary>
-    /// <returns>
-    /// Duvar kağıdı gerçekten değiştiyse true. Bu önemli: kabuk duvar kağıdı
-    /// değişince WorkerW'yi yıkıp yeniden kuruyor, dolayısıyla çağıran taraf
-    /// masaüstü katmanını biraz bekleyip kurmalı.
-    /// </returns>
-    public bool Apply()
-    {
-        AppSettings settings = _settings.Current;
-        if (!settings.SyncSystemWallpaper)
-        {
-            return false;
-        }
-
-        try
-        {
-            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
-            EnsureBackup(wallpaper);
-
-            string signature = BuildSignature(settings);
-
-            // Zaten istediğimiz durumdaysa hiç dokunmuyoruz. Her açılışta
-            // gereksiz yere duvar kağıdı yazmak masaüstünü sarsıyor.
-            if (string.Equals(settings.LastAppliedBackground, signature, StringComparison.Ordinal)
-                && LooksApplied(wallpaper, settings))
-            {
-                Log.Debug("Windows duvar kağıdı zaten güncel; değiştirilmedi.");
-                return false;
-            }
-
-            if (settings.Appearance.BackgroundMode == BackgroundMode.Photo)
-            {
-                ApplyPhoto(wallpaper, settings);
-            }
-            else
-            {
-                ApplySolid(wallpaper, settings);
-            }
-
-            _settings.Update(s => s.LastAppliedBackground = signature);
-
-            Log.Info("Windows duvar kağıdı zeminle eşitlendi.");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            // Duvar kağıdı yazılamazsa uygulama çalışmaya devam eder;
-            // yalnızca açılıştaki bir iki saniyelik boşlukta eski zemin görünür.
-            Log.Warn("Windows duvar kağıdı güncellenemedi.", ex);
-            return false;
-        }
-    }
-
-    /// <summary>Ayarların duvar kağıdını etkileyen kısmının özeti.</summary>
-    private static string BuildSignature(AppSettings settings)
-    {
-        AppearanceSettings a = settings.Appearance;
-        if (a.BackgroundMode != BackgroundMode.Photo)
-        {
-            return "duz:" + a.SolidColor;
-        }
-
-        var parcalar = new List<string> { "foto:" + a.PhotoFit, a.PhotoPath ?? string.Empty };
-        foreach ((string id, MonitorPlacement placement) in settings.Monitors.OrderBy(p => p.Key, StringComparer.Ordinal))
-        {
-            if (!string.IsNullOrWhiteSpace(placement.PhotoPath))
-            {
-                parcalar.Add(id + "=" + placement.PhotoPath);
-            }
-        }
-
-        return string.Join("|", parcalar);
-    }
-
-    /// <summary>
-    /// Kabaca bir doğrulama: imza tutsa bile kullanıcı arada duvar kağıdını
-    /// değiştirmiş olabilir. Düz renkte zemin rengine, fotoğrafta ilk ekranın
-    /// yoluna bakıyoruz.
-    /// </summary>
-    private static bool LooksApplied(IDesktopWallpaper wallpaper, AppSettings settings)
-    {
-        try
-        {
-            if (settings.Appearance.BackgroundMode != BackgroundMode.Photo)
-            {
-                Color color = Rendering.ColorTools.Parse(
-                    settings.Appearance.SolidColor, Color.FromArgb(0x2E, 0x32, 0x38));
-                return wallpaper.GetBackgroundColor() == ToColorRef(color);
-            }
-
-            uint count = wallpaper.GetMonitorDevicePathCount();
-            if (count == 0)
-            {
-                return false;
-            }
-
-            string id = wallpaper.GetMonitorDevicePathAt(0);
-            string current = wallpaper.GetWallpaper(id) ?? string.Empty;
-            string? expected = FindPhotoFor(settings, id) ?? settings.Appearance.PhotoPath;
-
-            return !string.IsNullOrWhiteSpace(expected)
-                && string.Equals(current, expected, StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Duvar kağıdı durumu okunamadı: " + ex.Message);
-            return false;
-        }
-    }
-
-    private static void ApplySolid(IDesktopWallpaper wallpaper, AppSettings settings)
-    {
-        Color color = Rendering.ColorTools.Parse(settings.Appearance.SolidColor, Color.FromArgb(0x2E, 0x32, 0x38));
-        wallpaper.SetBackgroundColor(ToColorRef(color));
-
-        // Resim yolunu boşaltmak yetmiyor: Windows o durumda varsayılan duvar
-        // kağıdına düşüyor. Doğru yol, duvar kağıdı resmini tamamen kapatmak;
-        // o zaman zemin rengi görünür.
-        wallpaper.Enable(false);
-    }
-
-    private static void ApplyPhoto(IDesktopWallpaper wallpaper, AppSettings settings)
-    {
-        Color color = Rendering.ColorTools.Parse(settings.Appearance.SolidColor, Color.Black);
-        wallpaper.SetBackgroundColor(ToColorRef(color));
-
-        wallpaper.Enable(true);
-        wallpaper.SetPosition(ToPosition(settings.Appearance.PhotoFit));
-
-        uint count = wallpaper.GetMonitorDevicePathCount();
-        for (uint i = 0; i < count; i++)
-        {
-            string id = wallpaper.GetMonitorDevicePathAt(i);
-
-            string? path = FindPhotoFor(settings, id) ?? settings.Appearance.PhotoPath;
-            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-            {
-                wallpaper.SetWallpaper(id, path);
-            }
-        }
-    }
-
-    private static string? FindPhotoFor(AppSettings settings, string monitorDevicePath)
-    {
-        foreach ((string id, MonitorPlacement placement) in settings.Monitors)
-        {
-            if (!string.IsNullOrWhiteSpace(placement.PhotoPath)
-                && string.Equals(id, monitorDevicePath, StringComparison.OrdinalIgnoreCase))
-            {
-                return placement.PhotoPath;
-            }
-        }
-
-        return null;
-    }
+    private const string DesktopKey = @"Control Panel\Desktop";
+    private const string QualityValue = "JPEGImportQuality";
 
     /// <summary>İlk değişiklikten önce mevcut durumu bir kez yedekler.</summary>
-    private static void EnsureBackup(IDesktopWallpaper wallpaper)
+    internal static void EnsureBackup(IDesktopWallpaper wallpaper)
     {
         if (File.Exists(Paths.BackupFile))
         {
@@ -219,6 +64,7 @@ internal sealed class WallpaperService
             {
                 BackgroundColor = wallpaper.GetBackgroundColor(),
                 Position = (int)wallpaper.GetPosition(),
+                JpegImportQuality = ReadImportQuality(),
             };
 
             try
@@ -262,13 +108,15 @@ internal sealed class WallpaperService
         }
     }
 
-    /// <summary>Yedeklenen duvar kağıdını geri yükler. Kaldırma sırasında çağrılır.</summary>
+    /// <summary>Yedeklenen duvar kağıdını geri yükler. Kaldırma sırasında da çağrılır.</summary>
     public static bool Restore()
     {
         try
         {
             if (!File.Exists(Paths.BackupFile))
             {
+                // Yedek yoksa bile bizim ürettiğimiz görüntüler ortada kalmasın.
+                ClearCanvasFiles();
                 return false;
             }
 
@@ -315,8 +163,11 @@ internal sealed class WallpaperService
                 }
             }
 
-            // Kalender kapalıyken de çağrılabildiği için masaüstünde asılı
-            // kalmış bir çizim varsa burada temizlenmiş olur.
+            RestoreImportQuality(backup.JpegImportQuality);
+            ClearCanvasFiles();
+
+            // Kalender kapalıyken de çağrılabildiği için kabuk duvar kağıdını
+            // yeniden okusun diye açıkça tazeliyoruz.
             DesktopRefresher.ForceRedraw();
 
             Log.Info("Önceki duvar kağıdı geri yüklendi.");
@@ -329,13 +180,75 @@ internal sealed class WallpaperService
         }
     }
 
-    private static uint ToColorRef(Color c) => (uint)(c.R | (c.G << 8) | (c.B << 16));
-
-    private static DesktopWallpaperPosition ToPosition(PhotoFit fit) => fit switch
+    /// <summary>Kalender'in ürettiği zemin görüntülerini siler.</summary>
+    private static void ClearCanvasFiles()
     {
-        PhotoFit.Fit => DesktopWallpaperPosition.Fit,
-        PhotoFit.Center => DesktopWallpaperPosition.Center,
-        PhotoFit.Tile => DesktopWallpaperPosition.Tile,
-        _ => DesktopWallpaperPosition.Fill,
-    };
+        try
+        {
+            if (!Directory.Exists(Paths.CanvasFolder))
+            {
+                return;
+            }
+
+            foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*.png"))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug($"Zemin dosyası silinemedi ({file}): {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Zemin klasörü temizlenemedi: " + ex.Message);
+        }
+    }
+
+    private static int? ReadImportQuality()
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(DesktopKey);
+            return key?.GetValue(QualityValue) as int?;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Duvar kağıdı sıkıştırma kalitesi okunamadı: " + ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Sıkıştırma kalitesini eski haline döndürür. Yedekte bir değer yoksa
+    /// kullanıcı bu ayara hiç dokunmamıştı; değeri tamamen siliyoruz ki
+    /// Windows kendi varsayılanına dönsün.
+    /// </summary>
+    private static void RestoreImportQuality(int? previous)
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(DesktopKey, writable: true);
+            if (key is null)
+            {
+                return;
+            }
+
+            if (previous is int deger)
+            {
+                key.SetValue(QualityValue, deger, RegistryValueKind.DWord);
+            }
+            else
+            {
+                key.DeleteValue(QualityValue, throwOnMissingValue: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Duvar kağıdı sıkıştırma kalitesi geri yüklenemedi: " + ex.Message);
+        }
+    }
 }

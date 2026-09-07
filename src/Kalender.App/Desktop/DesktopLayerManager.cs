@@ -9,7 +9,7 @@ using Kalender.Settings;
 namespace Kalender.Desktop;
 
 /// <summary>Fare konumunun denk geldiği gün ve onu barındıran ekran.</summary>
-internal sealed record DayHit(DesktopWindow Window, DayCell Cell, Rectangle CellScreenBounds);
+internal sealed record DayHit(MonitorTarget Monitor, DayCell Cell, Rectangle CellScreenBounds);
 
 /// <summary>
 /// Fare konumunun denk geldiği takvim bloğu. <see cref="Cell"/> yalnızca
@@ -18,18 +18,22 @@ internal sealed record DayHit(DesktopWindow Window, DayCell Cell, Rectangle Cell
 /// </summary>
 internal sealed record CalendarBlockHit(CalendarLayout Layout, DayCell? Cell);
 
+/// <summary>Bir monitör ve o monitör için üretilmiş görüntü + geometri.</summary>
+internal sealed record ScreenSurface(MonitorTarget Monitor, DesktopSurface Surface);
+
 /// <summary>
-/// Masaüstü katmanının tamamını yönetir: WorkerW'yi bulur, her monitör için
-/// bir çizim penceresi kurar, görüntüleri üretir ve ekran yapılandırması
-/// değiştiğinde her şeyi yeniden kurar.
+/// Masaüstündeki takvimin tamamını yönetir: her monitör için zemin ve takvimi
+/// tek bir görüntüde birleştirir, bunu <see cref="WallpaperCanvas"/> ile duvar
+/// kağıdına yazar ve ekran yapılandırması değiştiğinde her şeyi yeniler.
+///
+/// Takvimin ekranda hangi piksellerde durduğunu da burası bilir; gün kutusu ve
+/// sağ tık menüsü <see cref="HitTest"/> ile <see cref="HitTestBlock"/> üzerinden
+/// buraya soruyor.
 /// </summary>
 internal sealed class DesktopLayerManager : IDisposable
 {
     /// <summary>Arka arkaya gelen yeniden kurma isteklerini birleştirmek için bekleme süresi.</summary>
     private static readonly TimeSpan RebuildDelay = TimeSpan.FromMilliseconds(600);
-
-    /// <summary>Kabuk inatla katmanı yıkıyorsa geçilen yavaş deneme aralığı.</summary>
-    private static readonly TimeSpan BackoffDelay = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Ekran yapılandırmasının sessizce değişmediğinden emin olmak için yapılan
@@ -40,19 +44,18 @@ internal sealed class DesktopLayerManager : IDisposable
 
     private readonly SettingsStore _settings;
     private readonly DesktopSurfaceRenderer _renderer = new();
-    private readonly List<(MonitorTarget Monitor, DesktopWindow Window)> _screens = new();
+    private readonly WallpaperCanvas _canvas = new();
+    private readonly List<ScreenSurface> _screens = new();
     private readonly DispatcherTimer _rebuildTimer;
     private readonly DispatcherTimer _watchdogTimer;
 
-    private DesktopHost? _host;
-    private Point _hostOrigin;
+    private IReadOnlyList<MonitorTarget> _monitors = Array.Empty<MonitorTarget>();
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
     private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
-    private DateTime _rebuildWindowStart = DateTime.MinValue;
     private DateTime _rebuildDeadline = DateTime.MinValue;
-    private int _rebuildsInWindow;
     private string _configSignature = string.Empty;
+    private bool _unavailableReported;
     private bool _disposed;
 
     public DesktopLayerManager(SettingsStore settings)
@@ -71,13 +74,13 @@ internal sealed class DesktopLayerManager : IDisposable
         _watchdogTimer.Start();
     }
 
-    /// <summary>Masaüstü katmanı hiç kurulamadığında bir kez tetiklenir.</summary>
+    /// <summary>Takvim duvar kağıdına hiç yazılamadığında bir kez tetiklenir.</summary>
     public event Action? LayerUnavailable;
 
     /// <summary>Ekran listesi değişti (çözünürlük, ölçek, monitör tak/çıkar).</summary>
     public event Action? MonitorsChanged;
 
-    /// <summary>Şu an takvim çizen pencereler var mı?</summary>
+    /// <summary>Şu an takvim çizilen ekranlar var mı?</summary>
     public bool IsActive => _screens.Count > 0;
 
     /// <summary>Kurulu ekranlar; ayarlar ekranı bu listeyi gösterir.</summary>
@@ -107,8 +110,8 @@ internal sealed class DesktopLayerManager : IDisposable
     }
 
     /// <summary>
-    /// Katmanın yeniden kurulmasını ister. Kısa aralıkla gelen istekler
-    /// birleştirilir; duvar kağıdı değişimi gibi olaylarda kabuk peş peşe
+    /// Her şeyin sıfırdan kurulmasını ister. Kısa aralıkla gelen istekler
+    /// birleştirilir; ekran yapılandırması değişimlerinde Windows peş peşe
     /// birkaç bildirim gönderdiği için bu gerekli.
     /// </summary>
     /// <param name="reason">Günlüğe yazılacak sebep.</param>
@@ -120,19 +123,18 @@ internal sealed class DesktopLayerManager : IDisposable
             return;
         }
 
-        TimeSpan wait = delay ?? DefaultDelay();
+        TimeSpan wait = delay ?? RebuildDelay;
         DateTime deadline = DateTime.UtcNow + wait;
 
-        // Bekleyen bir istek daha ileri bir zamana kuruluysa onu öne çekmiyoruz.
-        // Duvar kağıdı değişiminde kabuk peş peşe bildirim gönderiyor; her biri
-        // beklemeyi sıfırlarsa kabuk daha oturmadan kurmaya kalkarız.
+        // Bekleyen bir istek daha ileri bir zamana kuruluysa onu öne çekmiyoruz;
+        // yoksa Windows daha oturmadan kurmaya kalkarız.
         if (_rebuildTimer.IsEnabled && _rebuildDeadline > deadline)
         {
             Log.Debug($"Yeniden kurma isteği birleştirildi: {reason}");
             return;
         }
 
-        Log.Debug($"Katman yeniden kurulacak ({wait.TotalMilliseconds:F0} ms sonra): {reason}");
+        Log.Debug($"Takvim yeniden kurulacak ({wait.TotalMilliseconds:F0} ms sonra): {reason}");
 
         _rebuildDeadline = deadline;
         _rebuildTimer.Stop();
@@ -141,32 +143,16 @@ internal sealed class DesktopLayerManager : IDisposable
     }
 
     /// <summary>
-    /// Kısa sürede çok fazla yeniden kurma olduysa araya daha uzun bir bekleme
-    /// koyar; aksi hâlde kabukla sonsuz bir çekişmeye girebiliriz.
+    /// Monitör listesini yeniden okur ve görüntüleri tazeler.
     /// </summary>
-    private TimeSpan DefaultDelay()
-        => _rebuildsInWindow > 5 ? BackoffDelay : RebuildDelay;
-
-    /// <summary>Art arda gelen yeniden kurmaları sayar; geri çekilmeye bunun sonucuna göre karar verilir.</summary>
-    private void CountRebuild()
-    {
-        DateTime now = DateTime.UtcNow;
-        if (now - _rebuildWindowStart > TimeSpan.FromSeconds(20))
-        {
-            _rebuildWindowStart = now;
-            _rebuildsInWindow = 0;
-        }
-
-        _rebuildsInWindow++;
-
-        if (_rebuildsInWindow == 6)
-        {
-            Log.Warn("Masaüstü katmanı kısa sürede çok kez yeniden kuruldu; bekleme süresi uzatılıyor.");
-        }
-    }
-
-    /// <summary>Katmanı sıfırdan kurar. Açılışta, ekran değişiminde ve Explorer yeniden başladığında çağrılır.</summary>
-    public void Rebuild()
+    /// <param name="force">
+    /// Görüntü aynı olsa bile duvar kağıdına yeniden yazılsın mı? Normalde
+    /// hayır: duvar kağıdı yazmak kabuğa "ayar değişti" yayını yaptırıyor, o da
+    /// bize geri dönüp yeni bir kurma isteği doğuruyor. İçerik aynıysa yazmayı
+    /// atlayarak bu zinciri kendiliğinden söndürüyoruz. Yalnızca kullanıcının
+    /// açıkça istediği durumlarda (yeniden çiz, ayar değişikliği) zorluyoruz.
+    /// </param>
+    public void Rebuild(bool force = false)
     {
         if (_disposed)
         {
@@ -174,79 +160,50 @@ internal sealed class DesktopLayerManager : IDisposable
         }
 
         _rebuildTimer.Stop();
-        CountRebuild();
-        DisposeWindows();
 
-        _host = WorkerWLocator.Find();
-        if (_host is null)
+        if (force)
         {
-            LayerUnavailable?.Invoke();
+            _canvas.Forget();
+        }
+
+        IReadOnlyList<MonitorTarget> monitors = MonitorEnumerator.All();
+        if (monitors.Count == 0)
+        {
+            Log.Warn("Hiç monitör bulunamadı; takvim çizilemiyor.");
+            ReportUnavailable();
             return;
         }
 
-        _hostOrigin = ResolveHostOrigin(_host.Handle);
-
-        IReadOnlyList<MonitorTarget> monitors = MonitorEnumerator.All();
         string signature = BuildConfigSignature(monitors);
         bool configChanged = signature != _configSignature;
         _configSignature = signature;
+        _monitors = monitors;
 
-        foreach (MonitorTarget monitor in monitors)
-        {
-            try
-            {
-                DesktopWindow window = DesktopWindow.Create(
-                    monitor.StableId, monitor.Bounds, _host.Handle, _hostOrigin);
-
-                // Kabuk WorkerW'yi yıkarsa (duvar kağıdı değişimi, tema değişimi,
-                // Explorer'ın kendini toparlaması) çocuğumuz da yok olur; o anda
-                // katmanı yeniden kuruyoruz.
-                window.DestroyedByShell += () => RequestRebuild("çizim penceresi kabuk tarafından yok edildi");
-
-                if (_host.Kind == DesktopHostKind.Progman)
-                {
-                    // Progman altında simgeler kardeşimiz olur; en alta inmemiz gerekir.
-                    window.SendToBack();
-                }
-
-                _screens.Add((monitor, window));
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"Monitör için çizim penceresi kurulamadı: {monitor}", ex);
-            }
-        }
-
-        Log.Info($"Masaüstü katmanı kuruldu: {_screens.Count} ekran, tür {_host.Kind}.");
         Refresh();
 
         if (configChanged)
         {
-            Log.Info("Ekran yapılandırması değişti: " + signature);
+            Log.Info("Ekran yapılandırması: " + signature);
             MonitorsChanged?.Invoke();
         }
     }
 
     /// <summary>
-    /// Ekranların kimliği, yeri, ölçüsü ve DPI'sının özeti. Değiştiğinde
-    /// katman ve ayarlar ekranı tazelenmelidir.
+    /// Görüntüleri yeniden üretir ve değişenleri duvar kağıdına yazar.
+    /// Monitör listesi burada yeniden okunmaz.
     /// </summary>
-    private static string BuildConfigSignature(IReadOnlyList<MonitorTarget> monitors)
-        => string.Join(";", monitors.Select(m =>
-            $"{m.StableId}@{m.Bounds.X},{m.Bounds.Y},{m.Bounds.Width}x{m.Bounds.Height}#{m.Dpi}"));
-
-    /// <summary>Pencereleri yeniden kurmadan yalnızca görüntüleri üretir.</summary>
     public void Refresh()
     {
-        if (_screens.Count == 0)
+        if (_disposed || _monitors.Count == 0)
         {
             return;
         }
 
         AppSettings settings = _settings.Current;
         bool placementsAdded = false;
+        var fresh = new List<ScreenSurface>();
 
-        foreach ((MonitorTarget monitor, DesktopWindow window) in _screens)
+        foreach (MonitorTarget monitor in _monitors)
         {
             try
             {
@@ -269,7 +226,7 @@ internal sealed class DesktopLayerManager : IDisposable
                     _viewMonth,
                     drawCalendar);
 
-                window.SetSurface(surface);
+                fresh.Add(new ScreenSurface(monitor, surface));
             }
             catch (Exception ex)
             {
@@ -281,11 +238,41 @@ internal sealed class DesktopLayerManager : IDisposable
         {
             _settings.Save();
         }
+
+        if (fresh.Count == 0)
+        {
+            return;
+        }
+
+        // Geometri her hâlükârda güncellenir: gün kutusu, takvim duvar kağıdına
+        // yazılamasa bile doğru yeri bilmeli.
+        List<ScreenSurface> previous = _screens.ToList();
+        _screens.Clear();
+        _screens.AddRange(fresh);
+
+        if (settings.SyncSystemWallpaper)
+        {
+            CanvasResult result = _canvas.Apply(
+                fresh.Select(s => new CanvasScreen(s.Monitor, s.Surface.Image)).ToList());
+
+            if (result.Success)
+            {
+                _unavailableReported = false;
+            }
+            else
+            {
+                ReportUnavailable();
+            }
+        }
+
+        foreach (ScreenSurface old in previous)
+        {
+            old.Surface.Dispose();
+        }
     }
 
     /// <summary>
-    /// Katman hâlâ sağlam mı? Ana pencere yaşıyor mu, pencerelerimiz ona bağlı mı
-    /// ve ekran yapılandırması aynı mı? Değilse katman yeniden kurulur.
+    /// Ekran yapılandırması hâlâ aynı mı? Değilse her şey yeniden kurulur.
     ///
     /// Düşük sıklıklı zamanlayıcıdan ve uykudan uyanma sonrası çağrılır. Olay
     /// tabanlı bildirimler çoğu durumu yakalıyor ama Windows bazen çözünürlük
@@ -298,28 +285,10 @@ internal sealed class DesktopLayerManager : IDisposable
             return false;
         }
 
-        if (_host is null || !NativeMethods.IsWindow(_host.Handle))
-        {
-            Log.Info("Masaüstü katmanı kaybolmuş, yeniden kuruluyor.");
-            Rebuild();
-            return _screens.Count > 0;
-        }
-
-        foreach ((_, DesktopWindow window) in _screens)
-        {
-            if (NativeMethods.GetParent(window.Handle) != _host.Handle)
-            {
-                Log.Info("Çizim penceresi ana pencereden koptu, katman yeniden kuruluyor.");
-                Rebuild();
-                return _screens.Count > 0;
-            }
-        }
-
         if (BuildConfigSignature(MonitorEnumerator.All()) != _configSignature)
         {
-            Log.Info("Ekran yapılandırması bildirimsiz değişmiş, katman yeniden kuruluyor.");
+            Log.Info("Ekran yapılandırması bildirimsiz değişmiş, takvim yeniden kuruluyor.");
             Rebuild();
-            return _screens.Count > 0;
         }
 
         return _screens.Count > 0;
@@ -327,36 +296,36 @@ internal sealed class DesktopLayerManager : IDisposable
 
     /// <summary>
     /// Ekran koordinatındaki noktanın hangi güne denk geldiğini bulur.
-    /// Hem ipucu balonu hem de ileride eklenecek takvim menüsü bunu kullanır.
+    /// Gün kutusu bunu kullanır.
     /// </summary>
     public DayHit? HitTest(Point screenPoint)
     {
-        foreach ((MonitorTarget monitor, DesktopWindow window) in _screens)
+        foreach (ScreenSurface screen in _screens)
         {
-            if (!monitor.Bounds.Contains(screenPoint))
+            if (!screen.Monitor.Bounds.Contains(screenPoint))
             {
                 continue;
             }
 
-            CalendarLayout? layout = window.Layout;
+            CalendarLayout? layout = screen.Surface.Layout;
             if (layout is null)
             {
                 return null;
             }
 
-            DayCell? cell = layout.HitTest(window.ToLocal(screenPoint));
+            DayCell? cell = layout.HitTest(ToLocal(screen.Monitor, screenPoint));
             if (cell is null)
             {
                 return null;
             }
 
             var screenBounds = new Rectangle(
-                monitor.Bounds.X + (int)cell.Bounds.X,
-                monitor.Bounds.Y + (int)cell.Bounds.Y,
+                screen.Monitor.Bounds.X + (int)cell.Bounds.X,
+                screen.Monitor.Bounds.Y + (int)cell.Bounds.Y,
                 (int)cell.Bounds.Width,
                 (int)cell.Bounds.Height);
 
-            return new DayHit(window, cell, screenBounds);
+            return new DayHit(screen.Monitor, cell, screenBounds);
         }
 
         return null;
@@ -369,20 +338,20 @@ internal sealed class DesktopLayerManager : IDisposable
     /// </summary>
     public CalendarBlockHit? HitTestBlock(Point screenPoint)
     {
-        foreach ((MonitorTarget monitor, DesktopWindow window) in _screens)
+        foreach (ScreenSurface screen in _screens)
         {
-            if (!monitor.Bounds.Contains(screenPoint))
+            if (!screen.Monitor.Bounds.Contains(screenPoint))
             {
                 continue;
             }
 
-            CalendarLayout? layout = window.Layout;
+            CalendarLayout? layout = screen.Surface.Layout;
             if (layout is null)
             {
                 return null;
             }
 
-            PointF local = window.ToLocal(screenPoint);
+            PointF local = ToLocal(screen.Monitor, screenPoint);
             if (!layout.Bounds.Contains(local))
             {
                 return null;
@@ -393,6 +362,18 @@ internal sealed class DesktopLayerManager : IDisposable
 
         return null;
     }
+
+    /// <summary>Ekran koordinatındaki noktayı monitörün kendi koordinatına çevirir.</summary>
+    private static PointF ToLocal(MonitorTarget monitor, Point screenPoint)
+        => new(screenPoint.X - monitor.Bounds.X, screenPoint.Y - monitor.Bounds.Y);
+
+    /// <summary>
+    /// Ekranların kimliği, yeri, ölçüsü ve DPI'sının özeti. Değiştiğinde
+    /// görüntüler ve ayarlar ekranı tazelenmelidir.
+    /// </summary>
+    private static string BuildConfigSignature(IReadOnlyList<MonitorTarget> monitors)
+        => string.Join(";", monitors.Select(m =>
+            $"{m.StableId}@{m.Bounds.X},{m.Bounds.Y},{m.Bounds.Width}x{m.Bounds.Height}#{m.Dpi}"));
 
     private static bool ShouldDrawCalendar(AppSettings settings, MonitorTarget monitor, MonitorPlacement placement)
     {
@@ -409,27 +390,61 @@ internal sealed class DesktopLayerManager : IDisposable
         };
     }
 
-    /// <summary>
-    /// Çocuk pencerelerin konumu ana pencerenin istemci alanına göredir.
-    /// WorkerW kenarlıksızdır, bu yüzden pencere dikdörtgeninin sol üstü
-    /// istemci başlangıcıyla aynıdır.
-    /// </summary>
-    private static Point ResolveHostOrigin(IntPtr host)
+    private void ReportUnavailable()
     {
-        if (NativeMethods.GetWindowRect(host, out NativeMethods.RECT rect))
+        if (_unavailableReported)
         {
-            return new Point(rect.Left, rect.Top);
+            return;
         }
 
-        Rectangle virtualScreen = MonitorEnumerator.VirtualScreen();
-        return new Point(virtualScreen.X, virtualScreen.Y);
+        _unavailableReported = true;
+        LayerUnavailable?.Invoke();
     }
 
-    private void DisposeWindows()
+    /// <summary>
+    /// Takvimsiz zemini duvar kağıdına yazar. Kapanışta çağrılıyor: takvim
+    /// duvar kağıdının parçası olduğu için, uygulama kapandıktan sonra ekranda
+    /// donmuş bir takvim kalmasın.
+    /// </summary>
+    private void PaintPlainBackground()
     {
-        foreach ((_, DesktopWindow window) in _screens)
+        try
         {
-            window.Dispose();
+            AppSettings settings = _settings.Current;
+            var plain = new List<ScreenSurface>();
+
+            foreach (ScreenSurface screen in _screens)
+            {
+                if (!settings.Monitors.TryGetValue(screen.Monitor.StableId, out MonitorPlacement? placement))
+                {
+                    placement = PlacementDefaults.For(screen.Monitor);
+                }
+
+                DesktopSurface surface = _renderer.Render(
+                    screen.Monitor.Bounds.Size, settings, placement,
+                    CalendarDataSnapshot.Empty, _today, _viewMonth, drawCalendar: false);
+
+                plain.Add(new ScreenSurface(screen.Monitor, surface));
+            }
+
+            _canvas.Apply(plain.Select(s => new CanvasScreen(s.Monitor, s.Surface.Image)).ToList());
+
+            foreach (ScreenSurface s in plain)
+            {
+                s.Surface.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Kapanışta zemin yazılamadı.", ex);
+        }
+    }
+
+    private void DisposeSurfaces()
+    {
+        foreach (ScreenSurface screen in _screens)
+        {
+            screen.Surface.Dispose();
         }
 
         _screens.Clear();
@@ -441,15 +456,14 @@ internal sealed class DesktopLayerManager : IDisposable
         _rebuildTimer.Stop();
         _watchdogTimer.Stop();
 
-        bool hadWindows = _screens.Count > 0;
-        DisposeWindows();
-        _renderer.Dispose();
-
-        if (hadWindows)
+        // Takvimi duvar kağıdından siliyoruz; yoksa yarın da bugünün takvimi
+        // ekranda asılı kalır.
+        if (_canvas.HasPainted && _settings.Current.SyncSystemWallpaper)
         {
-            // Pencerelerimiz gittikten sonra kabuk duvar kağıdını kendiliğinden
-            // yeniden boyamıyor; takvim ekranda asılı kalıyor. Açıkça tazeliyoruz.
-            DesktopRefresher.ForceRedraw();
+            PaintPlainBackground();
         }
+
+        DisposeSurfaces();
+        _renderer.Dispose();
     }
 }

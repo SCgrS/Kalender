@@ -1,8 +1,8 @@
 # Kalender
 
-Windows masaüstünde, duvar kağıdının üstüne ama masaüstü simgelerinin altına çizilen aylık
-takvim. Takvim duvar kağıdının bir parçasıymış gibi görünür: üzerine klasör koyabilir,
-tıklayabilir, sürükleyerek çoklu seçim yapabilirsiniz — takvim hiçbir şeye karışmaz.
+Windows masaüstünde, doğrudan duvar kağıdına işlenen aylık takvim. Takvim duvar kağıdının
+gerçekten bir parçası olur: üzerine klasör koyabilir, tıklayabilir, sürükleyerek çoklu seçim
+yapabilirsiniz — takvim hiçbir şeye karışmaz, çünkü ortada bir pencere yoktur.
 
 Günlerin üzerine gelince, Windows'un kendi ipucu balonları tarzında küçük bir kutu açılır ve
 o günün Google Takvim etkinlikleri ile görevleri listelenir.
@@ -11,13 +11,13 @@ o günün Google Takvim etkinlikleri ile görevleri listelenir.
 
 ## Ne yapar
 
-- Aylık takvimi doğrudan masaüstü katmanına (WorkerW) çizer; ayrı bir pencere açmaz.
+- Zemini ve aylık takvimi tek bir görüntüde birleştirip Windows duvar kağıdı olarak uygular;
+  ayrı bir pencere açmaz, masaüstünün çizimine hiç karışmaz.
 - Pazar günleri, isteğe bağlı olarak cumartesiler ve resmi tatiller kırmızı gösterilir.
 - Gün rakamının altında, o güne düşen etkinlikler için küçük renkli noktacıklar çıkar.
 - Fareyle bir günün üzerinde kısa süre beklediğinizde o günün etkinlikleri ve görevleri listelenir.
 - Zemin düz renk ya da kendi fotoğrafınız olabilir; her monitör için ayrı ayarlanabilir.
-- Seçilen zemin aynı zamanda Windows duvar kağıdına da yazılır; böylece açılışta Kalender
-  devreye girene kadar ekran farklı görünmez.
+- Kalender kapalıyken duvar kağıdında takvimsiz zemin kalır; ekran farklı görünmez.
 
 ## Gereksinimler
 
@@ -149,9 +149,10 @@ Yaptığınız her değişiklik anında masaüstüne yansır; "Tamam"a basmanız
 - **Fotoğraf** — kendi resminizi zemin yapar. Yerleşim seçenekleri: Kapla, Sığdır,
   Ortala, Döşe.
 
-Seçtiğiniz zemin aynı zamanda Windows duvar kağıdına da yazılır; böylece açılışta
-Kalender devreye girene kadar ekran farklı görünmez. Bunu geri almak için tepsi
-menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
+Seçtiğiniz zemin, takvimle birlikte tek bir görüntüde birleştirilip Windows duvar kağıdı
+olarak uygulanır — takvimin masaüstünde görünmesini sağlayan şey budur. Kalender'i
+kapattığınızda duvar kağıdında takvimsiz zemin kalır. Kalender'den önceki duvar kağıdınıza
+dönmek için tepsi menüsündeki **Eski duvar kağıdıma dön**'ü kullanın.
 
 ### Yazı
 
@@ -198,8 +199,9 @@ Konum, boyut ve fotoğraf her monitör için ayrı hatırlanır. Ekranlarınız�
 - **Windows açılışında Kalender'i başlat** — varsayılan olarak açık. Kayıt yalnızca kendi
   kullanıcı hesabınıza yazılır (`HKCU\...\Run`), yönetici hakkı istenmez. Kutunun altında
   hangi dosyanın başlatılacağı yazar.
-- **Seçilen zemini Windows duvar kağıdı olarak da ayarla** — kapatırsanız Windows duvar
-  kağıdınıza hiç dokunulmaz.
+- **Takvimi Windows duvar kağıdına işle** — varsayılan olarak açık; takvimin masaüstünde
+  görünmesini bu sağlar. Kapatırsanız Windows duvar kağıdınıza hiç dokunulmaz, ama takvim de
+  masaüstünde görünmez.
 - **Günlük ayrıntısı** — normalde yalnızca hatalar yazılır. Bir sorun ararken *Bilgi* ya da
   *Ayrıntılı* seçebilirsiniz. **Günlük klasörünü aç** düğmesi dosyaları gösterir.
 - **Sürüm** ve **Sürümler sayfası** — Kalender kendini otomatik güncellemez.
@@ -217,8 +219,8 @@ Saatin yanındaki Kalender simgesine sağ tıklayın:
 | Ayarlar | Ayarlar penceresini açar (simgeye sol tıklamak da açar) |
 | Şimdi yenile | Tatil listesini ve Google verisini hemen tazeler |
 | Takvimi gizle / göster | Takvimi çizmeyi durdurur; zemin kalır |
-| Takvimi yeniden çiz | Masaüstü katmanını sıfırdan kurar (kabuk takılırsa işe yarar) |
-| Eski duvar kağıdıma dön | Kalender'den önceki duvar kağıdını geri yükler ve eşitlemeyi kapatır |
+| Takvimi yeniden çiz | Görüntüyü sıfırdan üretip duvar kağıdına yeniden yazar |
+| Eski duvar kağıdıma dön | Kalender'den önceki duvar kağıdını geri yükler; takvim artık çizilmez |
 | Çıkış | Kalender'i kapatır |
 
 Simgenin üzerine gelince ipucunda Google bağlantı durumu yazar (bağlı / bağlı, çevrimdışı /
@@ -333,7 +335,44 @@ Bu, Kalender'in değil Google'ın API'sinin sınırı: Calendar API görevleri e
 vermiyor (yalnızca `default`, `focusTime` gibi türler dönüyor), o yüzden başka bir kaynaktan
 alma imkânı yok. Etkinlikler ve yinelenmeyen görevler her zaman eksiksiz görünür.
 
+## Takvim ekrana nasıl çiziliyor?
+
+Kalender her monitör için zemini ve takvimi tek bir tam ekran görüntüde birleştirir ve bunu
+Windows'un kendi duvar kağıdı olarak uygular. Görüntüler
+`%LOCALAPPDATA%\Kalender\zemin` altında tutulur.
+
+Görüntü yalnızca **içeriği değiştiğinde** yeniden yazılır: her turda ham piksellerin özeti
+alınır, özet aynıysa duvar kağıdına hiç dokunulmaz. Böylece Google yoklaması otuz saniyede
+bir dönse de masaüstü ancak gerçekten değişen bir şey olduğunda tazelenir.
+
+Gün kutusu ve takvim üzerindeki sağ tık menüsü bundan etkilenmez: ikisi de imleç konumunu
+kendisi izliyor ve takvimin ekranda hangi piksellerde durduğunu Kalender zaten biliyor.
+
+**Neden çizim penceresi değil?** 1.1.1'e kadar Kalender, Lively Wallpaper ve Wallpaper
+Engine gibi kabuğun `WorkerW` penceresine çocuk bir çizim penceresi asıyordu. Windows 11'in
+yeni yapılarında bu yöntem sessizce çalışmıyor: pencere kuruluyor, `IsWindowVisible` true
+dönüyor, çizim çağrıları başarı bildiriyor — ama tek piksel ekrana ulaşmıyor. Uygulamanın
+bunu fark etmesinin bir yolu da yok, her adım başarılı görünüyor. Duvar kağıdına yazmak
+Windows'un desteklediği yol: her sürümde çalışıyor.
+
 ## Sürüm geçmişi
+
+### 1.2.0
+
+- **Takvim artık doğrudan duvar kağıdına işleniyor.** Windows 11'in yeni yapılarında
+  (25H2 ve sonrası) masaüstü katmanı yöntemi çalışmıyordu ve takvim hiç görünmüyordu;
+  uygulama hata da vermiyordu, çünkü kendi açısından her şey yolundaydı. Ayrıntısı bir
+  üstteki bölümde.
+- Gün kutusu, sağ tık menüsü, çoklu monitör, DPI ölçeği, fotoğraf zemin ve her monitör için
+  ayrı yerleşim aynen çalışıyor.
+- Duvar kağıdı görüntüsü yalnızca içeriği değiştiğinde yazılıyor; boştaki masaüstü hiç
+  tazelenmiyor.
+- Windows duvar kağıdını kendi önbelleğine JPEG olarak kopyaladığı ve varsayılan kalite ince
+  yazıları bulandırdığı için `JPEGImportQuality` 100'e çekiliyor. Önceki değer yedeğe yazılır,
+  "Eski duvar kağıdıma dön" ile geri gelir.
+- Kalender kapanırken takvimi duvar kağıdından siliyor; ertesi güne kalmış donmuş bir takvim
+  ekranda kalmıyor.
+- Ayarlardaki kutunun adı **Takvimi Windows duvar kağıdına işle** oldu.
 
 ### 1.1.1
 

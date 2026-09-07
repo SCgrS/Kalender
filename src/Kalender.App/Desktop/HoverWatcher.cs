@@ -36,7 +36,6 @@ internal sealed class HoverWatcher : IDisposable
         "WorkerW",
         "SHELLDLL_DefView",
         "SysListView32",
-        "KalenderMasaustuKatmani",
     };
 
     private readonly DesktopLayerManager _layer;

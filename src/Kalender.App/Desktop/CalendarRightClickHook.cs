@@ -9,9 +9,9 @@ namespace Kalender.Desktop;
 /// Takvimin üzerindeki sağ tıklamayı yakalar ve Windows'un masaüstü menüsünün
 /// açılmasını engeller; menüyü Kalender kendisi gösterir.
 ///
-/// Neden alt düzey kanca gerekiyor? Çizim penceremiz kabuğun duvar kağıdı
-/// katmanının çocuğu ve simgelerin altında kalıyor; fare olayları hiçbir zaman
-/// bize ulaşmıyor. Menüyü biz açacaksak olayı kabuğa varmadan almamız gerekiyor.
+/// Neden alt düzey kanca gerekiyor? Takvim duvar kağıdının bir parçası olarak
+/// çiziliyor; ortada bizim bir penceremiz yok, dolayısıyla fare olayları hiçbir
+/// zaman bize ulaşmıyor. Menüyü biz açacaksak olayı kabuğa varmadan almamız gerekiyor.
 ///
 /// Maliyeti nasıl sıfıra yakın tutuyoruz? Kanca sürekli takılı durmuyor:
 /// <see cref="HoverWatcher"/> zaten 100 ms'de bir imlecin nerede olduğuna
