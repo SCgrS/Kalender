@@ -36,7 +36,7 @@ public partial class SettingsWindow : Window
         (0, "Ayrıntılı"),
     };
 
-    private const string ReleasesUrl = "https://github.com/SCgrS/kalender/releases";
+    private const string ReleasesUrl = "https://github.com/SCgrS/Kalender/releases";
 
     private readonly IAppearanceHost _host;
     private readonly DispatcherTimer _applyTimer;

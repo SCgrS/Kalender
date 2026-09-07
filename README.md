@@ -27,12 +27,12 @@ o günün Google Takvim etkinlikleri ile görevleri listelenir.
 
 ## Kurulum
 
-### [⬇ Kalender-Kurulum.exe indir](https://github.com/SCgrS/kalender/releases/latest/download/Kalender-Kurulum.exe)
+### [⬇ Kalender-Kurulum.exe indir](https://github.com/SCgrS/Kalender/releases/latest/download/Kalender-Kurulum.exe)
 
 Tek dosya, 63 MB. İçinde çalışması için gereken her şey var; ayrıca .NET kurmanız gerekmez.
 
 > Depo özel (private) olduğu için indirme bağlantısı yalnızca GitHub'da oturumu açık olan
-> yetkili hesaplarda çalışır. Tüm sürümler: [Sürümler sayfası](https://github.com/SCgrS/kalender/releases)
+> yetkili hesaplarda çalışır. Tüm sürümler: [Sürümler sayfası](https://github.com/SCgrS/Kalender/releases)
 
 1. Yukarıdaki bağlantıya tıklayıp dosyayı indirin.
 2. İndirilen `Kalender-Kurulum.exe` dosyasına **çift tıklayın**.
