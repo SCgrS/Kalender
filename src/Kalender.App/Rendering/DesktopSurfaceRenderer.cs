@@ -126,12 +126,25 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         return new PointF(Math.Clamp(x, margin, maxX), Math.Clamp(y, margin, maxY));
     }
 
+    /// <summary>Karartma karesinin takvim bloğundan dışarı taşma payı (ölçek 1.0 iken piksel).</summary>
+    private const float BackdropPad = 56f;
+
+    /// <summary>En hafif karartmada köşe yarıçapının kare kenarına oranı.</summary>
+    private const float BackdropMaxCorner = 0.28f;
+
     /// <summary>
-    /// Fotoğraf kipinde takvimin arkasına isteğe bağlı yumuşak karartma.
+    /// En hafif karartmada tam koyu kalan iç bölgenin kareye oranı; dışındaki
+    /// halka saydama doğru solar.
+    /// </summary>
+    private const float BackdropMinFocus = 0.80f;
+
+    /// <summary>
+    /// Fotoğraf kipinde takvimin arkasına isteğe bağlı karartma.
     ///
-    /// Şekil daire değil, köşeleri yuvarlatılmış bir dikdörtgen: takvim de
-    /// dikdörtgen olduğu için gölge onu daha doğal sarıyor ve ekranın ortasında
-    /// kocaman siyah bir daire oluşmuyor. Kenarlar yumuşak geçişli.
+    /// Şekil, takvim bloğunu ortalayan bir kare. Kaydırıcı büyüdükçe üç şey
+    /// aynı oranda birlikte değişir: koyuluk artar, köşeler düzleşir, kenardaki
+    /// yumuşak geçiş daralır. Düşük değerlerde yuvarlak ve yumuşak bir gölgedir;
+    /// %100'de keskin kenarlı, köşesiz ve tam opak bir kare olur.
     /// </summary>
     private static void PaintBackdrop(Graphics g, CalendarLayout layout, AppearanceSettings appearance, float scale)
     {
@@ -140,22 +153,37 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
             return;
         }
 
-        // En koyu ayarda bile tam siyah olmasın; altındaki fotoğraf sezilsin.
-        int alpha = (int)Math.Round(Math.Clamp(appearance.BackdropDim, 0, 100) / 100.0 * 190);
+        // 0 (en hafif) ile 1 (tam kare) arası; koyuluk, köşe ve kenar buna doğrusal bağlı.
+        float t = Math.Clamp(appearance.BackdropDim, 0, 100) / 100f;
+        Color dark = Color.FromArgb((int)Math.Round(t * 255), 0, 0, 0);
 
-        float pad = 90f * scale;
-        var rect = RectangleF.Inflate(layout.Bounds, pad, pad);
-        float radius = Math.Min(rect.Width, rect.Height) * 0.28f;
+        // Blok neredeyse kare (7 sütun × 8 satır); uzun kenara göre tam kare yapılır.
+        RectangleF block = layout.Bounds;
+        float side = Math.Max(block.Width, block.Height) + (2f * BackdropPad * scale);
+        var rect = new RectangleF(
+            block.X + ((block.Width - side) / 2f),
+            block.Y + ((block.Height - side) / 2f),
+            side,
+            side);
 
-        using GraphicsPath path = RoundedRectangle(rect, radius);
+        float softness = 1f - t;
+        if (softness <= 0f)
+        {
+            using var solid = new SolidBrush(dark);
+            g.FillRectangle(solid, rect);
+            return;
+        }
+
+        // Odak 1'e yaklaştıkça koyu bölge kenara kadar uzanır, geçiş keskinleşir.
+        float focus = 1f - ((1f - BackdropMinFocus) * softness);
+
+        using GraphicsPath path = RoundedRectangle(rect, side * BackdropMaxCorner * softness);
         using var brush = new PathGradientBrush(path)
         {
-            CenterPoint = new PointF(rect.X + (rect.Width / 2f), rect.Y + (rect.Height / 2f)),
-            CenterColor = Color.FromArgb(alpha, 0, 0, 0),
+            CenterPoint = new PointF(rect.X + (side / 2f), rect.Y + (side / 2f)),
+            CenterColor = dark,
             SurroundColors = new[] { Color.FromArgb(0, 0, 0, 0) },
-
-            // Koyu bölge takvimi kapsayacak kadar geniş dursun; solma dışarıda başlasın.
-            FocusScales = new PointF(0.80f, 0.80f),
+            FocusScales = new PointF(focus, focus),
         };
 
         g.FillPath(brush, path);
@@ -165,6 +193,13 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     {
         float d = Math.Min(radius * 2f, Math.Min(rect.Width, rect.Height));
         var path = new GraphicsPath();
+
+        // Çok küçük yayları GDI+ çizemiyor; o kadar küçük köşe zaten düz görünür.
+        if (d < 1f)
+        {
+            path.AddRectangle(rect);
+            return path;
+        }
 
         path.AddArc(rect.X, rect.Y, d, d, 180, 90);
         path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);

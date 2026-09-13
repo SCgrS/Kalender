@@ -265,6 +265,7 @@ internal static class NativeMethods
     public const int PBT_APMSUSPEND = 0x0004;
 
     // SystemParametersInfo
+    public const uint SPI_SETDESKWALLPAPER = 0x0014;
     public const uint SPI_GETDESKWALLPAPER = 0x0073;
 
     // RedrawWindow bayrakları

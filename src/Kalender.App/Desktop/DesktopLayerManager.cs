@@ -87,10 +87,19 @@ internal sealed class DesktopLayerManager : IDisposable
     public IReadOnlyList<MonitorTarget> Monitors => _screens.Select(s => s.Monitor).ToList();
 
     /// <summary>Yeni gün verisi geldiğinde çağrılır.</summary>
-    public void SetData(CalendarDataSnapshot data)
+    /// <param name="refresh">
+    /// Hemen yeniden çizilsin mi? Ardından zaten tam bir yeniden çizim
+    /// gelecekse (ayar değişikliği) false verilir; yoksa görüntü iki kez
+    /// üretilip duvar kağıdına iki kez yazılır.
+    /// </param>
+    public void SetData(CalendarDataSnapshot data, bool refresh = true)
     {
         _data = data;
-        Refresh();
+
+        if (refresh)
+        {
+            Refresh();
+        }
     }
 
     public void SetToday(DateOnly today)
@@ -103,10 +112,19 @@ internal sealed class DesktopLayerManager : IDisposable
     /// Ekranda hangi ayın çizileceğini belirler. Normalde içinde bulunduğumuz
     /// aydır; sağ tık menüsünden ileri geri gidildiğinde geçici olarak değişir.
     /// </summary>
-    public void SetViewMonth(DateOnly month)
+    /// <param name="refresh">
+    /// Hemen yeniden çizilsin mi? Yeni ayın verisi hemen ardından
+    /// <see cref="SetData"/> ile gelecekse false verilir; yoksa yeni ay önce
+    /// eski ayın verisiyle çizilip yazılır, sonra bir kez daha.
+    /// </param>
+    public void SetViewMonth(DateOnly month, bool refresh = true)
     {
         _viewMonth = new DateOnly(month.Year, month.Month, 1);
-        Refresh();
+
+        if (refresh)
+        {
+            Refresh();
+        }
     }
 
     /// <summary>
@@ -188,11 +206,44 @@ internal sealed class DesktopLayerManager : IDisposable
         }
     }
 
+    private bool _refreshing;
+    private bool _refreshAgain;
+
     /// <summary>
     /// Görüntüleri yeniden üretir ve değişenleri duvar kağıdına yazar.
     /// Monitör listesi burada yeniden okunmaz.
+    ///
+    /// İç içe çalışmaz: duvar kağıdı yazılırken COM çağrısı mesaj döngüsünü
+    /// döndürebilir ve o arada gelen bir ayar değişikliği (ya da Google
+    /// yoklamasının getirdiği yeni veri) buraya yeniden girip kullanılmakta
+    /// olan görüntüleri atabilirdi. Arada gelen istek not edilir; iş bitince
+    /// en son hâl bir kez daha çizilir.
     /// </summary>
     public void Refresh()
+    {
+        if (_refreshing)
+        {
+            _refreshAgain = true;
+            return;
+        }
+
+        _refreshing = true;
+        try
+        {
+            do
+            {
+                _refreshAgain = false;
+                RefreshOnce();
+            }
+            while (_refreshAgain && !_disposed);
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private void RefreshOnce()
     {
         if (_disposed || _monitors.Count == 0)
         {

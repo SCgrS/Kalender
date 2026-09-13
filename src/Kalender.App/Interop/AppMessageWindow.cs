@@ -115,6 +115,17 @@ internal sealed class AppMessageWindow : NativeWindow
                 return IntPtr.Zero;
 
             case NativeMethods.WM_SETTINGCHANGE:
+                // Duvar kağıdını her yazışımızda kabuk bu yayını yapıyor. Ona
+                // tepki vermek az önce yazdığımız görüntüyü boşuna yeniden
+                // ürettiriyordu; renk seçerken bu iş sürüklemeyi de yavaşlatıyordu.
+                // Kullanıcı duvar kağıdını Windows'tan değiştirdiğinde de aynı yayın
+                // gelir; ona da zaten bir şey yapılmıyordu (görüntü aynı kaldığı
+                // için yazma atlanıyordu), yani burada kaybedilen bir tepki yok.
+                if ((long)wParam == NativeMethods.SPI_SETDESKWALLPAPER)
+                {
+                    break;
+                }
+
                 // Çalışma alanı değişimi de buradan gelir (görev çubuğu taşınması gibi).
                 DisplayChanged?.Invoke();
                 break;

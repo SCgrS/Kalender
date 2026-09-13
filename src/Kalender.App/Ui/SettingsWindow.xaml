@@ -315,7 +315,7 @@
                                         <TextBlock Style="{StaticResource SatirBasligi}"
                                                    Text="Takvimin arkasını karart (fotoğraf zeminde)" />
                                         <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Fotoğrafın üzerinde yazılar okunmuyorsa takvimin arkasına yumuşak bir gölge koyar." />
+                                                   Text="Fotoğrafın üzerinde yazılar okunmuyorsa takvimin arkasına bir gölge koyar. Değer arttıkça gölge koyulaşır ve köşeleri düzleşir; %100'de tam opak bir kare olur." />
                                     </StackPanel>
                                 </DockPanel>
                             </StackPanel>

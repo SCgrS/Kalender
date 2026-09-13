@@ -59,9 +59,12 @@ public partial class SettingsWindow : Window
         InitializeComponent();
 
         _host = host;
+
+        // Kısa bir soluk: tek tıklamanın doğurduğu art arda olaylar birleşsin.
+        // Arka plan önceliği, pencerenin kendi çizimi (çarkın imleci) önce bitsin diye.
         _applyTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(150),
+            Interval = TimeSpan.FromMilliseconds(40),
         };
         _applyTimer.Tick += (_, _) =>
         {
@@ -410,15 +413,21 @@ public partial class SettingsWindow : Window
         MonitorList.ItemsSource = _rows;
     }
 
-    /// <summary>Değişikliği masaüstüne uygular; art arda gelen değişiklikler birleştirilir.</summary>
+    /// <summary>
+    /// Değişikliği masaüstüne uygular; art arda gelen değişiklikler birleştirilir.
+    ///
+    /// Bekleyen bir uygulama varken zamanlayıcı yeniden kurulmaz. Önceden her
+    /// adımda baştan kuruluyordu: renk çarkında ya da kaydırıcıda sürükleme
+    /// sürdükçe, fare durana kadar masaüstünde hiçbir şey değişmiyordu. Şimdi
+    /// sürüklerken de her uygulama bitince en son hâl yansıyor.
+    /// </summary>
     private void ScheduleApply()
     {
-        if (_loading)
+        if (_loading || _applyTimer.IsEnabled)
         {
             return;
         }
 
-        _applyTimer.Stop();
         _applyTimer.Start();
     }
 

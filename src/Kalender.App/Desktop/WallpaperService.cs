@@ -213,7 +213,8 @@ internal static class WallpaperService
                 return;
             }
 
-            foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*.png"))
+            // Uzantı verilmiyor: 1.4.4'e kadar PNG, sonra BMP yazıldı; ikisi de silinsin.
+            foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*"))
             {
                 try
                 {

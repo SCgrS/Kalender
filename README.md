@@ -90,7 +90,7 @@ Platform** sayfasına yönlendirir.
 
 ### 5. Kalender'e yapıştırın
 
-1. Tepsi simgesine tıklayıp **Ayarlar**'ı açın, **Google Takvim ve Görevler** bölümüne inin.
+1. Tepsi simgesine tıklayıp **Ayarlar**'ı açın, soldan **Google** sayfasına geçin.
 2. İki değeri **İstemci kimliği (Client ID)** ve **İstemci gizli anahtarı (Client secret)**
    kutularına yapıştırın.
 3. **Google'a bağlan**'a basın; tarayıcıda Google onay ekranı açılır.
@@ -98,7 +98,7 @@ Platform** sayfasına yönlendirir.
    değil)** yolunu izleyin; uygulama Google'ca incelenmediği için bu uyarı beklenen bir durum.
 5. İzin verince tarayıcıda "Kalender bağlandı" yazısını görürsünüz; sekmeyi kapatabilirsiniz.
 
-Bağlandıktan sonra aynı bölümde **Ne sıklıkla yenilensin?** (30 saniye – 24 saat),
+Bağlandıktan sonra aynı sayfada **Ne sıklıkla yenilensin?** (30 saniye – 24 saat),
 **Gösterilecek takvimler**, **Gösterilecek görev listeleri** ve **Görev noktacığı rengi**
 seçenekleri açılır. Bağlantıyı koparmak için **Bağlantıyı kes**: yetki dosyası ve yerel veri
 kopyası silinir.
@@ -107,32 +107,33 @@ kopyası silinir.
 
 Tepsi (saatin yanındaki bildirim alanı) simgesine **tıklayın** ya da sağ tıklayıp **Ayarlar**'ı
 seçin. Kalender açıkken `Kalender.exe`'yi yeniden çalıştırmak da ayarları açar. Her değişiklik
-anında masaüstüne uygulanır; kaydetmeniz gerekmez.
+anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş sayfa vardır:
 
-- **Zemin** — **Hazır renkler** (koyudan açığa sekiz renk), **Kendi rengim** (renk çarkı;
-  `#2E3238` gibi kodu elle de yazabilirsiniz) ya da **Fotoğraf seç…**. Fotoğrafta **Yerleşim**:
-  Kapla, Sığdır, Ortala, Döşe.
-- **Yazı** — **Yazı rengini zemine göre otomatik seç** (fotoğraf zeminde rengi siz seçersiniz),
-  **Cumartesi de pazar gibi kırmızı olsun**, **Takvimin arkasını karart (fotoğraf zeminde)**
-  kaydırıcısı.
-- **Takvim renkleri** — **Hafta günleri ve ay adı**, **Tatil ve hafta sonu günleri**, **Pasif
-  günler**, **Bugünün arkasındaki daire**. Hepsi **Otomatik** başlar; işareti kaldırınca renk
-  çarkı açılır. Gün altındaki noktacıklar buraya dahil değildir; renkleri Google'dan gelir.
-- **Resmi tatiller** — **Resmi tatilleri kırmızı göster**.
-- **Gün kutusu** — **Kutunun opaklığı** kaydırıcısı (%40–100). Küçülttükçe kutunun zemini
-  saydamlaşır ve altındaki duvar kağıdı görünür; yazılar her değerde tam opak kalır.
-- **Google Takvim ve Görevler** — yukarıdaki bölümde anlatıldı.
-- **Ekranlar** — **Tüm ekranlarda**, **Yalnız ana ekranda** ya da **Seçtiğim ekranlarda**
+- **Arka plan** — **Hazır renkler** (koyudan açığa sekiz renk: Mürekkep, Gece Mavisi, Kömür,
+  Çam Yeşili, Tarçın, Sis Grisi, Kum, Kağıt), **Kendi rengim** (düğmeye tıklayınca renk çarkı
+  açılır; `#2E3238` gibi kodu elle de yazabilirsiniz) ya da **Fotoğraf seç…**. Fotoğrafta
+  **Yerleşim**: Kapla, Sığdır, Ortala, Döşe. **Takvimin arkasını karart** (yalnız fotoğraf
+  zeminde) takvimi ortalayan bir kare koyar: değer arttıkça koyulaşır, köşeleri düzleşir ve
+  kenarı keskinleşir; %100'de köşesiz, tam opak bir kare olur.
+- **Renkler** — **Takvim renkleri**: **Yazı rengi**, **Hafta günleri ve ay adı**, **Tatil ve
+  hafta sonu günleri**, **Pasif günler**, **Bugünün dairesi**. Hepsi **Otomatik** başlar; renk
+  düğmesinden seçince o satır elle seçilmiş olur (fotoğraf zeminde yazı rengini siz seçersiniz).
+  Gün altındaki noktacıklar buraya dahil değildir; renkleri Google'dan gelir. **Tatiller**:
+  **Resmi tatilleri kırmızı göster**, **Cumartesi de pazar gibi kırmızı olsun**. **Gün
+  kutusu**: **Kutunun opaklığı** (%40–100); yazılar her değerde tam opak kalır.
+- **Boyut ve Konum** — **Tüm ekranlarda**, **Yalnız ana ekranda** ya da **Seçtiğim ekranlarda**
   (**Bu ekranda göster** kutusu). Her ekran için **Takvimi taşı** (sürükleyip bırakın;
-  kenarlara ve ortaya yaklaşınca hizalanır, %80–150 boyut, Esc vazgeçer), **Boyut** ve
-  **Bu ekrana fotoğraf…**.
+  kenarlara ve ortaya yaklaşınca hizalanır, Esc vazgeçer), **Boyut** (%80–150) ve **Bu ekrana
+  fotoğraf…**.
+- **Google** — hesap bağlantısı, istemci bilgileri ve bağlandıktan sonraki seçenekler;
+  yukarıdaki bölümde anlatıldı.
 - **Genel** — **Windows açılışında Kalender'i başlat**, **Takvimi Windows duvar kağıdına
   işle** (kapatırsanız duvar kağıdınıza dokunulmaz ama takvim de görünmez), **Günlük
   ayrıntısı** (Yalnız hatalar / Bilgi / Ayrıntılı) ve **Günlük klasörünü aç**, **Sürümler
   sayfası**, **Kalender'i kaldır**.
 
-Pencerenin altındaki **Karanlık kip / Aydınlık kip** düğmesi yalnızca ayarlar penceresinin
-görünümünü değiştirir; ilk açılışta Windows'un uygulama teması izlenir.
+Sol alttaki **güneş / ay** anahtarı yalnızca ayarlar penceresinin görünümünü değiştirir; ilk
+açılışta Windows'un uygulama teması izlenir.
 
 ## Tepsi menüsü
 
@@ -160,8 +161,8 @@ Kutu yalnızca imlecin altında masaüstünün kendisi varken, fare tuşu basıl
 ekran/sunum kipi yokken açılır. Gösterilecek bir şey yoksa hiç açılmaz; hücreden çıkınca
 kapanır. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu kendisi düzeltir.
 
-Kutunun zemini varsayılan olarak %95 opaktır. **Ayarlar > Gün kutusu > Kutunun opaklığı**
-ile %40'a kadar indirebilirsiniz; yazılar her değerde tam opak kalır.
+Kutunun zemini varsayılan olarak %95 opaktır. **Ayarlar > Renkler > Gün kutusu > Kutunun
+opaklığı** ile %40'a kadar indirebilirsiniz; yazılar her değerde tam opak kalır.
 
 ## Takvimin üzerinde sağ tık
 

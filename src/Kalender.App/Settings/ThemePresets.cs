@@ -17,7 +17,9 @@ internal static class ThemePresets
         new ThemePreset("murekkep", "Mürekkep", "#141A22"),
         new ThemePreset("gece-mavisi", "Gece Mavisi", "#1E2A38"),
         new ThemePreset("komur", "Kömür", "#2E3238"),
-        new ThemePreset("koyu-zeytin", "Koyu Zeytin", "#2C3A30"),
+        // Grimsi zeytin yerine belirgin bir çam yeşili; parlaklığı aynı (0,038),
+        // bu yüzden yazı okunurluğu ve paletin koyudan açığa sırası değişmedi.
+        new ThemePreset("cam-yesili", "Çam Yeşili", "#1A3D30"),
         new ThemePreset("tarcin", "Tarçın", "#4A3A33"),
         new ThemePreset("sis-grisi", "Sis Grisi", "#8A9099"),
         new ThemePreset("kum", "Kum", "#D9CFC1"),

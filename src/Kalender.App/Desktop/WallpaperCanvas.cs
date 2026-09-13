@@ -113,7 +113,7 @@ internal sealed class WallpaperCanvas
                 }
 
                 string file = NextFile(screen.Monitor.StableId);
-                screen.Image.Save(file, ImageFormat.Png);
+                SaveBmp(screen.Image, file);
                 wallpaper.SetWallpaper(id, file);
 
                 _hashes[screen.Monitor.StableId] = hash;
@@ -159,7 +159,67 @@ internal sealed class WallpaperCanvas
         Directory.CreateDirectory(Paths.CanvasFolder);
 
         string yuva = slot == 0 ? "a" : "b";
-        return Path.Combine(Paths.CanvasFolder, $"zemin-{ShortId(monitorId)}-{yuva}.png");
+        return Path.Combine(Paths.CanvasFolder, $"zemin-{ShortId(monitorId)}-{yuva}.bmp");
+    }
+
+    /// <summary>
+    /// Görüntüyü sıkıştırmasız, 24 bitlik BMP olarak yazar.
+    ///
+    /// Neden PNG değil: 2560 × 1440 bir ekranda PNG kodlaması ~140 ms, bu yazım
+    /// ~10 ms sürüyor; renk seçerken aradaki fark doğrudan gecikme olarak
+    /// hissediliyordu. Windows görüntüyü zaten kendi önbelleğine yeniden
+    /// kodladığı için sıkıştırmanın masaüstüne yararı yok. Dosya büyük ama her
+    /// ekran için en fazla iki tane durur. 24 bit, çünkü 32 bitlik BMP'nin
+    /// dördüncü baytını bazı okuyucular saydamlık sanıyor.
+    /// </summary>
+    private static void SaveBmp(Bitmap image, string path)
+    {
+        const int HeaderSize = 14 + 40;
+        int width = image.Width;
+        int height = image.Height;
+        int stride = ((width * 3) + 3) & ~3;
+        int imageSize = stride * height;
+
+        // Görüntü baştan sona opak; 24 bite çevirirken ön-çarpılmış alfa bir şey değiştirmez.
+        BitmapData data = image.LockBits(
+            new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+
+        try
+        {
+            using var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 20);
+            using var w = new BinaryWriter(file);
+
+            // BITMAPFILEHEADER
+            w.Write((ushort)0x4D42); // "BM"
+            w.Write(HeaderSize + imageSize);
+            w.Write(0);
+            w.Write(HeaderSize);
+
+            // BITMAPINFOHEADER; yükseklik pozitif, yani satırlar aşağıdan yukarıya.
+            w.Write(40);
+            w.Write(width);
+            w.Write(height);
+            w.Write((ushort)1);
+            w.Write((ushort)24);
+            w.Write(0); // BI_RGB, sıkıştırmasız
+            w.Write(imageSize);
+            w.Write(3780); // 96 DPI, metre başına piksel
+            w.Write(3780);
+            w.Write(0);
+            w.Write(0);
+
+            byte[] row = new byte[stride];
+            int copy = Math.Min(stride, Math.Abs(data.Stride));
+            for (int y = height - 1; y >= 0; y--)
+            {
+                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, copy);
+                w.Write(row);
+            }
+        }
+        finally
+        {
+            image.UnlockBits(data);
+        }
     }
 
     /// <summary>Monitör kimliğinden kısa ve dosya adında kullanılabilir bir imza (FNV-1a).</summary>
@@ -183,7 +243,8 @@ internal sealed class WallpaperCanvas
         try
         {
             DateTime esik = DateTime.UtcNow - FileGrace;
-            foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*.png"))
+            // Uzantısız: 1.4.4'e kadar yazılan PNG'ler de temizlensin.
+            foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*"))
             {
                 if (File.GetLastWriteTimeUtc(file) < esik)
                 {

@@ -66,6 +66,12 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private bool _layerWarningShown;
 
+    /// <summary>
+    /// Ayarlar uygulanırken doğru: gün verisi yenilenir ama ayrıca çizilmez;
+    /// çizimi hemen ardından gelen tam yenileme yapar.
+    /// </summary>
+    private bool _applying;
+
     /// <summary>Kullanıcı çıkışı seçtiğinde tetiklenir.</summary>
     public event Action? ExitRequested;
 
@@ -202,7 +208,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _calendarData.Changed += snapshot =>
         {
             _data = snapshot;
-            _layer.SetData(snapshot);
+            _layer.SetData(snapshot, refresh: !_applying);
             _hover?.Reset();
         };
 
@@ -431,7 +437,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// <summary>Görünen ayı çizime ve veri katmanına uygular.</summary>
     private void ApplyViewMonth()
     {
-        _layer?.SetViewMonth(_viewMonth);
+        // Çizimi veri katmanı yapar: yeni ayın verisi derlenince Changed ile
+        // bir kez çizilir. Katman ayrıca çizseydi görüntü iki kez yazılırdı.
+        _layer?.SetViewMonth(_viewMonth, refresh: _calendarData is null);
         _calendarData?.SetViewMonth(_viewMonth);
         _hover?.Reset();
 
@@ -558,8 +566,18 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         _settings.Save();
 
-        // Tatil gösterimi gibi ayarlar gün içeriğini de etkiliyor.
-        _calendarData?.Rebuild();
+        // Tatil gösterimi gibi ayarlar gün içeriğini de etkiliyor. Veri burada
+        // çizimsiz güncellenir, hemen ardından ApplySettings bir kez çizer.
+        // Önceden her değişiklikte görüntü iki kez üretilip iki kez yazılıyordu.
+        _applying = true;
+        try
+        {
+            _calendarData?.Rebuild();
+        }
+        finally
+        {
+            _applying = false;
+        }
 
         ApplySettings();
     }
