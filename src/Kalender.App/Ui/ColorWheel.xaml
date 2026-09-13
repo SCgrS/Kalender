@@ -26,14 +26,15 @@
         </Grid>
 
         <!-- Parlaklık şeridi -->
-        <Grid Width="28" Height="200" Margin="14,0,0,0">
-            <Border x:Name="ValueBar" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000" />
+        <Grid Width="24" Height="200" Margin="16,0,0,0">
+            <Border x:Name="ValueBar" CornerRadius="12" BorderThickness="1"
+                    BorderBrush="{DynamicResource OrnekKenarFirca}" />
             <Canvas x:Name="ValueSurface" Background="Transparent"
                     MouseLeftButtonDown="OnValueMouseDown"
                     MouseMove="OnValueMouseMove"
                     MouseLeftButtonUp="OnValueMouseUp">
-                <Border x:Name="ValueThumb" Width="34" Height="8" Canvas.Left="-3"
-                        CornerRadius="4" Background="White" BorderThickness="1" BorderBrush="#60000000"
+                <Border x:Name="ValueThumb" Width="30" Height="10" Canvas.Left="-3"
+                        CornerRadius="5" Background="White" BorderThickness="1" BorderBrush="#60000000"
                         IsHitTestVisible="False">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="4" ShadowDepth="0" Opacity="0.5" />
@@ -43,14 +44,17 @@
         </Grid>
 
         <!-- Seçilen renk ve altı haneli kod -->
-        <StackPanel Margin="18,0,0,0" VerticalAlignment="Top" Width="130">
-            <TextBlock Text="Seçilen renk" Opacity="0.75" Margin="0,0,0,6" />
-            <Border x:Name="Preview" Height="46" CornerRadius="6"
-                    BorderThickness="1" BorderBrush="#40000000" />
-            <TextBlock Text="Renk kodu" Opacity="0.75" Margin="0,14,0,6" />
-            <TextBox x:Name="HexBox" Padding="6,4" FontFamily="Consolas"
+        <StackPanel Margin="20,0,0,0" VerticalAlignment="Top" Width="128">
+            <TextBlock Text="Seçilen renk" FontSize="12" Margin="0,0,0,6"
+                       Foreground="{DynamicResource SolukYaziFirca}" />
+            <Border x:Name="Preview" Height="56" CornerRadius="6"
+                    BorderThickness="1" BorderBrush="{DynamicResource OrnekKenarFirca}" />
+            <TextBlock Text="Renk kodu" FontSize="12" Margin="0,16,0,6"
+                       Foreground="{DynamicResource SolukYaziFirca}" />
+            <!-- Hazır kes/kopyala/yapıştır menüsü temaya uymuyor; kısayollar yine çalışır. -->
+            <TextBox x:Name="HexBox" FontFamily="Consolas" AutomationProperties.Name="Renk kodu"
+                     ContextMenu="{x:Null}"
                      KeyDown="OnHexKeyDown" LostFocus="OnHexLostFocus" />
-            <TextBlock Text="Örnek: #2E3238" Opacity="0.55" FontSize="11" Margin="0,4,0,0" />
         </StackPanel>
 
     </StackPanel>

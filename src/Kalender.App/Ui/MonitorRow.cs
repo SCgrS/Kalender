@@ -41,6 +41,9 @@ internal sealed class MonitorRow : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Bu ekrana ayrı bir fotoğraf verilmiş mi? "Kaldır" düğmesi buna göre açılır.</summary>
+    public bool HasPhoto => !string.IsNullOrWhiteSpace(Placement.PhotoPath);
+
     public bool Enabled
     {
         get => Placement.Enabled;
@@ -94,6 +97,7 @@ internal sealed class MonitorRow : INotifyPropertyChanged
     public void RefreshAll()
     {
         Notify(nameof(Detail));
+        Notify(nameof(HasPhoto));
         Notify(nameof(Enabled));
         Notify(nameof(ScalePercent));
         Notify(nameof(ScaleText));

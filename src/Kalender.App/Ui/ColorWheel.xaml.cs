@@ -82,7 +82,7 @@ public partial class ColorWheel : UserControl
                 double distance = Math.Sqrt((dx * dx) + (dy * dy)) / Radius;
                 int i = ((y * WheelSize) + x) * 4;
 
-                if (distance > 1.02)
+                if (distance > 1.0)
                 {
                     continue;
                 }
@@ -93,10 +93,12 @@ public partial class ColorWheel : UserControl
                     angle += 360.0;
                 }
 
-                Color color = FromHsv(angle, Math.Min(distance, 1.0), 1.0);
+                Color color = FromHsv(angle, distance, 1.0);
 
-                // Kenarda yumuşak geçiş; çarkın çevresi tırtıklı görünmesin.
-                double alpha = distance <= 0.98 ? 1.0 : Math.Max(0, (1.02 - distance) / 0.04);
+                // Kenarda yumuşak geçiş; çarkın çevresi tırtıklı görünmesin. Geçiş
+                // karartma örtüsünün kırpma dairesi içinde biter: dışına taşan kenar
+                // pikselleri koyu renklerde karartılmadan parlak bir hale olarak kalırdı.
+                double alpha = distance <= 0.98 ? 1.0 : (1.0 - distance) / 0.02;
 
                 pixels[i + 0] = color.B;
                 pixels[i + 1] = color.G;
@@ -134,9 +136,13 @@ public partial class ColorWheel : UserControl
 
         Preview.Background = new SolidColorBrush(Current);
 
-        if (!HexBox.IsKeyboardFocusWithin)
+        // Kutu, açılır pencerede odaktayken de çarkla eşit kalmalı: yoksa
+        // kapanırken (odak kutudan çıkınca) eski kod okunur ve çarkta seçilen
+        // renk geri alınırdı. Yazı yazılırken bu yöntem çağrılmaz.
+        HexBox.Text = ToHex(Current);
+        if (HexBox.IsKeyboardFocusWithin)
         {
-            HexBox.Text = ToHex(Current);
+            HexBox.SelectAll(); // Yazılan kod yine eskisinin tamamının yerine geçer.
         }
     }
 
@@ -224,16 +230,25 @@ public partial class ColorWheel : UserControl
 
     private void ApplyHex()
     {
-        if (TryParseHex(HexBox.Text, out Color color))
+        // Kod değişmediyse (ör. kutu yalnızca odak alıp bıraktıysa) seçim
+        // yapılmış sayılmaz; yoksa otomatik bir renk durup dururken elle
+        // seçilmişe dönerdi. Geçersiz yazıldıysa sessizce eski değere dönülür.
+        if (TryParseHex(HexBox.Text, out Color color) && color != Current)
         {
             (_hue, _saturation, _value) = ToHsv(color);
             Commit();
         }
         else
         {
-            // Geçersiz yazıldıysa sessizce eski değere dönüyoruz.
             HexBox.Text = ToHex(Current);
         }
+    }
+
+    /// <summary>Klavye odağını renk kodu kutusuna verir; yazılan kod eskisinin yerine geçer.</summary>
+    public void FocusHexBox()
+    {
+        HexBox.Focus();
+        HexBox.SelectAll();
     }
 
     // --------------------------------------------------------------- yardımcı

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl x:Class="Kalender.Ui.ColorPickerButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:Kalender.Ui">
+    <Grid>
+        <Button x:Name="Chip" Width="140" MinWidth="0" Padding="4,4,12,4"
+                HorizontalContentAlignment="Stretch" Click="OnChipClick">
+            <DockPanel>
+                <Path DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,1,0,0"
+                      Data="M 0.5,0.5 L 5,5 L 9.5,0.5" StrokeThickness="1.25"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                      Stroke="{DynamicResource SolukYaziFirca}" />
+                <Border x:Name="Swatch" Width="36" Height="22" CornerRadius="3" BorderThickness="1"
+                        BorderBrush="{DynamicResource OrnekKenarFirca}" />
+                <TextBlock x:Name="HexText" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </DockPanel>
+        </Button>
+
+        <Popup x:Name="Flyout" PlacementTarget="{Binding ElementName=Chip}" Placement="Custom"
+               StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+               Opened="OnFlyoutOpened" Closed="OnFlyoutClosed" MouseWheel="OnFlyoutMouseWheel">
+            <!-- Kenar boşluğu gölgenin payı; yerleşim hesabı bunu bilir. -->
+            <Grid Margin="12,4,12,16">
+                <Border CornerRadius="8" Background="{DynamicResource AcilirFirca}">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="20" ShadowDepth="5" Direction="270" Opacity="0.24" />
+                    </Border.Effect>
+                </Border>
+                <Border CornerRadius="8" Padding="20,16,20,20" BorderThickness="1"
+                        Background="{DynamicResource AcilirFirca}"
+                        BorderBrush="{DynamicResource KenarFirca}"
+                        KeyboardNavigation.TabNavigation="Cycle"
+                        PreviewKeyDown="OnFlyoutKeyDown">
+                    <StackPanel>
+                        <TextBlock x:Name="FlyoutTitle" FontWeight="SemiBold" Margin="0,0,0,14" />
+                        <ui:ColorWheel x:Name="Wheel" />
+                        <Button Content="Tamam" MinWidth="96" Margin="0,20,0,0" HorizontalAlignment="Right"
+                                Style="{DynamicResource VurguDugmesi}" Click="OnDone" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Popup>
+    </Grid>
+</UserControl>

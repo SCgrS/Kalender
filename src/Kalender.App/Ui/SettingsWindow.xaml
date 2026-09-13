@@ -4,14 +4,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:Kalender.Ui"
         Title="Kalender - Ayarlar"
-        Width="760" Height="820"
-        MinWidth="700" MinHeight="560"
+        Width="900" Height="680"
+        MinWidth="760" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display"
         Background="{DynamicResource ZeminFirca}"
         Foreground="{DynamicResource YaziFirca}"
-        FontFamily="Segoe UI" FontSize="13">
+        FontFamily="Segoe UI" FontSize="14">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -19,372 +19,795 @@
                 <ResourceDictionary Source="Denetimler.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <Style x:Key="Baslik" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                <Setter Property="FontSize" Value="16" />
+            <!--
+              Yazı düzeni Windows 11 Ayarlar'daki gibi: sayfa başlığı 28, grup
+              başlığı 14 kalın, ayar adı 14, açıklama 12 soluk. Boşluklar 4'ün katları.
+            -->
+            <Style x:Key="SayfaBasligi" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="FontSize" Value="28" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="0,0,0,10" />
             </Style>
-            <Style x:Key="Aciklama" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Style x:Key="GrupBasligi" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Margin" Value="2,28,0,8" />
+            </Style>
+            <Style x:Key="IlkGrupBasligi" TargetType="TextBlock" BasedOn="{StaticResource GrupBasligi}">
+                <Setter Property="Margin" Value="2,0,0,8" />
+            </Style>
+            <Style x:Key="GrupAciklamasi" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="FontSize" Value="12" />
                 <Setter Property="Foreground" Value="{DynamicResource SolukYaziFirca}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Margin" Value="0,0,0,10" />
+                <Setter Property="Margin" Value="2,-4,0,12" />
             </Style>
-            <Style x:Key="AltBaslik" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                <Setter Property="FontWeight" Value="SemiBold" />
+            <Style x:Key="SatirBasligi" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Opacity" Value="0.5" />
+                    </Trigger>
+                </Style.Triggers>
             </Style>
-            <Style x:Key="Bolum" TargetType="Border">
+            <Style x:Key="SatirAciklamasi" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{DynamicResource SolukYaziFirca}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="0,2,0,0" />
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Opacity" Value="0.5" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- Ayar kartı; içindeki satırlar ince çizgilerle ayrılır. -->
+            <Style x:Key="Kart" TargetType="Border">
                 <Setter Property="Background" Value="{DynamicResource YuzeyFirca}" />
-                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="BorderBrush" Value="{DynamicResource KenarFirca}" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="Padding" Value="18" />
-                <Setter Property="Margin" Value="0,0,0,16" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="6" />
             </Style>
+
+            <!-- Kart satırı: solda ad ve açıklama, sağa yaslı denetim (DockPanel.Dock="Right"). -->
+            <Style x:Key="Satir" TargetType="DockPanel">
+                <Setter Property="Margin" Value="16,12" />
+                <Setter Property="MinHeight" Value="40" />
+            </Style>
+
+            <!-- Adın altında tam genişlikte denetim duran satır (ör. uzun metin kutusu). -->
+            <Style x:Key="DikeySatir" TargetType="StackPanel">
+                <Setter Property="Margin" Value="16,14,16,16" />
+            </Style>
+
+            <Style x:Key="UyariKutusu" TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource UyariZeminFirca}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource UyariKenarFirca}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Padding" Value="12,10" />
+            </Style>
+
+            <!-- Google kurulum adımları: numara solda, metin sağda kırılır. -->
+            <Style x:Key="Adim" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="0,0,0,8" />
+            </Style>
+            <Style x:Key="AdimNo" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="Width" Value="22" />
+                <Setter Property="Foreground" Value="{DynamicResource SolukYaziFirca}" />
+                <Setter Property="DockPanel.Dock" Value="Left" />
+            </Style>
+
+            <Style x:Key="Sayfa" TargetType="ScrollViewer">
+                <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Padding" Value="36,0,22,28" />
+                <Setter Property="Visibility" Value="Collapsed" />
+            </Style>
+            <Style x:Key="SayfaIcerigi" TargetType="StackPanel">
+                <Setter Property="MaxWidth" Value="900" />
+            </Style>
+
+            <!-- ==================================================== simgeler -->
+            <!-- 16 piksellik ızgaraya çizgiyle çizilir; yazı tipi karakteri kullanılmaz. -->
+
+            <Style x:Key="Simge" TargetType="Path">
+                <Setter Property="Width" Value="16" />
+                <Setter Property="Height" Value="16" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Stroke" Value="{DynamicResource YaziFirca}" />
+                <Setter Property="StrokeThickness" Value="1.25" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+            </Style>
+
+            <GeometryGroup x:Key="SimgeArkaPlan">
+                <RectangleGeometry Rect="1.5,2.5,13,11" RadiusX="2" RadiusY="2" />
+                <PathGeometry Figures="M 2,12.5 L 6,8.5 L 9.5,12 M 8.5,11 L 10.5,9 L 14,12.5" />
+                <EllipseGeometry Center="10.75,5.75" RadiusX="1.25" RadiusY="1.25" />
+            </GeometryGroup>
+
+            <GeometryGroup x:Key="SimgeTakvim">
+                <RectangleGeometry Rect="1.5,2.5,13,12" RadiusX="2" RadiusY="2" />
+                <PathGeometry Figures="M 1.5,6.5 L 14.5,6.5 M 5,1 L 5,4 M 11,1 L 11,4 M 4.5,9.5 L 5.5,9.5 M 7.5,9.5 L 8.5,9.5 M 10.5,9.5 L 11.5,9.5 M 4.5,12 L 5.5,12 M 7.5,12 L 8.5,12" />
+            </GeometryGroup>
+
+            <GeometryGroup x:Key="SimgeEkran">
+                <RectangleGeometry Rect="1.5,2.5,13,9" RadiusX="1.5" RadiusY="1.5" />
+                <PathGeometry Figures="M 8,11.5 L 8,14 M 5,14 L 11,14" />
+            </GeometryGroup>
+
+            <!-- Google sayfası: bulut ve içinde eşitleme okları; marka logosu değil, çevrimiçi hesap anlamında. -->
+            <GeometryGroup x:Key="SimgeBulut">
+                <PathGeometry Figures="M 4.5,13 A 3,3 0 0 1 4.3,7.02 A 4,4 0 0 1 11.75,6.3 A 3.35,3.35 0 0 1 11.5,13 Z" />
+                <PathGeometry Figures="M 6.1,10.6 A 2,2 0 0 1 9.6,9.4 M 9.9,8.3 L 9.6,9.4 L 8.5,9.2" />
+            </GeometryGroup>
+
+            <GeometryGroup x:Key="SimgeGenel">
+                <PathGeometry Figures="M 6.62,3.19 L 6.92,1.18 A 6.9,6.9 0 0 1 9.08,1.18 L 9.38,3.19 A 5,5 0 0 1 10.42,3.63 L 12.06,2.42 A 6.9,6.9 0 0 1 13.58,3.94 L 12.37,5.58 A 5,5 0 0 1 12.81,6.62 L 14.82,6.92 A 6.9,6.9 0 0 1 14.82,9.08 L 12.81,9.38 A 5,5 0 0 1 12.37,10.42 L 13.58,12.06 A 6.9,6.9 0 0 1 12.06,13.58 L 10.42,12.37 A 5,5 0 0 1 9.38,12.81 L 9.08,14.82 A 6.9,6.9 0 0 1 6.92,14.82 L 6.62,12.81 A 5,5 0 0 1 5.58,12.37 L 3.94,13.58 A 6.9,6.9 0 0 1 2.42,12.06 L 3.63,10.42 A 5,5 0 0 1 3.19,9.38 L 1.18,9.08 A 6.9,6.9 0 0 1 1.18,6.92 L 3.19,6.62 A 5,5 0 0 1 3.63,5.58 L 2.42,3.94 A 6.9,6.9 0 0 1 3.94,2.42 L 5.58,3.63 A 5,5 0 0 1 6.62,3.19 Z" />
+                <EllipseGeometry Center="8,8" RadiusX="2.1" RadiusY="2.1" />
+            </GeometryGroup>
+
+            <GeometryGroup x:Key="SimgeBilgi">
+                <EllipseGeometry Center="8,8" RadiusX="6.5" RadiusY="6.5" />
+                <PathGeometry Figures="M 8,7.25 L 8,11.25" />
+                <EllipseGeometry Center="8,4.9" RadiusX="0.2" RadiusY="0.2" />
+            </GeometryGroup>
+
+            <!-- Uyarı kutusundaki ünlem: dolgulu çizgi ve nokta, sarı dairenin üstünde. -->
+            <PathGeometry x:Key="SimgeUnlem"
+                          Figures="M 7.3,4 L 8.7,4 L 8.45,9.3 L 7.55,9.3 Z
+                                   M 7.15,11.5 A 0.85,0.85 0 1 1 8.85,11.5 A 0.85,0.85 0 1 1 7.15,11.5 Z" />
         </ResourceDictionary>
     </Window.Resources>
 
-    <DockPanel>
-        <Border DockPanel.Dock="Bottom" Background="{DynamicResource AltBarFirca}" Padding="20,12">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center"
-                           Foreground="{DynamicResource SolukYaziFirca}"
-                           Text="Değişiklikler anında masaüstüne uygulanır." />
-                <Button DockPanel.Dock="Right" Content="Kapat" HorizontalAlignment="Right"
-                        Click="OnClose" IsCancel="True" />
-                <Button x:Name="ThemeButton" DockPanel.Dock="Right" HorizontalAlignment="Right"
-                        Margin="0,0,10,0" MinWidth="130" Click="OnToggleTheme" />
-            </DockPanel>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240" />
+            <ColumnDefinition />
+        </Grid.ColumnDefinitions>
+
+        <!-- ===================================================== kenar çubuğu -->
+        <Border Background="{DynamicResource NavZeminFirca}">
+            <!-- Satırlar görünüş sırasında; sekme sırası da böylece üstten alta gider. -->
+            <Grid Margin="12,20,12,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Orientation="Horizontal" Margin="10,0,0,24">
+                    <Border Width="36" Height="36" CornerRadius="8" Background="{DynamicResource VurguFirca}">
+                        <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeTakvim}"
+                              Stroke="{DynamicResource VurguYaziFirca}" StrokeThickness="1.4" />
+                    </Border>
+                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Kalender" FontWeight="SemiBold" />
+                        <TextBlock Text="Ayarlar" FontSize="12" Foreground="{DynamicResource SolukYaziFirca}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <ListBox x:Name="NavList" Grid.Row="1" Style="{StaticResource GezintiListesi}"
+                         ItemContainerStyle="{StaticResource GezintiOgesi}"
+                         AutomationProperties.Name="Ayar sayfaları"
+                         SelectionChanged="OnNavigate">
+                    <ListBoxItem AutomationProperties.Name="Arka plan">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeArkaPlan}" Margin="0,0,14,0" />
+                            <TextBlock Text="Arka plan" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem AutomationProperties.Name="Renkler">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeTakvim}" Margin="0,0,14,0" />
+                            <TextBlock Text="Renkler" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem AutomationProperties.Name="Boyut ve Konum">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeEkran}" Margin="0,0,14,0" />
+                            <TextBlock Text="Boyut ve Konum" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem AutomationProperties.Name="Google">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeBulut}" Margin="0,0,14,0" />
+                            <TextBlock Text="Google" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem AutomationProperties.Name="Genel">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeGenel}" Margin="0,0,14,0" />
+                            <TextBlock Text="Genel" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10,0,0,0">
+                    <ToggleButton x:Name="ThemeToggle" VerticalAlignment="Center"
+                                  Style="{StaticResource GunesAyAnahtari}"
+                                  Checked="OnThemeToggled" Unchecked="OnThemeToggled" />
+                </StackPanel>
+            </Grid>
         </Border>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,18">
-            <StackPanel>
+        <!-- ========================================================== içerik -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                <!-- ================================================ ZEMİN -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Zemin" />
-                        <TextBlock Style="{StaticResource Aciklama}"
-                                   Text="Takvimin üzerine çizildiği arka plan. Seçtiğiniz zemin aynı zamanda Windows duvar kağıdına da yazılır; böylece Kalender açılana kadar ekran farklı görünmez." />
+            <TextBlock x:Name="PageTitle" Style="{StaticResource SayfaBasligi}" Margin="38,24,36,20" />
 
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="Hazır renkler" Margin="0,4,0,8" />
-                        <WrapPanel x:Name="PresetPanel" />
+            <Grid Grid.Row="1">
 
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="Kendi rengim" Margin="0,18,0,10" />
-                        <ui:ColorWheel x:Name="BackgroundWheel" HorizontalAlignment="Left" />
-
-                        <Separator Margin="0,16,0,12" />
-
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="Fotoğraf" Margin="0,0,0,8" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Fotoğraf seç…" Click="OnPickPhoto" />
-                            <Button x:Name="RemovePhotoButton" Content="Fotoğrafı kaldır"
-                                    Margin="10,0,0,0" Click="OnRemovePhoto" MinWidth="120" />
-                            <TextBlock Text="Yerleşim" VerticalAlignment="Center" Margin="20,0,8,0" />
-                            <ComboBox x:Name="FitCombo" Width="120" VerticalAlignment="Center"
-                                      SelectionChanged="OnFitChanged" />
-                        </StackPanel>
-                        <TextBlock x:Name="PhotoPathText" Style="{StaticResource Aciklama}" Margin="0,10,0,0" />
-                    </StackPanel>
-                </Border>
-
-                <!-- ================================================= YAZI -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Yazı" />
-
-                        <CheckBox x:Name="AutoTextColorBox" Content="Yazı rengini zemine göre otomatik seç"
-                                  Checked="OnAutoTextColorChanged" Unchecked="OnAutoTextColorChanged" />
-                        <TextBlock x:Name="AutoTextNote" Style="{StaticResource Aciklama}" Margin="24,4,0,0"
-                                   Text="Düz renk zeminde açık/koyu yazı otomatik seçilir. Fotoğraf zeminde otomatik seçim yapılamaz; rengi siz belirlersiniz." />
-
-                        <Expander Header="Yazı rengini seç" x:Name="TextColorExpander" Margin="0,8,0,0">
-                            <ui:ColorWheel x:Name="TextWheel" Margin="0,14,0,4" />
-                        </Expander>
-
-                        <CheckBox x:Name="SaturdayRedBox" Content="Cumartesi de pazar gibi kırmızı olsun"
-                                  Margin="0,14,0,0"
-                                  Checked="OnSaturdayChanged" Unchecked="OnSaturdayChanged" />
-
-                        <StackPanel x:Name="DimPanel" Margin="0,16,0,0">
-                            <TextBlock Style="{StaticResource AltBaslik}"
-                                       Text="Takvimin arkasını karart (fotoğraf zeminde)" />
-                            <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,6"
-                                       Text="Fotoğrafın üzerinde yazılar okunmuyorsa takvimin arkasına yumuşak bir gölge koyar." />
-                            <StackPanel Orientation="Horizontal">
-                                <Slider x:Name="DimSlider" Width="260" Minimum="0" Maximum="100"
-                                        TickFrequency="5" IsSnapToTickEnabled="True"
-                                        VerticalAlignment="Center" ValueChanged="OnDimChanged" />
-                                <TextBlock x:Name="DimText" Width="56" Margin="12,0,0,0"
-                                           VerticalAlignment="Center" />
+                <!-- ============================================ ARKA PLAN -->
+                <ScrollViewer x:Name="BackgroundPage" Style="{StaticResource Sayfa}">
+                    <StackPanel Style="{StaticResource SayfaIcerigi}">
+                        <TextBlock Style="{StaticResource IlkGrupBasligi}" Text="Zemin rengi" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <StackPanel Margin="16,14,16,14">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Hazır renkler" />
+                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                               Text="Takvimin üzerine çizildiği arka plan. Seçtiğiniz zemin aynı zamanda Windows duvar kağıdına da yazılır; böylece Kalender açılana kadar ekran farklı görünmez." />
+                                    <WrapPanel x:Name="PresetPanel" Margin="-2,12,0,-8"
+                                               KeyboardNavigation.TabNavigation="Once"
+                                               KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </StackPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <ui:ColorPickerButton x:Name="BackgroundColorButton" DockPanel.Dock="Right"
+                                                          Margin="16,0,0,0" VerticalAlignment="Center"
+                                                          Title="Kendi rengim" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Kendi rengim" />
+                                        <TextBlock x:Name="CustomColorNote" Style="{StaticResource SatirAciklamasi}" />
+                                    </StackPanel>
+                                </DockPanel>
                             </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+                        </Border>
 
-                <!-- ======================================= TAKVİM RENKLERİ -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Takvim renkleri" />
-                        <TextBlock Style="{StaticResource Aciklama}"
-                                   Text="Masaüstündeki takvimin yazı renkleri. Hepsi otomatik başlar: renkler zemine ve yazı rengine göre kendiliğinden hesaplanır. Otomatik işaretini kaldırdığınız başlığın rengini siz seçersiniz. Gün altındaki noktacıklar buraya dahil değil; onların rengi Google Takvim'deki takvim ve etkinlik renginden gelir." />
-
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="Hafta günleri ve ay adı" />
-                        <CheckBox x:Name="WeekdayAutoBox" Content="Otomatik"
-                                  Checked="OnWeekdayAutoChanged" Unchecked="OnWeekdayAutoChanged" />
-                        <Expander x:Name="WeekdayColorExpander" Header="Rengi seç" Margin="0,8,0,0">
-                            <ui:ColorWheel x:Name="WeekdayWheel" Margin="0,12,0,4" HorizontalAlignment="Left" />
-                        </Expander>
-
-                        <Separator Margin="0,16,0,14" />
-
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="Tatil ve hafta sonu günleri" />
-                        <CheckBox x:Name="HolidayAutoBox" Content="Otomatik"
-                                  Checked="OnHolidayColorAutoChanged" Unchecked="OnHolidayColorAutoChanged" />
-                        <Expander x:Name="HolidayColorExpander" Header="Rengi seç" Margin="0,8,0,0">
-                            <ui:ColorWheel x:Name="HolidayWheel" Margin="0,12,0,4" HorizontalAlignment="Left" />
-                        </Expander>
-
-                        <Separator Margin="0,16,0,14" />
-
-                        <TextBlock Style="{StaticResource AltBaslik}"
-                                   Text="Pasif günler (önceki ve sonraki aydan taşanlar)" />
-                        <CheckBox x:Name="MutedAutoBox" Content="Otomatik"
-                                  Checked="OnMutedColorAutoChanged" Unchecked="OnMutedColorAutoChanged" />
-                        <Expander x:Name="MutedColorExpander" Header="Rengi seç" Margin="0,8,0,0">
-                            <ui:ColorWheel x:Name="MutedWheel" Margin="0,12,0,4" HorizontalAlignment="Left" />
-                        </Expander>
-
-                        <Separator Margin="0,16,0,14" />
-
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="Bugünün arkasındaki daire" />
-                        <CheckBox x:Name="TodayCircleAutoBox" Content="Otomatik"
-                                  Checked="OnTodayCircleAutoChanged" Unchecked="OnTodayCircleAutoChanged" />
-                        <Expander x:Name="TodayCircleExpander" Header="Rengi seç" Margin="0,8,0,0">
-                            <ui:ColorWheel x:Name="TodayCircleWheel" Margin="0,12,0,4" HorizontalAlignment="Left" />
-                        </Expander>
-                    </StackPanel>
-                </Border>
-
-                <!-- ============================================== TATİLLER -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Resmi tatiller" />
-
-                        <CheckBox x:Name="HolidaysBox" Content="Resmi tatilleri kırmızı göster"
-                                  Margin="0,0,0,0"
-                                  Checked="OnHolidaysEnabledChanged" Unchecked="OnHolidaysEnabledChanged" />
-                        <TextBlock Style="{StaticResource Aciklama}" Margin="24,4,0,0"
-                                   Text="Liste, Google'ın Türkiye resmi tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
-
-                        <Border Background="{DynamicResource UyariZeminFirca}"
-                                BorderBrush="{DynamicResource UyariKenarFirca}" BorderThickness="1"
-                                CornerRadius="6" Padding="12,10" Margin="0,4,0,0">
-                            <TextBlock TextWrapping="Wrap"
-                                       Text="Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan teyit ediniz." />
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Fotoğraf" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                                Margin="16,0,0,0" VerticalAlignment="Center">
+                                        <Button Content="Fotoğraf seç…" Click="OnPickPhoto" />
+                                        <Button x:Name="RemovePhotoButton" Content="Fotoğrafı kaldır"
+                                                Margin="8,0,0,0" Click="OnRemovePhoto" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Zemin fotoğrafı" />
+                                        <TextBlock x:Name="PhotoPathText" Style="{StaticResource SatirAciklamasi}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <ComboBox x:Name="FitCombo" DockPanel.Dock="Right" Width="150"
+                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Yerleşim"
+                                              SelectionChanged="OnFitChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Yerleşim" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Fotoğrafın ekrana nasıl yerleşeceği." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel x:Name="DimPanel" Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                                Margin="16,0,0,0" VerticalAlignment="Center">
+                                        <Slider x:Name="DimSlider" Width="160" Minimum="0" Maximum="100"
+                                                TickFrequency="5" IsSnapToTickEnabled="True"
+                                                VerticalAlignment="Center"
+                                                AutomationProperties.Name="Takvimin arkasını karart"
+                                                ValueChanged="OnDimChanged" />
+                                        <TextBlock x:Name="DimText" Width="40" Margin="12,0,0,0"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}"
+                                                   Text="Takvimin arkasını karart (fotoğraf zeminde)" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Fotoğrafın üzerinde yazılar okunmuyorsa takvimin arkasına yumuşak bir gölge koyar." />
+                                    </StackPanel>
+                                </DockPanel>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
 
-                <!-- ============================================ GÜN KUTUSU -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Gün kutusu" />
-                        <TextBlock Style="{StaticResource Aciklama}"
-                                   Text="Farenizi masaüstünde bir günün üzerinde beklettiğinizde açılan kutu." />
-
-                        <TextBlock Style="{StaticResource AltBaslik}" Margin="0,12,0,0"
-                                   Text="Kutunun opaklığı" />
-                        <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,6"
-                                   Text="Küçülttükçe kutunun zemini saydamlaşır ve altındaki duvar kağıdı görünür. Yazılar her değerde tam opak kalır." />
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="PopupOpacitySlider" Width="260" Minimum="40" Maximum="100"
-                                    TickFrequency="5" IsSnapToTickEnabled="True"
-                                    VerticalAlignment="Center" ValueChanged="OnPopupOpacityChanged" />
-                            <TextBlock x:Name="PopupOpacityText" Width="56" Margin="12,0,0,0"
-                                       VerticalAlignment="Center" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- ================================================ GOOGLE -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Google Takvim ve Görevler" />
-                        <TextBlock Style="{StaticResource Aciklama}"
-                                   Text="Kalender hesabınıza yalnızca okuma izniyle bağlanır; etkinlik ya da görev eklemez, silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur." />
-
-                        <Expander Header="Client ID nasıl alınır? (bir kerelik)" Margin="0,0,0,12">
-                            <StackPanel Margin="4,10,0,4">
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"><Run
-                                    Text="1. " /><Hyperlink NavigateUri="https://console.cloud.google.com"
-                                    RequestNavigate="OnLinkClicked">console.cloud.google.com</Hyperlink><Run
-                                    Text=" adresine kendi Google hesabınızla girin." /></TextBlock>
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="2. Üstteki proje seçiciden yeni bir proje oluşturun (adı önemli değil, örn. Kalender)." />
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="3. Sol menüden API'ler ve Hizmetler &gt; Kitaplık'a girin; Google Calendar API ve Google Tasks API'yi bulup ikisini de Etkinleştir'e basın." />
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="4. API'ler ve Hizmetler &gt; OAuth izin ekranı'na girin (Google Auth Platform sayfasına yönlendirir). Get started &gt; uygulama adı ve e-postanız &gt; Audience: External &gt; iletişim e-postanız &gt; ilkeyi kabul edip Create." />
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="5. Sol menüden Audience &gt; Test users &gt; + Add users: kendi e-posta adresinizi ekleyin. Bu şart; eklemezseniz Google onay ekranında sizi reddeder." />
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,6"
-                                           Text="6. Sol menüden Clients &gt; + Create client. Application type: Desktop app. Ad: Kalender &gt; Create." />
-                                <TextBlock TextWrapping="Wrap"
-                                           Text="7. Çıkan pencerede Client ID ve Client secret yazar. İkisini de aşağıya yapıştırın." />
+                <!-- ============================================== RENKLER -->
+                <ScrollViewer x:Name="CalendarPage" Style="{StaticResource Sayfa}">
+                    <StackPanel Style="{StaticResource SayfaIcerigi}">
+                        <TextBlock Style="{StaticResource IlkGrupBasligi}" Text="Takvim renkleri" />
+                        <TextBlock Style="{StaticResource GrupAciklamasi}"
+                                   Text="Hepsi otomatik başlar: renkler zemine ve yazı rengine göre kendiliğinden hesaplanır. Bir renk seçtiğinizde o satır elle seçilmiş olur; Otomatik'i yeniden açınca hesaplanan renge döner. Gün altındaki noktacıklar buraya dahil değil; onların rengi Google Takvim'deki takvim ve etkinlik renginden gelir." />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <!-- Renk düğmesi ve anahtar tek panelde, görünüş sırasıyla: sekme soldan sağa gider. -->
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:ColorPickerButton x:Name="TextColorButton"
+                                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                                              Title="Yazı rengi" />
+                                        <CheckBox x:Name="AutoTextColorBox" Content="Otomatik"
+                                                  Margin="24,0,0,0" AutomationProperties.Name="Yazı rengi: otomatik"
+                                                  Checked="OnAutoTextColorChanged" Unchecked="OnAutoTextColorChanged" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Yazı rengi" />
+                                        <TextBlock x:Name="AutoTextNote" Style="{StaticResource SatirAciklamasi}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:ColorPickerButton x:Name="WeekdayColorButton"
+                                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                                              Title="Hafta günleri ve ay adı" />
+                                        <CheckBox x:Name="WeekdayAutoBox" Content="Otomatik"
+                                                  Margin="24,0,0,0"
+                                                  AutomationProperties.Name="Hafta günleri ve ay adı: otomatik" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Hafta günleri ve ay adı" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Ay adı, gün adları ve ayın olağan günleri." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:ColorPickerButton x:Name="HolidayColorButton"
+                                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                                              Title="Tatil ve hafta sonu günleri" />
+                                        <CheckBox x:Name="HolidayAutoBox" Content="Otomatik"
+                                                  Margin="24,0,0,0"
+                                                  AutomationProperties.Name="Tatil ve hafta sonu günleri: otomatik" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Tatil ve hafta sonu günleri" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Pazar ve resmi tatiller; ayar açıksa cumartesi de." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:ColorPickerButton x:Name="MutedColorButton"
+                                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                                              Title="Pasif günler" />
+                                        <CheckBox x:Name="MutedAutoBox" Content="Otomatik"
+                                                  Margin="24,0,0,0"
+                                                  AutomationProperties.Name="Pasif günler: otomatik" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Pasif günler" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Önceki ve sonraki aydan taşan günler." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                        <ui:ColorPickerButton x:Name="TodayCircleColorButton"
+                                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                                              Title="Bugünün dairesi" />
+                                        <CheckBox x:Name="TodayCircleAutoBox" Content="Otomatik"
+                                                  Margin="24,0,0,0"
+                                                  AutomationProperties.Name="Bugünün dairesi: otomatik" />
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Bugünün dairesi" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Bugünün arkasındaki dolu daire." />
+                                    </StackPanel>
+                                </DockPanel>
                             </StackPanel>
-                        </Expander>
+                        </Border>
 
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="İstemci kimliği (Client ID)"
-                                   Margin="0,0,0,4" />
-                        <TextBox x:Name="ClientIdBox" FontFamily="Consolas" FontSize="12"
-                                 LostFocus="OnGoogleCredentialsChanged" />
-
-                        <TextBlock Style="{StaticResource AltBaslik}" Text="İstemci gizli anahtarı (Client secret)"
-                                   Margin="0,12,0,4" />
-                        <TextBox x:Name="ClientSecretBox" FontFamily="Consolas" FontSize="12"
-                                 LostFocus="OnGoogleCredentialsChanged" />
-                        <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,0"
-                                   Text="Bu iki değer uygulamanın içinde gömülü değildir; sizin projenize aittir ve bilgisayarınızda şifreli saklanır." />
-
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button x:Name="ConnectButton" Content="Google'a bağlan" MinWidth="150"
-                                    Click="OnConnectGoogle" />
-                            <Button x:Name="DisconnectButton" Content="Bağlantıyı kes" Margin="10,0,0,0"
-                                    MinWidth="130" Click="OnDisconnectGoogle" />
-                        </StackPanel>
-
-                        <TextBlock x:Name="GoogleStatusText" Margin="0,12,0,0" TextWrapping="Wrap" />
-
-                        <StackPanel x:Name="GoogleDetailsPanel" Margin="0,16,0,0">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <TextBlock Text="Ne sıklıkla yenilensin?" VerticalAlignment="Center"
-                                           Margin="0,0,10,0" />
-                                <ComboBox x:Name="PollIntervalCombo" Width="140" VerticalAlignment="Center"
-                                          SelectionChanged="OnPollIntervalChanged" />
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Tatiller" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <CheckBox x:Name="HolidaysBox" DockPanel.Dock="Right" Margin="24,0,0,0"
+                                              AutomationProperties.Name="Resmi tatilleri kırmızı göster"
+                                              Checked="OnHolidaysEnabledChanged" Unchecked="OnHolidaysEnabledChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Resmi tatilleri kırmızı göster" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Liste, Google'ın Türkiye resmi tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Border Style="{StaticResource UyariKutusu}" Margin="16,0,16,16">
+                                    <DockPanel>
+                                        <Grid DockPanel.Dock="Left" Width="16" Height="16" Margin="0,1,10,0"
+                                              VerticalAlignment="Top">
+                                            <Ellipse Fill="{DynamicResource UyariSimgeFirca}" />
+                                            <Path Data="{StaticResource SimgeUnlem}" Fill="{DynamicResource YuzeyFirca}" />
+                                        </Grid>
+                                        <TextBlock TextWrapping="Wrap"
+                                                   Text="Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan teyit ediniz." />
+                                    </DockPanel>
+                                </Border>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <CheckBox x:Name="SaturdayRedBox" DockPanel.Dock="Right" Margin="24,0,0,0"
+                                              AutomationProperties.Name="Cumartesi de pazar gibi kırmızı olsun"
+                                              Checked="OnSaturdayChanged" Unchecked="OnSaturdayChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}"
+                                                   Text="Cumartesi de pazar gibi kırmızı olsun" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Cumartesi günleri de tatil rengiyle gösterilir." />
+                                    </StackPanel>
+                                </DockPanel>
                             </StackPanel>
+                        </Border>
 
-                            <TextBlock Style="{StaticResource AltBaslik}" Text="Gösterilecek takvimler"
-                                       Margin="0,0,0,6" />
-                            <StackPanel x:Name="CalendarListPanel" Margin="4,0,0,10" />
-
-                            <TextBlock Style="{StaticResource AltBaslik}" Text="Gösterilecek görev listeleri"
-                                       Margin="0,6,0,6" />
-                            <StackPanel x:Name="TaskListPanel" Margin="4,0,0,10" />
-
-                            <TextBlock Style="{StaticResource Aciklama}" Margin="0,4,0,0"
-                                       Text="Google, görev listeleri için renk vermiyor; bütün görevler tek renkle gösterilir." />
-                            <Expander Header="Görev noktacığı rengi" Margin="0,4,0,0">
-                                <ui:ColorWheel x:Name="TaskColorWheel" Margin="0,12,0,4"
-                                               HorizontalAlignment="Left" />
-                            </Expander>
-                        </StackPanel>
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Gün kutusu" />
+                        <Border Style="{StaticResource Kart}">
+                            <DockPanel Style="{StaticResource Satir}">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                            Margin="16,0,0,0" VerticalAlignment="Center">
+                                    <Slider x:Name="PopupOpacitySlider" Width="160" Minimum="40" Maximum="100"
+                                            TickFrequency="5" IsSnapToTickEnabled="True"
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.Name="Gün kutusunun opaklığı"
+                                            ValueChanged="OnPopupOpacityChanged" />
+                                    <TextBlock x:Name="PopupOpacityText" Width="40" Margin="12,0,0,0"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Kutunun opaklığı" />
+                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                               Text="Fareyi masaüstünde bir günün üzerinde beklettiğinizde açılan kutu. Değeri küçülttükçe kutunun zemini saydamlaşır ve altındaki duvar kağıdı görünür; yazılar her değerde tam opak kalır." />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
 
-                <!-- ============================================== EKRANLAR -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Ekranlar" />
+                <!-- ======================================== BOYUT VE KONUM -->
+                <ScrollViewer x:Name="ScreensPage" Style="{StaticResource Sayfa}">
+                    <StackPanel Style="{StaticResource SayfaIcerigi}">
+                        <TextBlock Style="{StaticResource IlkGrupBasligi}" Text="Görüneceği yer" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel Margin="16,14,16,16">
+                                <TextBlock Style="{StaticResource SatirBasligi}" Text="Takvim hangi ekranlarda görünsün?" />
+                                <StackPanel Margin="0,12,0,0">
+                                    <RadioButton x:Name="AllScreensRadio" GroupName="Hedef" Content="Tüm ekranlarda"
+                                                 Checked="OnDisplayTargetChanged" />
+                                    <RadioButton x:Name="PrimaryOnlyRadio" GroupName="Hedef" Content="Yalnız ana ekranda"
+                                                 Margin="0,10,0,0" Checked="OnDisplayTargetChanged" />
+                                    <RadioButton x:Name="SelectedScreensRadio" GroupName="Hedef" Content="Seçtiğim ekranlarda"
+                                                 Margin="0,10,0,0" Checked="OnDisplayTargetChanged" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
-                        <TextBlock Style="{StaticResource AltBaslik}"
-                                   Text="Takvim hangi ekranlarda görünsün?" />
-                        <RadioButton x:Name="AllScreensRadio" GroupName="Hedef" Content="Tüm ekranlarda"
-                                     Checked="OnDisplayTargetChanged" />
-                        <RadioButton x:Name="PrimaryOnlyRadio" GroupName="Hedef" Content="Yalnız ana ekranda"
-                                     Checked="OnDisplayTargetChanged" />
-                        <RadioButton x:Name="SelectedScreensRadio" GroupName="Hedef" Content="Seçtiğim ekranlarda"
-                                     Checked="OnDisplayTargetChanged" />
-
-                        <Separator Margin="0,16,0,12" />
-
-                        <ItemsControl x:Name="MonitorList">
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Bağlı ekranlar" />
+                        <ItemsControl x:Name="MonitorList" Focusable="False">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border BorderThickness="1" BorderBrush="{DynamicResource KenarFirca}"
-                                            CornerRadius="6" Padding="14" Margin="0,0,0,10">
+                                    <Border Style="{StaticResource Kart}" Margin="0,0,0,8">
                                         <StackPanel>
-                                            <DockPanel>
-                                                <StackPanel DockPanel.Dock="Left">
-                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding Detail}" FontSize="12"
-                                                               Foreground="{DynamicResource SolukYaziFirca}"
-                                                               Margin="0,2,0,0" />
+                                            <DockPanel Style="{StaticResource Satir}">
+                                                <!-- Ekran okuyucu adları ekranın adını da söyler; birden çok ekranda karışmasın. -->
+                                                <Button DockPanel.Dock="Right" Content="Takvimi taşı" Margin="16,0,0,0"
+                                                        VerticalAlignment="Center" Click="OnMoveCalendar" Tag="{Binding}"
+                                                        AutomationProperties.Name="{Binding Title, StringFormat='{}{0}: takvimi taşı'}" />
+                                                <Path DockPanel.Dock="Left" Style="{StaticResource Simge}"
+                                                      Data="{StaticResource SimgeEkran}" Width="20" Height="20"
+                                                      Stretch="Uniform" Margin="0,0,16,0" />
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="{Binding Title}"
+                                                               FontWeight="SemiBold" />
+                                                    <TextBlock Style="{StaticResource SatirAciklamasi}" Text="{Binding Detail}" />
                                                 </StackPanel>
-                                                <Button DockPanel.Dock="Right" Content="Takvimi taşı"
-                                                        HorizontalAlignment="Right" MinWidth="110"
-                                                        Click="OnMoveCalendar" Tag="{Binding}" />
                                             </DockPanel>
-
-                                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                                <TextBlock Text="Boyut" VerticalAlignment="Center"
-                                                           Width="46" />
-                                                <Slider Width="240" Minimum="80" Maximum="150"
-                                                        TickFrequency="5" IsSnapToTickEnabled="True"
-                                                        VerticalAlignment="Center"
-                                                        Value="{Binding ScalePercent, Mode=TwoWay}" />
-                                                <TextBlock Text="{Binding ScaleText}" Width="52"
-                                                           Margin="12,0,0,0" VerticalAlignment="Center" />
-                                            </StackPanel>
-
-                                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                                <CheckBox Content="Bu ekranda göster" VerticalAlignment="Center"
-                                                          Margin="0" IsChecked="{Binding Enabled, Mode=TwoWay}" />
-                                                <Button Content="Bu ekrana fotoğraf…" Margin="24,0,0,0"
-                                                        MinWidth="150" Click="OnPickMonitorPhoto"
-                                                        Tag="{Binding}" />
-                                                <Button Content="Kaldır" Margin="8,0,0,0" MinWidth="80"
-                                                        Click="OnRemoveMonitorPhoto" Tag="{Binding}" />
-                                            </StackPanel>
+                                            <Separator />
+                                            <DockPanel Style="{StaticResource Satir}">
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                                            Margin="16,0,0,0" VerticalAlignment="Center">
+                                                    <Slider Width="180" Minimum="80" Maximum="150"
+                                                            TickFrequency="5" IsSnapToTickEnabled="True"
+                                                            VerticalAlignment="Center"
+                                                            AutomationProperties.Name="{Binding Title, StringFormat='{}{0}: boyut'}"
+                                                            Value="{Binding ScalePercent, Mode=TwoWay}" />
+                                                    <TextBlock Text="{Binding ScaleText}" Width="40" Margin="12,0,0,0"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Boyut" />
+                                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                               Text="Takvimin bu ekrandaki büyüklüğü." />
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <Separator />
+                                            <DockPanel Style="{StaticResource Satir}">
+                                                <CheckBox DockPanel.Dock="Right" Margin="24,0,0,0"
+                                                          AutomationProperties.Name="{Binding Title, StringFormat='{}{0}: bu ekranda göster'}"
+                                                          IsChecked="{Binding Enabled, Mode=TwoWay}" />
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Bu ekranda göster" />
+                                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                               Text="“Seçtiğim ekranlarda” seçiliyken geçerlidir." />
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <Separator />
+                                            <DockPanel Style="{StaticResource Satir}">
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                                            Margin="16,0,0,0" VerticalAlignment="Center">
+                                                    <Button Content="Bu ekrana fotoğraf…" Click="OnPickMonitorPhoto"
+                                                            Tag="{Binding}"
+                                                            AutomationProperties.Name="{Binding Title, StringFormat='{}{0}: bu ekrana fotoğraf seç'}" />
+                                                    <Button Content="Kaldır" Margin="8,0,0,0" Click="OnRemoveMonitorPhoto"
+                                                            Tag="{Binding}" IsEnabled="{Binding HasPhoto}"
+                                                            AutomationProperties.Name="{Binding Title, StringFormat='{}{0}: ekran fotoğrafını kaldır'}" />
+                                                </StackPanel>
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Bu ekranın fotoğrafı" />
+                                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                               Text="Boş bırakılırsa genel zemin kullanılır." />
+                                                </StackPanel>
+                                            </DockPanel>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
 
-                <!-- ================================================= GENEL -->
-                <Border Style="{StaticResource Bolum}">
-                    <StackPanel>
-                        <TextBlock Style="{StaticResource Baslik}" Text="Genel" />
+                <!-- =============================================== GOOGLE -->
+                <ScrollViewer x:Name="GooglePage" Style="{StaticResource Sayfa}">
+                    <StackPanel Style="{StaticResource SayfaIcerigi}">
+                        <TextBlock Style="{StaticResource IlkGrupBasligi}" Text="Google Takvim ve Görevler" />
+                        <TextBlock Style="{StaticResource GrupAciklamasi}"
+                                   Text="Kalender hesabınıza yalnızca okuma izniyle bağlanır; etkinlik ya da görev eklemez, silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur." />
+                        <Border Style="{StaticResource Kart}">
+                            <DockPanel Style="{StaticResource Satir}">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                            Margin="16,0,0,0" VerticalAlignment="Center">
+                                    <Button x:Name="ConnectButton" Content="Google'a bağlan" Click="OnConnectGoogle" />
+                                    <Button x:Name="DisconnectButton" Content="Bağlantıyı kes" Margin="8,0,0,0"
+                                            Click="OnDisconnectGoogle" />
+                                </StackPanel>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Google hesabı" />
+                                    <TextBlock x:Name="GoogleStatusText" Style="{StaticResource SatirAciklamasi}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
 
-                        <CheckBox x:Name="StartupBox" Content="Windows açılışında Kalender'i başlat"
-                                  Checked="OnStartupChanged" Unchecked="OnStartupChanged" />
-                        <TextBlock x:Name="StartupNote" Style="{StaticResource Aciklama}" Margin="24,4,0,0" />
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="İstemci bilgileri" />
+                        <TextBlock Style="{StaticResource GrupAciklamasi}"
+                                   Text="Bu iki değer uygulamanın içinde gömülü değildir; sizin projenize aittir ve bilgisayarınızda şifreli saklanır." />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <Expander AutomationProperties.Name="Client ID nasıl alınır?">
+                                    <Expander.Header>
+                                        <StackPanel>
+                                            <TextBlock Style="{StaticResource SatirBasligi}" Text="Client ID nasıl alınır?" />
+                                            <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                       Text="Google Cloud'da bir kerelik yapılacak ayar." />
+                                        </StackPanel>
+                                    </Expander.Header>
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="1." />
+                                            <TextBlock Style="{StaticResource Adim}"><Hyperlink
+                                                NavigateUri="https://console.cloud.google.com"
+                                                RequestNavigate="OnLinkClicked">console.cloud.google.com</Hyperlink><Run
+                                                Text=" adresine kendi Google hesabınızla girin." /></TextBlock>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="2." />
+                                            <TextBlock Style="{StaticResource Adim}"
+                                                       Text="Üstteki proje seçiciden yeni bir proje oluşturun (adı önemli değil, örn. Kalender)." />
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="3." />
+                                            <TextBlock Style="{StaticResource Adim}"
+                                                       Text="Sol menüden API'ler ve Hizmetler &gt; Kitaplık'a girin; Google Calendar API ve Google Tasks API'yi bulup ikisini de Etkinleştir'e basın." />
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="4." />
+                                            <TextBlock Style="{StaticResource Adim}"
+                                                       Text="API'ler ve Hizmetler &gt; OAuth izin ekranı'na girin (Google Auth Platform sayfasına yönlendirir). Get started &gt; uygulama adı ve e-postanız &gt; Audience: External &gt; iletişim e-postanız &gt; ilkeyi kabul edip Create." />
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="5." />
+                                            <TextBlock Style="{StaticResource Adim}"
+                                                       Text="Sol menüden Audience &gt; Test users &gt; + Add users: kendi e-posta adresinizi ekleyin. Bu şart; eklemezseniz Google onay ekranında sizi reddeder." />
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="6." />
+                                            <TextBlock Style="{StaticResource Adim}"
+                                                       Text="Sol menüden Clients &gt; + Create client. Application type: Desktop app. Ad: Kalender &gt; Create." />
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="7." />
+                                            <TextBlock Style="{StaticResource Adim}" Margin="0"
+                                                       Text="Çıkan pencerede Client ID ve Client secret yazar. İkisini de aşağıya yapıştırın." />
+                                        </DockPanel>
+                                    </StackPanel>
+                                </Expander>
+                                <Separator />
+                                <StackPanel Style="{StaticResource DikeySatir}">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="İstemci kimliği (Client ID)" />
+                                    <TextBox x:Name="ClientIdBox" Margin="0,8,0,0" FontFamily="Consolas"
+                                             AutomationProperties.Name="İstemci kimliği (Client ID)"
+                                             LostFocus="OnGoogleCredentialsChanged" />
+                                </StackPanel>
+                                <Separator />
+                                <StackPanel Style="{StaticResource DikeySatir}">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="İstemci gizli anahtarı (Client secret)" />
+                                    <TextBox x:Name="ClientSecretBox" Margin="0,8,0,0" FontFamily="Consolas"
+                                             AutomationProperties.Name="İstemci gizli anahtarı (Client secret)"
+                                             LostFocus="OnGoogleCredentialsChanged" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
 
-                        <CheckBox x:Name="WallpaperSyncBox"
-                                  Content="Takvimi Windows duvar kağıdına işle"
-                                  Checked="OnWallpaperSyncChanged" Unchecked="OnWallpaperSyncChanged" />
-                        <TextBlock Style="{StaticResource Aciklama}" Margin="24,4,0,0"
-                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kağıdına yazılır. Kapatırsanız Windows duvar kağıdınıza hiç dokunulmaz, ama takvim de masaüstünde görünmez." />
+                        <!-- Bağlıyken görünür. -->
+                        <StackPanel x:Name="GoogleDetailsPanel">
+                            <TextBlock Style="{StaticResource GrupBasligi}" Text="Yenileme" />
+                            <Border Style="{StaticResource Kart}">
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <ComboBox x:Name="PollIntervalCombo" DockPanel.Dock="Right" Width="150"
+                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Ne sıklıkla yenilensin?"
+                                              SelectionChanged="OnPollIntervalChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Ne sıklıkla yenilensin?" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Etkinlik ve görevlerin Google'dan ne sıklıkla yeniden alınacağı." />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
 
-                        <Separator Margin="0,14,0,12" />
+                            <TextBlock Style="{StaticResource GrupBasligi}" Text="Gösterilecek takvimler" />
+                            <Border Style="{StaticResource Kart}">
+                                <!-- Satırlar koddan kurulur (BuildSourceList). -->
+                                <StackPanel x:Name="CalendarListPanel" />
+                            </Border>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <TextBlock Text="Günlük ayrıntısı" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <ComboBox x:Name="LogLevelCombo" Width="150" VerticalAlignment="Center"
-                                      SelectionChanged="OnLogLevelChanged" />
-                            <Button Content="Günlük klasörünü aç" Margin="14,0,0,0" MinWidth="160"
-                                    Click="OnOpenLogFolder" />
+                            <TextBlock Style="{StaticResource GrupBasligi}" Text="Gösterilecek görev listeleri" />
+                            <Border Style="{StaticResource Kart}">
+                                <StackPanel>
+                                    <StackPanel x:Name="TaskListPanel" />
+                                    <Separator />
+                                    <DockPanel Style="{StaticResource Satir}">
+                                        <ui:ColorPickerButton x:Name="TaskColorButton" DockPanel.Dock="Right"
+                                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                                              Title="Görev noktacığı rengi" />
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Style="{StaticResource SatirBasligi}" Text="Görev noktacığı rengi" />
+                                            <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                       Text="Google, görev listeleri için renk vermiyor; bütün görevler tek renkle gösterilir." />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-                        <TextBlock Style="{StaticResource Aciklama}"
-                                   Text="Normalde yalnızca hatalar yazılır. Bir sorunu araştırırken ayrıntıyı artırabilirsiniz; günlükler küçük tutulur ve eskiyenler silinir." />
-
-                        <Separator Margin="0,14,0,12" />
-
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="VersionText" VerticalAlignment="Center" />
-                            <Button Content="Sürümler sayfası" Margin="16,0,0,0" MinWidth="140"
-                                    Click="OnOpenReleases" />
-                            <Button x:Name="UninstallButton" Content="Kalender'i kaldır"
-                                    Margin="10,0,0,0" MinWidth="140" Click="OnUninstall" />
-                        </StackPanel>
-                        <TextBlock Style="{StaticResource Aciklama}" Margin="0,8,0,0"
-                                   Text="Kalender kendini otomatik güncellemez. Yeni sürüm çıktığında sürümler sayfasından indirebilirsiniz." />
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
 
-            </StackPanel>
-        </ScrollViewer>
-    </DockPanel>
+                <!-- ================================================ GENEL -->
+                <ScrollViewer x:Name="GeneralPage" Style="{StaticResource Sayfa}">
+                    <StackPanel Style="{StaticResource SayfaIcerigi}">
+                        <TextBlock Style="{StaticResource IlkGrupBasligi}" Text="Başlangıç ve masaüstü" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <CheckBox x:Name="StartupBox" DockPanel.Dock="Right" Margin="24,0,0,0"
+                                              AutomationProperties.Name="Windows açılışında Kalender'i başlat"
+                                              Checked="OnStartupChanged" Unchecked="OnStartupChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}"
+                                                   Text="Windows açılışında Kalender'i başlat" />
+                                        <TextBlock x:Name="StartupNote" Style="{StaticResource SatirAciklamasi}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <CheckBox x:Name="WallpaperSyncBox" DockPanel.Dock="Right" Margin="24,0,0,0"
+                                              AutomationProperties.Name="Takvimi Windows duvar kağıdına işle"
+                                              Checked="OnWallpaperSyncChanged" Unchecked="OnWallpaperSyncChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}"
+                                                   Text="Takvimi Windows duvar kağıdına işle" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kağıdına yazılır. Kapatırsanız Windows duvar kağıdınıza hiç dokunulmaz, ama takvim de masaüstünde görünmez." />
+                                    </StackPanel>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Sorun giderme" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <ComboBox x:Name="LogLevelCombo" DockPanel.Dock="Right" Width="160"
+                                              Margin="16,0,0,0" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Günlük ayrıntısı"
+                                              SelectionChanged="OnLogLevelChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Günlük ayrıntısı" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Normalde yalnızca hatalar yazılır. Bir sorunu araştırırken ayrıntıyı artırabilirsiniz; günlükler küçük tutulur ve eskiyenler silinir." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <Button DockPanel.Dock="Right" Content="Günlük klasörünü aç" Margin="16,0,0,0"
+                                            VerticalAlignment="Center" Click="OnOpenLogFolder" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Günlük dosyaları" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Günlüklerin tutulduğu klasörü açar." />
+                                    </StackPanel>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Hakkında" />
+                        <Border Style="{StaticResource Kart}">
+                            <StackPanel>
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <Button DockPanel.Dock="Right" Content="Sürümler sayfası" Margin="16,0,0,0"
+                                            VerticalAlignment="Center" Click="OnOpenReleases" />
+                                    <Border DockPanel.Dock="Left" Width="36" Height="36" CornerRadius="8"
+                                            Margin="0,0,14,0" VerticalAlignment="Top"
+                                            Background="{DynamicResource VurguFirca}">
+                                        <Path Style="{StaticResource Simge}" Data="{StaticResource SimgeTakvim}"
+                                              Stroke="{DynamicResource VurguYaziFirca}" StrokeThickness="1.4" />
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Kalender"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock x:Name="VersionText" Style="{StaticResource SatirAciklamasi}" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}" Margin="0,6,0,0"
+                                                   Text="Kalender kendini otomatik güncellemez. Yeni sürüm çıktığında sürümler sayfasından indirebilirsiniz." />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <Button x:Name="UninstallButton" DockPanel.Dock="Right" Content="Kalender'i kaldır"
+                                            Margin="16,0,0,0" VerticalAlignment="Center" Click="OnUninstall" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Uygulamayı kaldır" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Kaldırma penceresini açar." />
+                                    </StackPanel>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- ====================================================== alt çubuk -->
+            <Border Grid.Row="2" Background="{DynamicResource AltBarFirca}" Padding="36,12,36,12"
+                    BorderBrush="{DynamicResource KenarFirca}" BorderThickness="0,1,0,0">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Kapat" MinWidth="96" Click="OnClose" IsCancel="True" />
+                    <Path DockPanel.Dock="Left" Style="{StaticResource Simge}" Data="{StaticResource SimgeBilgi}"
+                          Stroke="{DynamicResource SolukYaziFirca}" Margin="0,0,10,0" />
+                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
+                               Margin="0,0,16,0" Foreground="{DynamicResource SolukYaziFirca}"
+                               Text="Değişiklikler anında masaüstüne uygulanır." />
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
 </Window>

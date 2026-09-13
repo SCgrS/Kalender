@@ -1,7 +1,9 @@
 using System.IO;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Kalender.Core;
@@ -17,6 +19,10 @@ namespace Kalender.Ui;
 /// Görünüm ayarları. Değişiklikler anında masaüstüne yansır; "Tamam"
 /// beklemeye gerek yok. Diske yazma kısa bir gecikmeyle toplanır ki
 /// kaydırıcıyı sürüklerken her adımda dosya yazılmasın.
+///
+/// Pencere Windows 11 Ayarlar'ı gibi kurulu: solda sayfa listesi, sağda
+/// seçili sayfanın kartları. Sayfalar yalnızca görünürlükle değişir; hepsi
+/// baştan kurulu olduğu için ayarların denetimlere yüklenmesi tek yerde kalır.
 /// </summary>
 public partial class SettingsWindow : Window
 {
@@ -42,7 +48,11 @@ public partial class SettingsWindow : Window
     private readonly DispatcherTimer _applyTimer;
     private readonly List<MonitorRow> _rows = new();
 
+    /// <summary>Boşken otomatik hesaplanan, elle de seçilebilen dört takvim rengi.</summary>
+    private readonly CalendarColorRow[] _calendarColors;
+
     private bool _loading;
+    private int _page;
 
     internal SettingsWindow(IAppearanceHost host)
     {
@@ -76,22 +86,42 @@ public partial class SettingsWindow : Window
 
         VersionText.Text = "Sürüm " + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");
 
-        BackgroundWheel.ColorChanged += OnBackgroundColorPicked;
-        TextWheel.ColorChanged += OnTextColorPicked;
-        TaskColorWheel.ColorChanged += OnTaskColorPicked;
+        BackgroundColorButton.ColorPicked += OnBackgroundColorPicked;
+        TextColorButton.ColorPicked += OnTextColorPicked;
+        TaskColorButton.ColorPicked += OnTaskColorPicked;
 
-        WeekdayWheel.ColorChanged += c => PickCalendarColor(k => k.Weekday = ColorWheel.ToHex(c));
-        HolidayWheel.ColorChanged += c => PickCalendarColor(k => k.Holiday = ColorWheel.ToHex(c));
-        MutedWheel.ColorChanged += c => PickCalendarColor(k => k.Muted = ColorWheel.ToHex(c));
-        TodayCircleWheel.ColorChanged += c => PickCalendarColor(k => k.TodayCircle = ColorWheel.ToHex(c));
+        _calendarColors = new CalendarColorRow[]
+        {
+            new(WeekdayAutoBox, WeekdayColorButton, k => k.Weekday, (k, v) => k.Weekday = v, t => t.Text),
+            new(HolidayAutoBox, HolidayColorButton, k => k.Holiday, (k, v) => k.Holiday = v, t => t.Holiday),
+            new(MutedAutoBox, MutedColorButton, k => k.Muted, (k, v) => k.Muted = v, t => t.Muted),
+            new(TodayCircleAutoBox, TodayCircleColorButton, k => k.TodayCircle, (k, v) => k.TodayCircle = v, t => t.TodayCircle),
+        };
+
+        foreach (CalendarColorRow row in _calendarColors)
+        {
+            row.AutoBox.Checked += (_, _) => SetCalendarColorAuto(row);
+            row.AutoBox.Unchecked += (_, _) => SetCalendarColorAuto(row);
+            row.Button.ColorPicked += c => PickCalendarColor(k => row.Write(k, ColorWheel.ToHex(c)));
+        }
 
         // Pencere ilk kez açılıyorsa Windows'un uygulama teması izlenir;
-        // kullanıcı düğmeyle değiştirdiyse onun seçimi saklanır.
+        // kullanıcı güneş/ay anahtarıyla değiştirdiyse onun seçimi saklanır.
         ApplyWindowTheme(S.DarkSettingsWindow ?? UiTema.WindowsKaranlikMi());
+
+        // Başlık çubuğu ancak pencerenin tanıtıcısı oluşunca boyanabiliyor.
+        SourceInitialized += (_, _) => UiTema.BaslikCubugunuBoya(this, _darkWindow);
 
         BuildPresets();
         BuildMonitorRows();
         LoadFromSettings();
+
+        NavList.SelectedIndex = 0;
+
+        // Pencere etkinleşince klavye odağı seçili sayfada olsun; oklar hemen çalışır.
+        FocusManager.SetFocusedElement(this, (ListBoxItem)NavList.Items[0]);
+
+        PresetPanel.PreviewGotKeyboardFocus += OnPresetPanelPreviewGotKeyboardFocus;
 
         // Çözünürlük ya da ölçek değişirse satırlardaki ölçüler eskir; taşıma
         // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
@@ -99,20 +129,75 @@ public partial class SettingsWindow : Window
         _host.GoogleStateChanged += OnGoogleStateChanged;
     }
 
+    /// <summary>
+    /// Takvim renklerinden birinin satırı: otomatik anahtarı, renk düğmesi,
+    /// ayardaki alanı ve otomatikken hesaplanan değeri.
+    /// </summary>
+    private sealed record CalendarColorRow(
+        CheckBox AutoBox,
+        ColorPickerButton Button,
+        Func<CalendarTextColors, string?> Read,
+        Action<CalendarTextColors, string?> Write,
+        Func<Theme, System.Drawing.Color> Computed);
+
+    // ------------------------------------------------------------- gezinti
+
+    /// <summary>
+    /// Soldaki listeden sayfa seçildi. Ctrl+tıklama seçimi kaldırabildiği
+    /// için boş seçimde önceki sayfada kalınır.
+    /// </summary>
+    private void OnNavigate(object sender, SelectionChangedEventArgs e)
+    {
+        if (NavList.SelectedIndex < 0)
+        {
+            NavList.SelectedIndex = _page;
+            return;
+        }
+
+        _page = NavList.SelectedIndex;
+
+        ScrollViewer[] pages = { BackgroundPage, CalendarPage, ScreensPage, GooglePage, GeneralPage };
+        for (int i = 0; i < pages.Length; i++)
+        {
+            pages[i].Visibility = i == _page ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        PageTitle.Text = AutomationProperties.GetName((ListBoxItem)NavList.Items[_page]);
+    }
+
     // ------------------------------------------------------ pencere teması
 
     private bool _darkWindow;
 
+    /// <summary>
+    /// Pencereyi aydınlık ya da karanlık boyar ve güneş/ay anahtarını ona
+    /// eşitler. Anahtarda yazı yok; ipucu ve ekran okuyucu adı durumu söyler.
+    /// </summary>
     private void ApplyWindowTheme(bool dark)
     {
         _darkWindow = dark;
         UiTema.Uygula(this, dark);
-        ThemeButton.Content = dark ? "Aydınlık kip" : "Karanlık kip";
+        UiTema.BaslikCubugunuBoya(this, dark);
+
+        ThemeToggle.IsChecked = dark;
+        ThemeToggle.ToolTip = dark ? "Karanlık görünüm (aydınlık için tıklayın)" : "Aydınlık görünüm (karanlık için tıklayın)";
+        AutomationProperties.SetName(ThemeToggle, dark ? "Görünüm: karanlık" : "Görünüm: aydınlık");
     }
 
-    private void OnToggleTheme(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Fareyle, klavyeyle (Boşluk) ya da ekran okuyucuyla değiştirilebilsin
+    /// diye Click'e değil Checked/Unchecked'e bağlı. ApplyWindowTheme anahtarı
+    /// kendisi de ayarladığı için aynı değer ikinci kez gelirse geçiyoruz.
+    /// </summary>
+    private void OnThemeToggled(object sender, RoutedEventArgs e)
     {
-        ApplyWindowTheme(!_darkWindow);
+        bool dark = ThemeToggle.IsChecked == true;
+        if (dark == _darkWindow)
+        {
+            return;
+        }
+
+        ApplyWindowTheme(dark);
         S.DarkSettingsWindow = _darkWindow;
         ScheduleApply();
     }
@@ -124,18 +209,7 @@ public partial class SettingsWindow : Window
         e.Handled = true;
     }
 
-    private void OnGoogleStateChanged() => Dispatcher.BeginInvoke(() =>
-    {
-        _loading = true;
-        try
-        {
-            UpdateGoogleUi();
-        }
-        finally
-        {
-            _loading = false;
-        }
-    });
+    private void OnGoogleStateChanged() => Dispatcher.BeginInvoke(() => Silently(UpdateGoogleUi));
 
     private void OnMonitorsChanged()
     {
@@ -156,13 +230,9 @@ public partial class SettingsWindow : Window
         try
         {
             AppearanceSettings a = S.Appearance;
-            bool photoMode = a.BackgroundMode == BackgroundMode.Photo;
 
-            BackgroundWheel.SelectedColor = WpfImaging.ToMedia(
+            BackgroundColorButton.SelectedColor = WpfImaging.ToMedia(
                 ColorTools.Parse(a.SolidColor, System.Drawing.Color.FromArgb(0x2E, 0x32, 0x38)));
-
-            TextWheel.SelectedColor = WpfImaging.ToMedia(
-                ColorTools.Parse(a.TextColor, System.Drawing.Color.White));
 
             FitCombo.SelectedIndex = Array.FindIndex(FitOptions, o => o.Fit == a.PhotoFit);
             if (FitCombo.SelectedIndex < 0)
@@ -170,23 +240,19 @@ public partial class SettingsWindow : Window
                 FitCombo.SelectedIndex = 0;
             }
 
+            // Dar sütunda tam yol dosya adının ortasından kırılıyordu; tam yol ipucunda.
             PhotoPathText.Text = string.IsNullOrWhiteSpace(a.PhotoPath)
                 ? "Şu an fotoğraf kullanılmıyor."
-                : "Seçili fotoğraf: " + a.PhotoPath;
+                : "Seçili fotoğraf: " + Path.GetFileName(a.PhotoPath);
+            PhotoPathText.ToolTip = string.IsNullOrWhiteSpace(a.PhotoPath) ? null : a.PhotoPath;
 
             RemovePhotoButton.IsEnabled = !string.IsNullOrWhiteSpace(a.PhotoPath);
-
-            // Fotoğraf zeminde otomatik kontrast hesabı yapılamaz.
-            bool manualText = photoMode || a.TextColorMode == TextColorMode.Manual;
-            AutoTextColorBox.IsChecked = !photoMode && a.TextColorMode == TextColorMode.Auto;
-            AutoTextColorBox.IsEnabled = !photoMode;
-            TextColorExpander.IsEnabled = manualText;
-            TextColorExpander.IsExpanded = manualText;
 
             SaturdayRedBox.IsChecked = a.SaturdayIsRed;
 
             HolidaysBox.IsChecked = S.Holidays.Enabled;
 
+            UpdateTextColorControls();
             LoadCalendarColors();
 
             ClientIdBox.Text = S.Google.ClientId ?? string.Empty;
@@ -196,7 +262,7 @@ public partial class SettingsWindow : Window
                 GooglePoller.Intervals, i => i.Seconds == S.Google.PollIntervalSeconds);
             PollIntervalCombo.SelectedIndex = intervalIndex >= 0 ? intervalIndex : 1;
 
-            TaskColorWheel.SelectedColor = WpfImaging.ToMedia(
+            TaskColorButton.SelectedColor = WpfImaging.ToMedia(
                 ColorTools.Parse(S.Google.TaskColor, System.Drawing.Color.FromArgb(0x4C, 0x8D, 0xFF)));
 
             UpdateGoogleUi();
@@ -211,7 +277,6 @@ public partial class SettingsWindow : Window
 
             DimSlider.Value = a.BackdropDim;
             DimText.Text = $"%{a.BackdropDim}";
-            DimPanel.IsEnabled = photoMode;
 
             int popupOpacity = Math.Clamp(a.DayPopupOpacity, 40, 100);
             PopupOpacitySlider.Value = popupOpacity;
@@ -234,70 +299,100 @@ public partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// Denetimleri ayara dokunmadan günceller: bu sırada olay işleyicileri
+    /// susar. İç içe çağrılabilir; dıştaki yüklemenin koruması bozulmaz.
+    /// </summary>
+    private void Silently(Action update)
+    {
+        bool before = _loading;
+        _loading = true;
+        try
+        {
+            update();
+        }
+        finally
+        {
+            _loading = before;
+        }
+    }
+
     private void BuildPresets()
     {
         PresetPanel.Children.Clear();
 
+        var style = (Style)FindResource("RenkOrnegi");
+        var darkMark = new SolidColorBrush(Color.FromRgb(0x1A, 0x1D, 0x21));
+
         foreach (ThemePreset preset in ThemePresets.All)
         {
-            var swatch = new Border
-            {
-                Width = 74,
-                Height = 40,
-                CornerRadius = new CornerRadius(5),
-                Background = new SolidColorBrush(WpfImaging.ToMedia(
-                    ColorTools.Parse(preset.Color, System.Drawing.Color.Gray))),
-                BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0, 0, 0)),
-            };
+            System.Drawing.Color color = ColorTools.Parse(preset.Color, System.Drawing.Color.Gray);
 
-            var caption = new TextBlock
+            // Ad örneğin altında yazmıyor; ipucunda ve ekran okuyucuda duruyor.
+            var swatch = new RadioButton
             {
-                Text = preset.Name,
-                FontSize = 11,
-                Margin = new Thickness(0, 5, 0, 0),
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-
-            var content = new StackPanel();
-            content.Children.Add(swatch);
-            content.Children.Add(caption);
-
-            var button = new Button
-            {
-                Content = content,
+                Style = style,
                 Tag = preset,
-                Margin = new Thickness(0, 0, 10, 10),
-                Padding = new Thickness(6),
-                MinWidth = 0,
+                Margin = new Thickness(0, 0, 8, 8),
+                Background = new SolidColorBrush(WpfImaging.ToMedia(color)),
+                Foreground = ColorTools.IsLight(color) ? darkMark : Brushes.White,
                 ToolTip = $"{preset.Name} · {preset.Color}",
             };
 
-            // Düğmenin içeriği bir yığın olduğu için erişilebilirlik adı
-            // kendiliğinden oluşmuyor; açıkça veriyoruz.
-            System.Windows.Automation.AutomationProperties.SetName(button, preset.Name);
+            AutomationProperties.SetName(swatch, preset.Name);
 
-            button.Click += OnPresetClicked;
-            PresetPanel.Children.Add(button);
+            swatch.Click += OnPresetClicked;
+            PresetPanel.Children.Add(swatch);
         }
     }
 
+    /// <summary>
+    /// Seçili hazır rengi işaretler. Düz renk hiçbir hazır renge uymuyorsa
+    /// kullanıcının kendi rengi kullanılıyordur; bunu "Kendi rengim" satırı söyler.
+    /// </summary>
     private void RefreshPresetSelection()
     {
+        bool solid = S.Appearance.BackgroundMode == BackgroundMode.Solid;
+        bool anyPreset = false;
+
         foreach (object item in PresetPanel.Children)
         {
-            if (item is not Button button || button.Tag is not ThemePreset preset)
+            if (item is not RadioButton { Tag: ThemePreset preset } swatch)
             {
                 continue;
             }
 
-            bool selected = S.Appearance.BackgroundMode == BackgroundMode.Solid
+            bool selected = solid
                 && string.Equals(preset.Color, S.Appearance.SolidColor, StringComparison.OrdinalIgnoreCase);
 
-            button.BorderThickness = new Thickness(selected ? 2 : 1);
-            button.BorderBrush = selected
-                ? SystemColors.HighlightBrush
-                : new SolidColorBrush(Color.FromArgb(0x33, 0, 0, 0));
+            swatch.IsChecked = selected;
+            anyPreset |= selected;
+        }
+
+        CustomColorNote.Text = solid && !anyPreset
+            ? "Şu an kendi renginiz kullanılıyor."
+            : "Hazır renklerin dışında bir renk seçin.";
+    }
+
+    /// <summary>
+    /// Hazır renkler tek sekme durağıdır. Gruba klavyeyle dışarıdan girilince
+    /// (Tab, Shift+Tab) odak gruptaki ilk ya da en son gezilen renge değil,
+    /// seçili renge gider; ekran okuyucu da girişte seçimi okur. Grup içinde
+    /// oklarla gezinmeye ve fareyle tıklanan renge karışılmaz.
+    /// </summary>
+    private void OnPresetPanelPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        bool grupIcinden = e.OldFocus is Visual eski && PresetPanel.IsAncestorOf(eski);
+        if (grupIcinden || InputManager.Current.MostRecentInputDevice is not KeyboardDevice)
+        {
+            return;
+        }
+
+        RadioButton? secili = PresetPanel.Children.OfType<RadioButton>().FirstOrDefault(s => s.IsChecked == true);
+        if (secili is not null && !ReferenceEquals(e.NewFocus, secili))
+        {
+            e.Handled = true;
+            secili.Focus();
         }
     }
 
@@ -331,7 +426,7 @@ public partial class SettingsWindow : Window
 
     private void OnPresetClicked(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: ThemePreset preset })
+        if (sender is not RadioButton { Tag: ThemePreset preset })
         {
             return;
         }
@@ -357,6 +452,9 @@ public partial class SettingsWindow : Window
 
         RefreshPresetSelection();
         UpdateTextColorControls();
+
+        // Otomatik renkler zeminden hesaplanıyor; düğmeleri de yeni zemine göre.
+        LoadCalendarColors();
         ScheduleApply();
     }
 
@@ -412,8 +510,26 @@ public partial class SettingsWindow : Window
         return dialog.ShowDialog(this) == true ? dialog.FileName : null;
     }
 
-    // ---------------------------------------------------------------- yazı
+    private void OnDimChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        DimText.Text = $"%{(int)Math.Round(e.NewValue)}";
 
+        if (_loading)
+        {
+            return;
+        }
+
+        S.Appearance.BackdropDim = (int)Math.Round(e.NewValue);
+        ScheduleApply();
+    }
+
+    // ---------------------------------------------------------- yazı rengi
+
+    /// <summary>
+    /// "Otomatik" açıldıysa yazı rengi yeniden zeminden hesaplanır. Kapatıldıysa
+    /// düğmede o an görünen (hesaplanmış) renk elle seçim olarak saklanır;
+    /// böylece anahtarı kapatmak takvimdeki yazıyı sıçratmaz.
+    /// </summary>
     private void OnAutoTextColorChanged(object sender, RoutedEventArgs e)
     {
         if (_loading)
@@ -421,22 +537,38 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        S.Appearance.TextColorMode = AutoTextColorBox.IsChecked == true
-            ? TextColorMode.Auto
-            : TextColorMode.Manual;
+        if (AutoTextColorBox.IsChecked == true)
+        {
+            S.Appearance.TextColorMode = TextColorMode.Auto;
+        }
+        else
+        {
+            S.Appearance.TextColor = ColorWheel.ToHex(TextColorButton.SelectedColor);
+            S.Appearance.TextColorMode = TextColorMode.Manual;
+        }
 
         UpdateTextColorControls();
+        LoadCalendarColors();
         ScheduleApply();
     }
 
+    /// <summary>
+    /// Yazı rengi satırını ve fotoğrafa bağlı denetimleri zemin kipine eşitler.
+    /// Fotoğraf zeminde otomatik kontrast hesabı yapılamaz: anahtar kapalı
+    /// ve kilitli durur, rengi kullanıcı seçer.
+    /// </summary>
     private void UpdateTextColorControls()
     {
-        bool photoMode = S.Appearance.BackgroundMode == BackgroundMode.Photo;
-        bool manualText = photoMode || S.Appearance.TextColorMode == TextColorMode.Manual;
+        AppearanceSettings a = S.Appearance;
+        bool photoMode = a.BackgroundMode == BackgroundMode.Photo;
 
+        Silently(() => AutoTextColorBox.IsChecked = !photoMode && a.TextColorMode == TextColorMode.Auto);
         AutoTextColorBox.IsEnabled = !photoMode;
-        TextColorExpander.IsEnabled = manualText;
-        TextColorExpander.IsExpanded = manualText;
+
+        AutoTextNote.Text = photoMode
+            ? "Fotoğraf zeminde otomatik seçim yapılamaz; rengi siz belirlersiniz."
+            : "Otomatikte zemine göre açık ya da koyu seçilir; öteki renkler buna göre hesaplanır.";
+
         DimPanel.IsEnabled = photoMode;
     }
 
@@ -453,12 +585,31 @@ public partial class SettingsWindow : Window
         if (S.Appearance.BackgroundMode != BackgroundMode.Photo)
         {
             S.Appearance.TextColorMode = TextColorMode.Manual;
-            _loading = true;
-            AutoTextColorBox.IsChecked = false;
-            _loading = false;
         }
 
+        UpdateTextColorControls();
+
+        // Soluk günler ve bugünün dairesi yazı renginden türetiliyor.
+        LoadCalendarColors();
         ScheduleApply();
+    }
+
+    /// <summary>
+    /// Yazı renginin şu an geçerli hâli: elle seçildiyse o, otomatikse zeminden
+    /// hesaplanan. Hafta günleri rengi (yazının üstüne yazılan seçim) buna karışmaz.
+    /// </summary>
+    private System.Drawing.Color EffectiveTextColor()
+    {
+        AppearanceSettings a = S.Appearance;
+        var textOnly = new AppearanceSettings
+        {
+            BackgroundMode = a.BackgroundMode,
+            SolidColor = a.SolidColor,
+            TextColorMode = a.TextColorMode,
+            TextColor = a.TextColor,
+        };
+
+        return Theme.From(textOnly).Text;
     }
 
     private void OnSaturdayChanged(object sender, RoutedEventArgs e)
@@ -469,19 +620,6 @@ public partial class SettingsWindow : Window
         }
 
         S.Appearance.SaturdayIsRed = SaturdayRedBox.IsChecked == true;
-        ScheduleApply();
-    }
-
-    private void OnDimChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        DimText.Text = $"%{(int)Math.Round(e.NewValue)}";
-
-        if (_loading)
-        {
-            return;
-        }
-
-        S.Appearance.BackdropDim = (int)Math.Round(e.NewValue);
         ScheduleApply();
     }
 
@@ -525,35 +663,38 @@ public partial class SettingsWindow : Window
     // ------------------------------------------------------ takvim renkleri
 
     /// <summary>
-    /// Dört renk ayarını denetimlere yansıtır. Ayar boşsa "otomatik" işaretli
-    /// kalır ve çarkta o an hesaplanan renk gösterilir; kullanıcı otomatiği
-    /// kapattığında elinde makul bir başlangıç rengi olur.
+    /// Renk düğmelerini ve otomatik anahtarlarını ayara eşitler. Ayar boşsa
+    /// "Otomatik" açık kalır ve düğmede o an hesaplanan renk görünür; kullanıcı
+    /// otomatiği kapattığında elinde makul bir başlangıç rengi olur.
     /// </summary>
     private void LoadCalendarColors()
     {
         CalendarTextColors c = S.Appearance.Colors;
         var theme = Theme.From(S.Appearance);
 
-        Bind(WeekdayAutoBox, WeekdayColorExpander, WeekdayWheel, c.Weekday, theme.Text);
-        Bind(HolidayAutoBox, HolidayColorExpander, HolidayWheel, c.Holiday, theme.Holiday);
-        Bind(MutedAutoBox, MutedColorExpander, MutedWheel, c.Muted, theme.Muted);
-        Bind(TodayCircleAutoBox, TodayCircleExpander, TodayCircleWheel, c.TodayCircle, theme.TodayCircle);
-
-        static void Bind(CheckBox box, Expander expander, ColorWheel wheel,
-            string? value, System.Drawing.Color hesaplanan)
+        Silently(() =>
         {
-            bool otomatik = string.IsNullOrWhiteSpace(value);
+            TextColorButton.SelectedColor = Opaque(EffectiveTextColor());
 
-            box.IsChecked = otomatik;
-            expander.IsEnabled = !otomatik;
-            expander.IsExpanded = !otomatik;
+            foreach (CalendarColorRow row in _calendarColors)
+            {
+                string? value = row.Read(c);
+                bool otomatik = string.IsNullOrWhiteSpace(value);
+                System.Drawing.Color hesaplanan = row.Computed(theme);
 
-            wheel.SelectedColor = WpfImaging.ToMedia(
-                otomatik ? hesaplanan : ColorTools.Parse(value, hesaplanan));
-        }
+                row.AutoBox.IsChecked = otomatik;
+                row.Button.SelectedColor = Opaque(otomatik ? hesaplanan : ColorTools.Parse(value, hesaplanan));
+            }
+        });
     }
 
-    /// <summary>Çarktan bir renk seçildi: ayarı yaz, otomatik işaretini kaldır.</summary>
+    /// <summary>
+    /// Düğmeler saydamlık göstermez: bugünün dairesinin yarı saydamlığı
+    /// hesabın parçasıdır ve seçilen renge de aynen uygulanır.
+    /// </summary>
+    private static Color Opaque(System.Drawing.Color c) => Color.FromRgb(c.R, c.G, c.B);
+
+    /// <summary>Bir renk seçildi: ayarı yaz, o satırın otomatik anahtarını kapat.</summary>
     private void PickCalendarColor(Action<CalendarTextColors> uygula)
     {
         if (_loading)
@@ -562,92 +703,36 @@ public partial class SettingsWindow : Window
         }
 
         uygula(S.Appearance.Colors);
-
-        _loading = true;
-        try
-        {
-            WeekdayAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.Weekday);
-            HolidayAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.Holiday);
-            MutedAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.Muted);
-            TodayCircleAutoBox.IsChecked = string.IsNullOrWhiteSpace(S.Appearance.Colors.TodayCircle);
-        }
-        finally
-        {
-            _loading = false;
-        }
-
+        LoadCalendarColors();
         ScheduleApply();
     }
 
-    private void OnWeekdayAutoChanged(object sender, RoutedEventArgs e)
-        => SetCalendarColorAuto(WeekdayAutoBox, WeekdayColorExpander, k => k.Weekday = null);
-
-    private void OnHolidayColorAutoChanged(object sender, RoutedEventArgs e)
-        => SetCalendarColorAuto(HolidayAutoBox, HolidayColorExpander, k => k.Holiday = null);
-
-    private void OnMutedColorAutoChanged(object sender, RoutedEventArgs e)
-        => SetCalendarColorAuto(MutedAutoBox, MutedColorExpander, k => k.Muted = null);
-
-    private void OnTodayCircleAutoChanged(object sender, RoutedEventArgs e)
-        => SetCalendarColorAuto(TodayCircleAutoBox, TodayCircleExpander, k => k.TodayCircle = null);
-
     /// <summary>
-    /// "Otomatik" işaretlendiğinde ayarı boşaltır, kaldırıldığında çarkta duran
-    /// rengi yazar; böylece kutunun işaretini kaldırmak görünümü sıçratmaz.
+    /// "Otomatik" açıldığında ayarı boşaltır, kapatıldığında düğmede duran
+    /// rengi yazar; böylece anahtarı kapatmak görünümü sıçratmaz.
     /// </summary>
-    private void SetCalendarColorAuto(CheckBox box, Expander expander, Action<CalendarTextColors> temizle)
+    private void SetCalendarColorAuto(CalendarColorRow row)
     {
         if (_loading)
         {
             return;
         }
 
-        bool otomatik = box.IsChecked == true;
-        expander.IsEnabled = !otomatik;
-        expander.IsExpanded = !otomatik;
-
-        if (otomatik)
+        if (row.AutoBox.IsChecked == true)
         {
-            temizle(S.Appearance.Colors);
+            row.Write(S.Appearance.Colors, null);
             ScheduleApply();
 
-            // Otomatik renk yeniden hesaplandı; çarklar da onu göstersin.
+            // Otomatik renk yeniden hesaplandı; düğmeler de onu göstersin.
             _applyTimer.Stop();
             _host.ApplyAppearance();
-            _loading = true;
-            try
-            {
-                LoadCalendarColors();
-            }
-            finally
-            {
-                _loading = false;
-            }
-
+            LoadCalendarColors();
             return;
         }
 
-        // Otomatik kapatıldı: çarkta duran renk artık kalıcı seçim.
-        ColorWheel wheel = (ColorWheel)expander.Content;
-        PickCalendarColor(k =>
-        {
-            if (ReferenceEquals(wheel, WeekdayWheel))
-            {
-                k.Weekday = ColorWheel.ToHex(wheel.SelectedColor);
-            }
-            else if (ReferenceEquals(wheel, HolidayWheel))
-            {
-                k.Holiday = ColorWheel.ToHex(wheel.SelectedColor);
-            }
-            else if (ReferenceEquals(wheel, MutedWheel))
-            {
-                k.Muted = ColorWheel.ToHex(wheel.SelectedColor);
-            }
-            else
-            {
-                k.TodayCircle = ColorWheel.ToHex(wheel.SelectedColor);
-            }
-        });
+        // Otomatik kapatıldı: düğmede duran renk artık kalıcı seçim.
+        string hex = ColorWheel.ToHex(row.Button.SelectedColor);
+        PickCalendarColor(k => row.Write(k, hex));
     }
 
     // --------------------------------------------------------------- Google
@@ -663,7 +748,7 @@ public partial class SettingsWindow : Window
         if (!connected)
         {
             GoogleStatusText.Text = string.IsNullOrWhiteSpace(S.Google.ClientId)
-                ? "Bağlı değil. Önce yukarıdaki iki değeri yapıştırın."
+                ? "Bağlı değil. Önce aşağıdaki iki değeri yapıştırın."
                 : "Bağlı değil. \"Google'a bağlan\" düğmesine basın; tarayıcıda onay ekranı açılacak.";
             return;
         }
@@ -682,39 +767,67 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Takvim ya da görev listesi seçim kutularını kurar. Seçim listesi boşsa
-    /// "hepsi" anlamına gelir; kullanıcı ilk kez bir kutunun işaretini kaldırınca
-    /// liste gerçek seçimle doldurulur.
+    /// Takvim ya da görev listesi satırlarını kurar: solda ad, sağda anahtar,
+    /// aralarında ince çizgi. Seçim listesi boşsa "hepsi" anlamına gelir;
+    /// kullanıcı ilk kez bir anahtarı kapatınca liste gerçek seçimle doldurulur.
     /// </summary>
     private void BuildSourceList(StackPanel panel, List<(string Id, string Name)> sources, List<string> selected)
     {
         panel.Children.Clear();
 
+        var satir = (Style)FindResource("Satir");
+
         if (sources.Count == 0)
         {
-            panel.Children.Add(new TextBlock
+            var bos = new DockPanel { Style = satir };
+            bos.Children.Add(new TextBlock
             {
                 Text = "Henüz yüklenmedi.",
-                Opacity = 0.65,
+                Style = (Style)FindResource("SatirAciklamasi"),
+                VerticalAlignment = VerticalAlignment.Center,
             });
+            panel.Children.Add(bos);
             return;
         }
 
+        var baslik = (Style)FindResource("SatirBasligi");
+
         foreach ((string id, string name) in sources)
         {
+            if (panel.Children.Count > 0)
+            {
+                panel.Children.Add(new Separator());
+            }
+
             var box = new CheckBox
             {
-                Content = name,
                 IsChecked = selected.Count == 0 || selected.Contains(id),
                 Tag = id,
-                Margin = new Thickness(0, 3, 0, 3),
+                Margin = new Thickness(24, 0, 0, 0),
             };
+
+            AutomationProperties.SetName(box, name);
+            DockPanel.SetDock(box, Dock.Right);
 
             box.Checked += OnSourceToggled;
             box.Unchecked += OnSourceToggled;
-            panel.Children.Add(box);
+
+            var row = new DockPanel { Style = satir };
+            row.Children.Add(box);
+            row.Children.Add(new TextBlock
+            {
+                Text = name,
+                Style = baslik,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+
+            panel.Children.Add(row);
         }
     }
+
+    /// <summary>Listedeki takvim ya da görev listesi anahtarları, görünüş sırasıyla.</summary>
+    private static IEnumerable<CheckBox> SourceBoxes(StackPanel panel)
+        => panel.Children.OfType<DockPanel>().SelectMany(d => d.Children.OfType<CheckBox>());
 
     private void OnSourceToggled(object sender, RoutedEventArgs e)
     {
@@ -723,14 +836,16 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        bool isCalendar = ReferenceEquals(box.Parent, CalendarListPanel);
+        bool isCalendar = CalendarListPanel.IsAncestorOf(box);
         StackPanel panel = isCalendar ? CalendarListPanel : TaskListPanel;
         List<string> target = isCalendar ? S.Google.SelectedCalendarIds : S.Google.SelectedTaskListIds;
 
+        List<CheckBox> boxes = SourceBoxes(panel).ToList();
+
         target.Clear();
-        foreach (object child in panel.Children)
+        foreach (CheckBox child in boxes)
         {
-            if (child is CheckBox { IsChecked: true, Tag: string id })
+            if (child is { IsChecked: true, Tag: string id })
             {
                 target.Add(id);
             }
@@ -738,7 +853,7 @@ public partial class SettingsWindow : Window
 
         // Hepsi işaretliyse listeyi boş bırakmak "hepsi" demek; ileride yeni
         // takvim eklenirse kendiliğinden dahil olsun.
-        if (target.Count == panel.Children.Count)
+        if (target.Count == boxes.Count)
         {
             target.Clear();
         }
@@ -958,7 +1073,7 @@ public partial class SettingsWindow : Window
 
         StartupNote.Text = StartupManager.PointsToCurrentExe()
             ? "Şu an çalışan dosya açılışta başlatılacak: " + Environment.ProcessPath
-            : "Açılış kaydı başka bir dosyayı gösteriyor. Bu kutuyu kapatıp yeniden açarsanız "
+            : "Açılış kaydı başka bir dosyayı gösteriyor. Bu anahtarı kapatıp yeniden açarsanız "
               + "şu an çalışan dosyaya güncellenir.";
     }
 

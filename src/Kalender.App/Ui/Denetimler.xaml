@@ -1,15 +1,61 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   Ayarlar penceresinin denetim biçimleri.
 
   Windows'un kendi WPF biçimleri karanlık kip tanımıyor: düğmenin üzerine
   gelince açık mavi, metin kutusu beyaz kalıyor. Bu yüzden kullandığımız
-  denetimlerin şablonlarını burada sade biçimde yeniden yazıyoruz. Renkler
-  DynamicResource ile alınıyor; aydınlık/karanlık geçişinde yalnızca fırça
-  değerleri değişiyor, şablonlar aynı kalıyor.
+  denetimlerin şablonlarını burada yeniden yazıyoruz; ölçüler ve durumlar
+  (üzerine gelme, basma, klavye odağı) Windows 11'in Fluent denetimlerine
+  yakın tutuldu. Renkler DynamicResource ile alınıyor; aydınlık/karanlık
+  geçişinde yalnızca fırça değerleri (UiTema.cs) değişiyor, şablonlar aynı kalıyor.
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ======================================================= klavye odağı -->
+    <!--
+      Yalnızca klavyeyle gezinirken görünen odak halkası. Fareyle tıklanan
+      denetimin çevresinde halka çıkmaz; Windows 11 de böyle davranır.
+    -->
+
+    <Style x:Key="OdakCercevesi">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="-3" CornerRadius="7" BorderThickness="2" SnapsToDevicePixels="True"
+                            BorderBrush="{DynamicResource YaziFirca}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Hap biçimli denetimler (güneş/ay anahtarı) için yuvarlak köşeli halka. -->
+    <Style x:Key="HapOdakCercevesi">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="-3" CornerRadius="19" BorderThickness="2" SnapsToDevicePixels="True"
+                            BorderBrush="{DynamicResource YaziFirca}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+      Açılır listedeki öğeler için içe oturan halka: öğeler kırpan bir kaydırma
+      alanında durduğu için dışa taşan halka kesilirdi. Oklarla gezilen öğe
+      seçili öğeden ayrı görünsün diye gerekli; fareyle gezinirken çıkmaz.
+    -->
+    <Style x:Key="OgeOdakCercevesi">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="0,1" CornerRadius="4" BorderThickness="2" SnapsToDevicePixels="True"
+                            BorderBrush="{DynamicResource YaziFirca}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- ============================================================ metin -->
 
@@ -25,13 +71,15 @@
     <!-- ============================================================= düğme -->
 
     <Style TargetType="Button">
-        <Setter Property="Padding" Value="12,6" />
-        <Setter Property="MinWidth" Value="90" />
+        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="MinWidth" Value="80" />
+        <Setter Property="MinHeight" Value="32" />
         <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
         <Setter Property="Background" Value="{DynamicResource DenetimFirca}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource KenarFirca}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource DenetimKenarFirca}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -39,18 +87,84 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="5">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          Margin="{TemplateBinding Padding}" />
+                            CornerRadius="4">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" />
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Govde" Property="Background"
-                                    Value="{DynamicResource DenetimUstuFirca}" />
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Govde" Property="Opacity" Value="0.45" />
                         </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Govde" Property="Background"
-                                    Value="{DynamicResource DenetimBasiliFirca}" />
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <!-- Durum renkleri şablonda değil biçimde: vurgulu düğme aynı şablonu kendi renkleriyle kullanır. -->
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource DenetimUstuFirca}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource DenetimBasiliFirca}" />
+                <Setter Property="Foreground" Value="{DynamicResource SolukYaziFirca}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Asıl eylem düğmesi (ör. renk kutusundaki "Tamam"). -->
+    <Style x:Key="VurguDugmesi" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Foreground" Value="{DynamicResource VurguYaziFirca}" />
+        <Setter Property="Background" Value="{DynamicResource VurguFirca}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VurguKenarFirca}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource VurguUstuFirca}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource VurguBasiliFirca}" />
+                <Setter Property="Foreground" Value="{DynamicResource VurguYaziFirca}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ======================================================= metin kutusu -->
+    <!-- Odaklanınca alt kenar vurgu rengine döner; ayrıca odak halkası gerekmez. -->
+
+    <Style TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="Background" Value="{DynamicResource GirdiFirca}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource KenarFirca}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CaretBrush" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource VurguFirca}" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Grid>
+                        <Border x:Name="Govde"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" />
+                        <Border x:Name="AltKenar" CornerRadius="4" BorderThickness="0,0,0,1"
+                                BorderBrush="{DynamicResource AnahtarKenarFirca}" />
+                        <!-- Padding'i TextBox içeriğe kendisi uygular; burada ikinci kez verilmez. -->
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      VerticalAlignment="Center" Focusable="False"
+                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource DenetimUstuFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource GirdiFirca}" />
+                            <Setter TargetName="AltKenar" Property="BorderThickness" Value="0,0,0,2" />
+                            <Setter TargetName="AltKenar" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />
@@ -61,61 +175,65 @@
         </Setter>
     </Style>
 
-    <!-- ======================================================= metin kutusu -->
-
-    <Style TargetType="TextBox">
-        <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
-        <Setter Property="Background" Value="{DynamicResource GirdiFirca}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource KenarFirca}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CaretBrush" Value="{DynamicResource YaziFirca}" />
-        <Setter Property="SelectionBrush" Value="{DynamicResource VurguFirca}" />
-        <Setter Property="Padding" Value="6,5" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="5">
-                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
-                    </Border>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- ========================================================= işaret kutusu -->
+    <!-- ============================================================ anahtar -->
+    <!--
+      Bu penceredeki bütün işaret kutuları aç/kapa ayarı olduğu için CheckBox,
+      Windows 11'deki gibi anahtar olarak çiziliyor. İçerik verilirse (ör.
+      "Otomatik") anahtarın solunda o yazar; verilmezse durum "Açık"/"Kapalı"
+      olarak gösterilir.
+    -->
 
     <Style TargetType="CheckBox">
-        <Setter Property="Margin" Value="0,6,0,0" />
         <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Border x:Name="Kutu" Width="16" Height="16" CornerRadius="3"
-                                VerticalAlignment="Center" Margin="0,1,8,0"
-                                Background="{DynamicResource GirdiFirca}"
-                                BorderBrush="{DynamicResource KenarGucluFirca}" BorderThickness="1">
-                            <Path x:Name="Tik" Stretch="Uniform" Margin="3" Visibility="Collapsed"
-                                  Data="M 0,5 L 3.5,9 L 10,0" Stroke="White" StrokeThickness="2"
-                                  StrokeEndLineCap="Round" StrokeStartLineCap="Round" />
-                        </Border>
-                        <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        <Grid VerticalAlignment="Center" Margin="0,0,12,0">
+                            <ContentPresenter x:Name="Icerik" RecognizesAccessKey="True" />
+                            <TextBlock x:Name="Durum" Text="Kapalı" Visibility="Collapsed" />
+                        </Grid>
+                        <Grid Width="40" Height="20" VerticalAlignment="Center">
+                            <Border x:Name="Ray" CornerRadius="10" BorderThickness="1"
+                                    Background="{DynamicResource AnahtarZeminFirca}"
+                                    BorderBrush="{DynamicResource AnahtarKenarFirca}" />
+                            <Ellipse x:Name="Topuz" Width="12" Height="12" Margin="4,0"
+                                     HorizontalAlignment="Left" VerticalAlignment="Center"
+                                     Fill="{DynamicResource AnahtarKenarFirca}" />
+                        </Grid>
                     </StackPanel>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="Content" Value="{x:Null}">
+                            <Setter TargetName="Icerik" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="Durum" Property="Visibility" Value="Visible" />
+                        </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Kutu" Property="Background" Value="{DynamicResource VurguFirca}" />
-                            <Setter TargetName="Kutu" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
-                            <Setter TargetName="Tik" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Durum" Property="Text" Value="Açık" />
+                            <Setter TargetName="Ray" Property="Background" Value="{DynamicResource VurguFirca}" />
+                            <Setter TargetName="Ray" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
+                            <Setter TargetName="Topuz" Property="Fill" Value="{DynamicResource VurguYaziFirca}" />
+                            <Setter TargetName="Topuz" Property="HorizontalAlignment" Value="Right" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Kutu" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
+                            <Setter TargetName="Topuz" Property="Width" Value="14" />
+                            <Setter TargetName="Topuz" Property="Height" Value="14" />
+                            <Setter TargetName="Topuz" Property="Margin" Value="3,0" />
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Ray" Property="Background" Value="{DynamicResource VurguUstuFirca}" />
+                            <Setter TargetName="Ray" Property="BorderBrush" Value="{DynamicResource VurguUstuFirca}" />
+                        </MultiTrigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Topuz" Property="Width" Value="17" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.45" />
+                            <Setter Property="Opacity" Value="0.4" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -126,30 +244,88 @@
     <!-- ============================================================ seçenek -->
 
     <Style TargetType="RadioButton">
-        <Setter Property="Margin" Value="0,4,0,0" />
         <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Grid Width="16" Height="16" VerticalAlignment="Center" Margin="0,1,8,0">
-                            <Ellipse x:Name="Halka" Fill="{DynamicResource GirdiFirca}"
-                                     Stroke="{DynamicResource KenarGucluFirca}" StrokeThickness="1" />
-                            <Ellipse x:Name="Nokta" Width="7" Height="7" Visibility="Collapsed"
-                                     Fill="{DynamicResource VurguFirca}" />
+                        <Grid Width="20" Height="20" VerticalAlignment="Center">
+                            <Ellipse x:Name="Halka" StrokeThickness="1"
+                                     Fill="{DynamicResource AnahtarZeminFirca}"
+                                     Stroke="{DynamicResource AnahtarKenarFirca}" />
+                            <Ellipse x:Name="Nokta" Width="10" Height="10" Visibility="Collapsed"
+                                     Fill="{DynamicResource VurguYaziFirca}" />
                         </Grid>
-                        <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
                     </StackPanel>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Halka" Property="Fill" Value="{DynamicResource VurguFirca}" />
+                            <Setter TargetName="Halka" Property="Stroke" Value="{DynamicResource VurguFirca}" />
                             <Setter TargetName="Nokta" Property="Visibility" Value="Visible" />
-                            <Setter TargetName="Halka" Property="Stroke" Value="{DynamicResource VurguFirca}" />
                         </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Halka" Property="Stroke" Value="{DynamicResource VurguFirca}" />
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Halka" Property="Fill" Value="{DynamicResource NavSeciliFirca}" />
+                        </MultiTrigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Nokta" Property="Width" Value="12" />
+                            <Setter TargetName="Nokta" Property="Height" Value="12" />
+                        </MultiTrigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Nokta" Property="Width" Value="8" />
+                            <Setter TargetName="Nokta" Property="Height" Value="8" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.45" />
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========================================================= renk örneği -->
+    <!--
+      Hazır zemin renkleri. Birbirini dışlayan seçenekler oldukları için
+      RadioButton; rengi Background, seçim işaretinin rengi Foreground verir
+      (açık örnekte koyu, koyu örnekte beyaz işaret okunsun diye kod seçer).
+    -->
+
+    <Style x:Key="RenkOrnegi" TargetType="RadioButton">
+        <Setter Property="Width" Value="56" />
+        <Setter Property="Height" Value="44" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Halka" CornerRadius="8" BorderThickness="2" Padding="2"
+                            BorderBrush="Transparent" Background="Transparent">
+                        <Border CornerRadius="5" BorderThickness="1"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource OrnekKenarFirca}">
+                            <Path x:Name="Tik" Width="14" Height="10" Visibility="Collapsed"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="M 1,5 L 5,9 L 13,1" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Stroke="{TemplateBinding Foreground}" />
+                        </Border>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Halka" Property="BorderBrush" Value="{DynamicResource KenarGucluFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Halka" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
+                            <Setter TargetName="Tik" Property="Visibility" Value="Visible" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -165,15 +341,20 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Govde" Background="{DynamicResource GirdiFirca}"
-                            BorderBrush="{DynamicResource KenarFirca}" BorderThickness="1"
-                            CornerRadius="5">
-                        <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
-                              Data="M 0,0 L 8,0 L 4,5 Z" Fill="{DynamicResource SolukYaziFirca}" />
+                    <Border x:Name="Govde" BorderThickness="1" CornerRadius="4"
+                            Background="{DynamicResource DenetimFirca}"
+                            BorderBrush="{DynamicResource DenetimKenarFirca}">
+                        <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,1,12,0"
+                              Data="M 0.5,0.5 L 5,5 L 9.5,0.5" StrokeThickness="1.25"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              Stroke="{DynamicResource SolukYaziFirca}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Govde" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource DenetimUstuFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource DenetimBasiliFirca}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -183,17 +364,27 @@
 
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
-        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OgeOdakCercevesi}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="Govde" Background="Transparent" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter />
-                    </Border>
+                    <Grid Margin="0,1" Background="Transparent">
+                        <Border x:Name="Govde" CornerRadius="4" Background="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <Border x:Name="Isaret" Width="3" Height="16" CornerRadius="1.5" Visibility="Hidden"
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Background="{DynamicResource VurguFirca}" />
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource VurguFirca}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource NavUstuFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource NavSeciliFirca}" />
+                            <Setter TargetName="Isaret" Property="Visibility" Value="Visible" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -203,7 +394,8 @@
 
     <Style TargetType="ComboBox">
         <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
-        <Setter Property="Height" Value="28" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
@@ -211,19 +403,28 @@
                         <ToggleButton Style="{StaticResource ComboOkStil}"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
                                                   RelativeSource={RelativeSource TemplatedParent}}" />
-                        <ContentPresenter Margin="10,0,26,0" VerticalAlignment="Center"
+                        <ContentPresenter Margin="12,0,34,0" VerticalAlignment="Center"
                                           IsHitTestVisible="False"
-                                          Content="{TemplateBinding SelectionBoxItem}" />
-                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
-                               AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
-                            <Border Background="{DynamicResource YuzeyFirca}"
-                                    BorderBrush="{DynamicResource KenarGucluFirca}" BorderThickness="1"
-                                    CornerRadius="5" MinWidth="{TemplateBinding ActualWidth}"
-                                    Margin="0,2,0,0">
-                                <ScrollViewer MaxHeight="240">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </Border>
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+                        <!-- Gölgeye yer kalsın diye kutunun çevresinde boşluk var; kaydırma onu dengeler. -->
+                        <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                               HorizontalOffset="-10" AllowsTransparency="True" Focusable="False"
+                               PopupAnimation="Fade">
+                            <Grid Margin="10,4,10,16" MinWidth="{TemplateBinding ActualWidth}">
+                                <Border CornerRadius="8" Background="{DynamicResource AcilirFirca}">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.2" />
+                                    </Border.Effect>
+                                </Border>
+                                <Border CornerRadius="8" Padding="4" BorderThickness="1"
+                                        Background="{DynamicResource AcilirFirca}"
+                                        BorderBrush="{DynamicResource KenarFirca}">
+                                    <ScrollViewer MaxHeight="280" Focusable="False">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Grid>
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -236,7 +437,244 @@
         </Setter>
     </Style>
 
-    <!-- ============================================================= açılır -->
+    <!-- ============================================================ kaydırıcı -->
+    <!-- Solda dolu (vurgu rengi), sağda boş ray; tutamak halka içinde vurgu noktası. -->
+
+    <Style x:Key="KaydiriciParcasi" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Grid Background="Transparent">
+                        <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                Background="{TemplateBinding Background}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="KaydiriciTutamak" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Width="20" Height="20" Background="Transparent">
+                        <Ellipse StrokeThickness="1"
+                                 Fill="{DynamicResource DenetimFirca}"
+                                 Stroke="{DynamicResource KenarGucluFirca}" />
+                        <Ellipse x:Name="Ic" Width="12" Height="12" Fill="{DynamicResource VurguFirca}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ic" Property="Width" Value="14" />
+                            <Setter TargetName="Ic" Property="Height" Value="14" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Ic" Property="Width" Value="10" />
+                            <Setter TargetName="Ic" Property="Height" Value="10" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Slider">
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="IsMoveToPointEnabled" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid Background="Transparent">
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource KaydiriciParcasi}" Command="Slider.DecreaseLarge"
+                                              Background="{DynamicResource VurguFirca}" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource KaydiriciParcasi}" Command="Slider.IncreaseLarge"
+                                              Background="{DynamicResource AnahtarKenarFirca}" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource KaydiriciTutamak}" />
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ================================================= güneş/ay anahtarı -->
+    <!--
+      Ayarlar penceresinin aydınlık/karanlık görünümü. Yazı yok: seçili olan
+      simge vurgu renkli topuzun üzerinde durur, öteki soluk kalır.
+      IsChecked = karanlık (ay), boş = aydınlık (güneş). Simgeler yazı tipi
+      karakteri değil, 16 piksellik ızgaraya çizilmiş vektör şekillerdir;
+      her ölçekte ve iki temada da keskin görünürler.
+    -->
+
+    <!-- Güneş: dolu daire ve çevresinde uçları yuvarlak sekiz kısa ışın. -->
+    <PathGeometry x:Key="GunesSimgesi"
+                  Figures="M 5.4,8 A 2.6,2.6 0 1 1 10.6,8 A 2.6,2.6 0 1 1 5.4,8 Z
+                           M 8,0.9 L 8,2.7 M 8,13.3 L 8,15.1 M 0.9,8 L 2.7,8 M 13.3,8 L 15.1,8
+                           M 2.98,2.98 L 4.25,4.25 M 11.75,4.25 L 13.02,2.98
+                           M 2.98,13.02 L 4.25,11.75 M 11.75,11.75 L 13.02,13.02" />
+
+    <!-- Ay: bir daireden sağ üstteki ikinci daire çıkarılınca kalan hilal. -->
+    <CombinedGeometry x:Key="AySimgesi" GeometryCombineMode="Exclude">
+        <CombinedGeometry.Geometry1>
+            <EllipseGeometry Center="7.5,8.5" RadiusX="6" RadiusY="6" />
+        </CombinedGeometry.Geometry1>
+        <CombinedGeometry.Geometry2>
+            <EllipseGeometry Center="10.5,5" RadiusX="5" RadiusY="5" />
+        </CombinedGeometry.Geometry2>
+    </CombinedGeometry>
+
+    <Style x:Key="GunesAyAnahtari" TargetType="ToggleButton">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource HapOdakCercevesi}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Ray" Width="64" Height="32" CornerRadius="16" BorderThickness="1"
+                            Background="{DynamicResource AnahtarZeminFirca}"
+                            BorderBrush="{DynamicResource KenarGucluFirca}">
+                        <Grid Margin="3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="24" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="Topuz" Grid.Column="0" Width="24" Height="24"
+                                     Fill="{DynamicResource VurguFirca}" />
+                            <Path x:Name="Gunes" Grid.Column="0" Width="16" Height="16"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="{StaticResource GunesSimgesi}" StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Fill="{DynamicResource VurguYaziFirca}"
+                                  Stroke="{DynamicResource VurguYaziFirca}" />
+                            <Path x:Name="Ay" Grid.Column="2" Width="16" Height="16"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="{StaticResource AySimgesi}"
+                                  Fill="{DynamicResource SolukYaziFirca}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Topuz" Property="Grid.Column" Value="2" />
+                            <Setter TargetName="Gunes" Property="Fill" Value="{DynamicResource SolukYaziFirca}" />
+                            <Setter TargetName="Gunes" Property="Stroke" Value="{DynamicResource SolukYaziFirca}" />
+                            <Setter TargetName="Ay" Property="Fill" Value="{DynamicResource VurguYaziFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ray" Property="Background" Value="{DynamicResource NavUstuFirca}" />
+                            <Setter TargetName="Ray" Property="BorderBrush" Value="{DynamicResource AnahtarKenarFirca}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========================================================= gezinti -->
+    <!--
+      Soldaki sayfa listesi. Seçili sayfanın solunda Windows 11'deki gibi
+      kısa bir vurgu çizgisi durur. Liste tek sekme durağıdır; oklar sayfayı değiştirir.
+    -->
+
+    <Style x:Key="GezintiListesi" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="KeyboardNavigation.TabNavigation" Value="Once" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <StackPanel IsItemsHost="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="GezintiOgesi" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Margin" Value="0,2" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OdakCercevesi}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Govde" CornerRadius="4" Background="Transparent" />
+                        <Border x:Name="Isaret" Width="3" Height="16" CornerRadius="1.5" Visibility="Hidden"
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Background="{DynamicResource VurguFirca}" />
+                        <ContentPresenter Margin="14,0,12,0" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource NavUstuFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource NavSeciliFirca}" />
+                            <Setter TargetName="Isaret" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========================================================= açılır bölüm -->
+    <!--
+      Kartın ilk satırı olarak açılıp kapanan bölüm (Windows 11 Ayarlar'daki
+      gibi): başlık satırının sağında aşağı bakan ok, açılınca yukarı döner;
+      içerik ince bir çizginin altında görünür. Başlık tek sekme durağıdır,
+      Boşluk açıp kapatır. Üst köşeler kartın köşesine uyar.
+    -->
+
+    <Style x:Key="AcilirBolumBasligi" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource OgeOdakCercevesi}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Govde" Background="Transparent" CornerRadius="5,5,0,0"
+                            Padding="16,12" MinHeight="64">
+                        <DockPanel>
+                            <Path x:Name="Ok" DockPanel.Dock="Right" Margin="16,1,4,0" VerticalAlignment="Center"
+                                  Data="M 0.5,0.5 L 5,5 L 9.5,0.5" StrokeThickness="1.25"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Stroke="{DynamicResource YaziFirca}" RenderTransformOrigin="0.5,0.5" />
+                            <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource NavUstuFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource NavSeciliFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Ok" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="180" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <Style TargetType="Expander">
         <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
@@ -244,29 +682,15 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Expander">
                     <StackPanel>
-                        <ToggleButton x:Name="Basli" Focusable="False" MinWidth="0"
-                                      HorizontalAlignment="Left"
+                        <ToggleButton Style="{StaticResource AcilirBolumBasligi}"
+                                      Content="{TemplateBinding Header}"
+                                      AutomationProperties.Name="{TemplateBinding AutomationProperties.Name}"
                                       IsChecked="{Binding IsExpanded, Mode=TwoWay,
-                                                  RelativeSource={RelativeSource TemplatedParent}}">
-                            <ToggleButton.Template>
-                                <ControlTemplate TargetType="ToggleButton">
-                                    <StackPanel Orientation="Horizontal" Background="Transparent">
-                                        <Path x:Name="Ok" Width="9" Height="9" Stretch="Uniform"
-                                              VerticalAlignment="Center" Margin="0,0,8,0"
-                                              Data="M 0,0 L 6,4 L 0,8 Z"
-                                              Fill="{DynamicResource SolukYaziFirca}" />
-                                        <ContentPresenter VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsChecked" Value="True">
-                                            <Setter TargetName="Ok" Property="Data" Value="M 0,0 L 8,0 L 4,6 Z" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </ToggleButton.Template>
-                            <ContentPresenter Content="{TemplateBinding Header}" />
-                        </ToggleButton>
-                        <ContentPresenter x:Name="Icerik" Visibility="Collapsed" />
+                                                  RelativeSource={RelativeSource TemplatedParent}}" />
+                        <StackPanel x:Name="Icerik" Visibility="Collapsed">
+                            <Separator />
+                            <ContentPresenter Margin="16,14,16,16" />
+                        </StackPanel>
                     </StackPanel>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsExpanded" Value="True">
@@ -281,15 +705,49 @@
         </Setter>
     </Style>
 
+    <!-- ============================================================ bağlantı -->
+    <!-- Vurgu renginde, altı çizgisiz; üzerine gelince çizgi çıkar. İki temada da okunur. -->
+
+    <Style TargetType="Hyperlink">
+        <Setter Property="Foreground" Value="{DynamicResource VurguFirca}" />
+        <Setter Property="TextDecorations" Value="{x:Null}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="TextDecorations" Value="Underline" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- ============================================================= ayraç -->
 
     <Style TargetType="Separator">
         <Setter Property="Background" Value="{DynamicResource KenarFirca}" />
         <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="0" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Separator">
                     <Border Background="{TemplateBinding Background}" Height="1" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================= ipucu -->
+
+    <Style TargetType="ToolTip">
+        <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="Background" Value="{DynamicResource AcilirFirca}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource KenarFirca}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="9,6">
+                        <ContentPresenter />
+                    </Border>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -301,28 +759,38 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Border Background="{DynamicResource KaydiriciFirca}" CornerRadius="4" Margin="3,0" />
+                    <Border x:Name="Cubuk" Width="6" CornerRadius="3" HorizontalAlignment="Center"
+                            Background="{DynamicResource KaydiriciFirca}" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Cubuk" Property="Width" Value="8" />
+                            <Setter TargetName="Cubuk" Property="CornerRadius" Value="4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
 
     <Style TargetType="ScrollBar">
-        <Setter Property="Width" Value="12" />
+        <Setter Property="Width" Value="14" />
+        <Setter Property="MinWidth" Value="14" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
                     <Grid Background="{TemplateBinding Background}">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="0,4">
                             <Track.Thumb>
                                 <Thumb Style="{StaticResource KaydirmaTutamak}" />
                             </Track.Thumb>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" MinWidth="0" />
+                                <RepeatButton Style="{StaticResource KaydiriciParcasi}" Background="Transparent"
+                                              Command="ScrollBar.PageDownCommand" />
                             </Track.IncreaseRepeatButton>
                             <Track.DecreaseRepeatButton>
-                                <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" MinWidth="0" />
+                                <RepeatButton Style="{StaticResource KaydiriciParcasi}" Background="Transparent"
+                                              Command="ScrollBar.PageUpCommand" />
                             </Track.DecreaseRepeatButton>
                         </Track>
                     </Grid>
