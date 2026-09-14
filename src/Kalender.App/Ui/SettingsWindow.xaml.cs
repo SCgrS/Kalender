@@ -634,7 +634,8 @@ public partial class SettingsWindow : Window
 
     /// <summary>
     /// Gün kutusunun opaklığı. Takvim görüntüsünü değiştirmediği için
-    /// masaüstüne yeniden yazılmaz; ayar bir sonraki kutu açılışında geçerlidir.
+    /// masaüstüne yeniden yazılmaz, yalnızca kaydedilir; ayar bir sonraki kutu
+    /// açılışında geçerlidir. Önceden her adım duvar kağıdını baştan yazdırıyordu.
     /// </summary>
     private void OnPopupOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -653,7 +654,7 @@ public partial class SettingsWindow : Window
         }
 
         S.Appearance.DayPopupOpacity = (int)Math.Round(e.NewValue);
-        ScheduleApply();
+        _host.Settings.Save();
     }
 
     // ------------------------------------------------------------- tatiller
