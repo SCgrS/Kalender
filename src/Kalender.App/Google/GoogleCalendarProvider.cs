@@ -199,6 +199,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 RangeFrom = from,
                 RangeTo = to,
                 EventColors = Data.EventColors,
+
+                // Etiketler yalnızca tam yenilemede iniyor. Artımlı yoklamada
+                // taşınmazsa, arada düzenlenen kayıt etiketsiz dönüştürülüyor
+                // ve eski colorId'nin rengine (çoğu zaman Lavanta) düşüyor.
+                EventLabels = Data.EventLabels,
                 FullSyncUtc = doFull ? started : Data.FullSyncUtc,
                 LastSyncUtc = started,
                 Calendars = Data.Calendars,
