@@ -16,10 +16,14 @@ namespace Kalender.Google;
 /// Veri kullanımı bilinçli olarak kısıldı:
 /// - Yalnızca görünen ayın kapsadığı gün aralığı isteniyor.
 /// - Her istekte "fields" parametresiyle sadece kullandığımız alanlar isteniyor.
-/// - Yoklamalar artımlı: "updatedMin" ile yalnızca son yoklamadan sonra
-///   değişenler iniyor. Değişiklik yoksa yanıt birkaç yüz bayt kalıyor.
-/// - Yarım saatte bir tam yenileme yapılıyor; aralığın dışına taşınmış bir
-///   etkinlik artımlı yanıtta görünmediği için bu kendini toparlama adımı gerekli.
+/// - Yoklamalar artımlı: her takvime önce "updatedMin" ile, tarih sınırı
+///   koymadan "son yoklamadan beri değişen var mı" diye soruluyor. Yoksa
+///   yanıt birkaç yüz bayt kalıyor ve takvim hiç indirilmiyor. Varsa yalnızca
+///   o takvimin görünen aralığı baştan alınıyor; böylece aralığın dışına
+///   taşınan ya da silinen bir kayıt da bir sonraki yoklamada kayboluyor.
+///   Görevlerde aynı soru doğrudan değişen görevleri getiriyor.
+/// - Yarım saatte bir yine de tam yenileme yapılıyor: takvim listesi ve
+///   etiket renkleri yalnızca orada tazeleniyor.
 ///
 /// Not: Google'ın syncToken'ı timeMin/timeMax ile birlikte kullanılamıyor.
 /// Şartnamedeki "yalnızca görünen ay" kuralını korumak için artımlılık
@@ -465,6 +469,24 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 continue;
             }
 
+            if (updatedMin is not null)
+            {
+                if (!await HasChangedSinceAsync(token, calendar, updatedMin.Value, cancel).ConfigureAwait(false))
+                {
+                    continue;
+                }
+
+                // Değişiklik var: bu takvimin aralığı baştan alınıyor. Aralığın
+                // dışına taşınan ya da silinen kayıt yeni listede olmadığı için
+                // kendiliğinden düşüyor. Sınırlı bir artımlı sorgu bunu göremiyordu:
+                // Google taşınan kaydı yeni tarihine göre süzüp hiç döndürmüyor.
+                foreach (string stale in byId.Where(p => p.Value.CalendarId == calendar.Id)
+                    .Select(p => p.Key).ToList())
+                {
+                    byId.Remove(stale);
+                }
+            }
+
             string? pageToken = null;
 
             do
@@ -476,9 +498,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                     // Etkinlik etiketlerinin kimliği ancak bu parametreyle geliyor;
                     // yoksa Google eski colorId'yi, yani en yakın palet rengini veriyor.
                     + "&eventLabelVersion=1"
-                    + (updatedMin is null
-                        ? "&showDeleted=false"
-                        : $"&showDeleted=true&updatedMin={Uri.EscapeDataString(Rfc3339(updatedMin.Value.UtcDateTime))}")
+                    + "&showDeleted=false"
                     + "&fields=" + Uri.EscapeDataString(
                         "items(id,summary,status,colorId,eventLabelId,eventType,start,end),nextPageToken")
                     + Page(pageToken);
@@ -552,6 +572,38 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             .ToList();
     }
 
+    /// <summary>
+    /// Takvimde son yoklamadan beri değişen (taşınan, silinen, düzenlenen) bir
+    /// kayıt var mı? Tarih sınırı bilerek konmuyor: görünen ayın dışına taşınan
+    /// kayıt da "değişti" sayılsın. Tek bir kimlik istendiği için yanıt küçük.
+    /// </summary>
+    private async Task<bool> HasChangedSinceAsync(string token, ProviderCalendar calendar,
+        DateTimeOffset updatedMin, CancellationToken cancel)
+    {
+        string url = $"{CalendarBase}/calendars/{Uri.EscapeDataString(calendar.Id)}/events"
+            + $"?updatedMin={Uri.EscapeDataString(Rfc3339(updatedMin.UtcDateTime))}"
+            + "&showDeleted=true&maxResults=1"
+            + "&fields=" + Uri.EscapeDataString("items(id),nextPageToken");
+
+        EventsResponse? page;
+        try
+        {
+            page = await GetAsync<EventsResponse>(url, token, cancel).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is not null)
+        {
+            // Bu soruyu kabul etmeyen bir takvim olursa değişmiş sayıp aralığını
+            // baştan alıyoruz; en kötü ihtimalle eski (her yoklamada indirme)
+            // davranışına döneriz, kayıt kaçırmayız.
+            Log.Debug($"Değişiklik sorusu reddedildi ({calendar.Name}): {ex.StatusCode}");
+            return true;
+        }
+
+        // Google boş bir sayfayla birlikte devam anahtarı da verebiliyor;
+        // o da daha fazla sonuç, yani değişiklik olduğu anlamına geliyor.
+        return (page?.Items?.Count ?? 0) > 0 || !string.IsNullOrEmpty(page?.NextPageToken);
+    }
+
     private async Task FetchTasksAsync(string token, ProviderBundle bundle,
         DateOnly from, DateOnly to, DateTimeOffset? updatedMin, CancellationToken cancel)
     {
@@ -572,9 +624,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
             do
             {
-                string url = $"{TasksBase}/lists/{Uri.EscapeDataString(list.Id)}/tasks"
-                    + $"?dueMin={Uri.EscapeDataString(dueMin)}&dueMax={Uri.EscapeDataString(dueMax)}"
-                    + "&maxResults=100"
+                string url = $"{TasksBase}/lists/{Uri.EscapeDataString(list.Id)}/tasks?maxResults=100"
+                    // Artımlı yoklamada tarih sınırı konmuyor: görünen ayın dışına
+                    // taşınan görev de yeni tarihiyle gelsin, sondaki aralık süzgeci
+                    // onu düşürsün. Sınır olunca Google onu hiç döndürmüyordu.
+                    + (updatedMin is null
+                        ? $"&dueMin={Uri.EscapeDataString(dueMin)}&dueMax={Uri.EscapeDataString(dueMax)}"
+                        : string.Empty)
                     // Tamamlanmış görevler de isteniyor: Google Takvim onları
                     // gösteriyor, Kalender de göstersin (gri olarak). Tamamlanan
                     // bir görev Google'da "hidden" işaretlendiği için showHidden
