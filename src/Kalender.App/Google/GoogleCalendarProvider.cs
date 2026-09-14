@@ -454,6 +454,10 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         IReadOnlyList<string> wanted = SelectedCalendarIds(bundle);
         var seenTypes = new HashSet<string>(StringComparer.Ordinal);
 
+        // Tam yenilemede etiketler az önce indi; artımlı yoklamada ise en fazla
+        // bir kez, tanınmayan bir etiket görülürse yeniden isteniyor.
+        bool labelsFresh = updatedMin is null;
+
         foreach (ProviderCalendar calendar in bundle.Calendars)
         {
             if (!wanted.Contains(calendar.Id))
@@ -514,6 +518,16 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                     {
                         byId.Remove(key);
                         continue;
+                    }
+
+                    // Google'da yeni tanımlanan bir etiket, bir sonraki tam
+                    // yenilemeyi beklemeden doğru renkte görünsün.
+                    if (!labelsFresh && !string.IsNullOrEmpty(item.EventLabelId)
+                        && !bundle.EventLabels.ContainsKey(item.EventLabelId))
+                    {
+                        labelsFresh = true;
+                        Log.Debug("Tanınmayan etkinlik etiketi; etiket renkleri yeniden alınıyor.");
+                        bundle.EventLabels = await FetchEventLabelsAsync(token, bundle, cancel).ConfigureAwait(false);
                     }
 
                     ProviderEvent? converted = Convert(item, calendar, bundle.EventColors, bundle.EventLabels);
