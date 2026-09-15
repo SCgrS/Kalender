@@ -170,7 +170,7 @@ public partial class PlacementOverlayWindow : Window
 
         _boundsFixes++;
         Log.Debug($"Yerleştirme penceresi {neden} kaymıştı: ({r.Left},{r.Top})-({r.Right},{r.Bottom}); "
-            + $"{b} uygulanıyor.");
+            + $"{b} uygulanıyor. Kaydıran:" + Environment.NewLine + KisaYigin());
 
         ApplyBounds(NativeMethods.SWP_NOACTIVATE);
         UpdateStageScale();
@@ -190,6 +190,20 @@ public partial class PlacementOverlayWindow : Window
 
         StageScale.ScaleX = 1.0 / dpi.DpiScaleX;
         StageScale.ScaleY = 1.0 / dpi.DpiScaleY;
+    }
+
+    /// <summary>
+    /// Pencereyi kimin kaydırdığını anlamak için çağrı yığınının bizden sonraki
+    /// ilk satırları. Yalnızca ayrıntılı günlükte, düzeltme olduğunda yazılır.
+    /// </summary>
+    private static string KisaYigin()
+    {
+        string[] satirlar = Environment.StackTrace.Split('\n');
+        return string.Join('\n', satirlar
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0 && !s.Contains(nameof(KisaYigin)) && !s.Contains(nameof(EnsureBounds)))
+            .Take(14)
+            .Select(s => "    " + s));
     }
 
     private void LogPlacement(string asama)
