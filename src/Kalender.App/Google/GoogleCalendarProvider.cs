@@ -46,6 +46,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     private readonly SettingsStore _settings;
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _versionLogged;
 
     public GoogleCalendarProvider(GoogleAuthenticator auth, SettingsStore settings)
     {
@@ -57,7 +58,18 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
         };
 
-        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+        _http = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+
+            // HTTP/2 isteniyor; sunucu ya da aradaki bir vekil desteklemezse
+            // .NET kendiliğinden HTTP/1.1'e düşer. Yoklamaların yükü zaten
+            // küçük; ölçümde saatlik tüketimin çoğu her istekte yinelenen
+            // başlıklar (yetki anahtarı dahil) ve TLS payıydı. HTTP/2 aynı
+            // bağlantıda başlıkları sıkıştırıp (HPACK) bu payı düşürüyor.
+            DefaultRequestVersion = HttpVersion.Version20,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
+        };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("Kalender/0.4 (+windows)");
     }
 
@@ -808,6 +820,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using HttpResponseMessage response = await _http.SendAsync(request, cancel).ConfigureAwait(false);
+
+        if (!_versionLogged)
+        {
+            // Bir kez: HTTP/2 kabul edildi mi, yoksa 1.1'e mi düşüldü?
+            _versionLogged = true;
+            Log.Info($"Google'a HTTP/{response.Version} ile bağlanıldı.");
+        }
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {

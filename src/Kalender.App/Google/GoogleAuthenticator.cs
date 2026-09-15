@@ -52,7 +52,14 @@ internal sealed class GoogleAuthenticator : IDisposable
     public GoogleAuthenticator(IOAuthConfig config)
     {
         _config = config;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        _http = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+
+            // Takvim sağlayıcısıyla aynı: HTTP/2 istenir, olmazsa 1.1'e düşülür.
+            DefaultRequestVersion = HttpVersion.Version20,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
+        };
         _token = _store.Load();
     }
 
