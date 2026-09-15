@@ -48,6 +48,10 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _versionLogged;
 
+    /// <summary>Süren eşitlemedeki istek sayısı ve alınan gövde toplamı; ayrıntılı günlük için.</summary>
+    private int _syncRequests;
+    private long _syncBodyBytes;
+
     public GoogleCalendarProvider(GoogleAuthenticator auth, SettingsStore settings)
     {
         _auth = auth;
@@ -209,6 +213,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             bool doFull = full || rangeChanged || stale || Data.Calendars.Count == 0;
 
             DateTimeOffset started = DateTimeOffset.UtcNow;
+            _syncRequests = 0;
+            _syncBodyBytes = 0;
 
             var bundle = new ProviderBundle
             {
@@ -257,7 +263,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             _auth.UpdateAccountEmail(bundle.AccountEmail);
 
             Log.Debug($"Google eşitlendi ({(doFull ? "tam" : "artımlı")}): "
-                + $"{bundle.Events.Count} etkinlik, {bundle.Tasks.Count} görev.");
+                + $"{bundle.Events.Count} etkinlik, {bundle.Tasks.Count} görev; "
+                + $"{_syncRequests} istek, {_syncBodyBytes / 1024.0:0.0} KB gövde (sıkıştırma açılmış).");
 
             return true;
         }
@@ -488,6 +495,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 {
                     continue;
                 }
+
+                Log.Debug($"{calendar.Name}: son yoklamadan beri değişiklik var; aralık yeniden alınıyor.");
 
                 // Değişiklik var: bu takvimin aralığı baştan alınıyor. Aralığın
                 // dışına taşınan ya da silinen kayıt yeni listede olmadığı için
@@ -854,8 +863,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 response.StatusCode);
         }
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(cancel).ConfigureAwait(false);
-        return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancel).ConfigureAwait(false);
+        // Gövde bir kerede okunuyor ki veri kullanımı günlüğe sayılabilsin;
+        // yanıtlar küçük (görünen ayın kayıtları), belleğe sığar.
+        byte[] payload = await response.Content.ReadAsByteArrayAsync(cancel).ConfigureAwait(false);
+        _syncRequests++;
+        _syncBodyBytes += payload.Length;
+
+        return JsonSerializer.Deserialize<T>(payload, JsonOptions);
     }
 
     private static string Page(string? token)
