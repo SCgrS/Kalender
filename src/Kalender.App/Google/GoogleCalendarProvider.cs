@@ -816,7 +816,14 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
     private async Task<T?> GetAsync<T>(string url, string token, CancellationToken cancel)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url)
+        {
+            // HttpClient'ın varsayılan sürümü yalnızca kendi kurduğu isteklere
+            // (GetAsync gibi) uygulanıyor; elle kurulan iletide açıkça verilmezse
+            // HTTP/1.1 ile gidiyor. Günlük 1.6.1'in ilk derlemesinde bunu gösterdi.
+            Version = _http.DefaultRequestVersion,
+            VersionPolicy = _http.DefaultVersionPolicy,
+        };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using HttpResponseMessage response = await _http.SendAsync(request, cancel).ConfigureAwait(false);
