@@ -198,11 +198,20 @@ public partial class PlacementOverlayWindow : Window
     /// </summary>
     private static string KisaYigin()
     {
+        // Mesaj döngüsünün her katmanda yinelenen sarmalayıcıları atlanıyor;
+        // geriye pencereyi kimin, hangi mesajla taşıdığını gösteren satırlar kalıyor.
+        string[] gurultu =
+        {
+            nameof(KisaYigin), nameof(EnsureBounds), "get_StackTrace", "ExceptionWrapper",
+            "LegacyInvokeImpl", "HwndSubclass", "CallWindowProc", "DefWndProcWrapper",
+            "HwndWrapper.WndProc", "PublicHooksFilterMessage",
+        };
+
         string[] satirlar = Environment.StackTrace.Split('\n');
         return string.Join('\n', satirlar
             .Select(s => s.Trim())
-            .Where(s => s.Length > 0 && !s.Contains(nameof(KisaYigin)) && !s.Contains(nameof(EnsureBounds)))
-            .Take(14)
+            .Where(s => s.Length > 0 && !gurultu.Any(s.Contains))
+            .Take(16)
             .Select(s => "    " + s));
     }
 
