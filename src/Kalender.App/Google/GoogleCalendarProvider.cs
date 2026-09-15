@@ -174,10 +174,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             return false;
         }
 
-        if (!await _gate.WaitAsync(0, cancel).ConfigureAwait(false))
-        {
-            return false;
-        }
+        // Süren bir eşitleme varsa bitmesini (ya da iptalini) bekliyoruz.
+        // Önceden meşgulse hemen "değişiklik yok" dönülüyordu; bağlanma anında
+        // art arda gelen iki istekten ikincisi bu yüzden atlanıyor, ilk veri
+        // bir sonraki yoklamaya kalıyordu.
+        await _gate.WaitAsync(cancel).ConfigureAwait(false);
 
         try
         {

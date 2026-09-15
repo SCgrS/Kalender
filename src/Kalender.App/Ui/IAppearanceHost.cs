@@ -47,8 +47,11 @@ internal interface IAppearanceHost
     /// <summary>Google bağlantı durumu ya da verisi değişti.</summary>
     event Action? GoogleStateChanged;
 
-    /// <summary>Tarayıcıda onay açarak bağlanır.</summary>
-    Task<Google.SignInResult> ConnectGoogleAsync();
+    /// <summary>
+    /// Tarayıcıda onay açarak bağlanır ve ilk veriyi alır. Aşama değiştikçe
+    /// <paramref name="progress"/> ile kullanıcıya gösterilecek metin verilir.
+    /// </summary>
+    Task<Google.SignInResult> ConnectGoogleAsync(Action<string>? progress, CancellationToken cancel);
 
     /// <summary>Bağlantıyı keser ve yerel veriyi siler.</summary>
     void DisconnectGoogle();

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using Kalender.Desktop;
 using Kalender.Interop;
@@ -67,6 +68,7 @@ internal static class Installer
 
             Directory.CreateDirectory(AppFolder);
             File.Copy(source, InstalledExe, overwrite: true);
+            RemoveMarkOfTheWeb(InstalledExe);
 
             CreateShortcut();
             StartupManager.Apply(true, InstalledExe);
@@ -79,6 +81,40 @@ internal static class Installer
         {
             Log.Error("Kurulum başarısız.", ex);
             return new SetupResult(false, "Kurulum yapılamadı: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Dosyadaki "internetten indirildi" işaretini (Zone.Identifier akışı) siler.
+    ///
+    /// Tarayıcı, indirilen kurucuya bu işareti koyar; kullanıcı SmartScreen
+    /// uyarısını bir kez geçer. File.Copy işareti kurulu Kalender.exe'ye de
+    /// taşıdığı için Windows kurulu kopyayı da her açılışta yeni indirilmiş bir
+    /// dosya gibi görüyor ve "çalıştırılsın mı?" diye soruyordu. Onay kurucu
+    /// için zaten verildi; kurulu kopyada işaretin kalmasının anlamı yok.
+    /// İşaret yoksa ya da silinemezse uygulama yine çalışır.
+    /// </summary>
+    public static void RemoveMarkOfTheWeb(string path)
+    {
+        try
+        {
+            if (NativeMethods.DeleteFile(path + ":Zone.Identifier"))
+            {
+                Log.Info("İndirme işareti kaldırıldı: " + path);
+                return;
+            }
+
+            int hata = Marshal.GetLastWin32Error();
+            if (hata is NativeMethods.ERROR_FILE_NOT_FOUND or NativeMethods.ERROR_PATH_NOT_FOUND)
+            {
+                return; // İşaret zaten yok.
+            }
+
+            Log.Warn($"İndirme işareti kaldırılamadı (hata {hata}): {path}");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("İndirme işareti kaldırılamadı: " + path, ex);
         }
     }
 

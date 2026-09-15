@@ -30,6 +30,8 @@ internal sealed class GooglePoller : IDisposable
     private readonly DispatcherTimer _timer;
 
     private CancellationTokenSource? _running;
+    private Task? _current;
+    private bool _currentForced;
     private bool _disposed;
 
     public GooglePoller(GoogleCalendarProvider provider, CalendarDataService data, SettingsStore settings)
@@ -80,18 +82,41 @@ internal sealed class GooglePoller : IDisposable
         _timer.Interval = TimeSpan.FromSeconds(seconds);
     }
 
-    /// <summary>Şimdi yenile.</summary>
-    public async Task RefreshAsync(bool force)
+    /// <summary>
+    /// Şimdi yenile. Süren bir yenileme varsa ve bu istek ondan fazlasını
+    /// gerektirmiyorsa ona katılır; döndürülen görev süren işin bitişini bekler.
+    /// Önceden her istek bir öncekini iptal ediyordu: bağlanma anında art arda
+    /// gelen iki istek birbirini düşürüyor, ilk veri bir sonraki yoklamaya
+    /// kalıyordu. Zorlanan (tam) yenileme süren artımlı işi yine iptal eder;
+    /// sağlayıcı kapıyı bekleyerek sıraya girer.
+    /// </summary>
+    public Task RefreshAsync(bool force)
     {
         if (_disposed || !_provider.IsConnected)
         {
-            return;
+            return Task.CompletedTask;
         }
 
+        Task? running = _current;
+        if (running is { IsCompleted: false } && (!force || _currentForced))
+        {
+            return running;
+        }
+
+        _currentForced = force;
+        _current = RunAsync(force);
+        return _current;
+    }
+
+    private async Task RunAsync(bool force)
+    {
         CancellationTokenSource cts = new();
         CancellationTokenSource? previous = Interlocked.Exchange(ref _running, cts);
+
+        // Öncekini yalnızca iptal ediyoruz; kaynağını kendi işi bitince kendisi
+        // kapatır. Hemen kapatılsaydı süren iş iptal yerine "kapatılmış nesne"
+        // hatasıyla düşüyor ve günlüğe boş yere uyarı yazılıyordu.
         previous?.Cancel();
-        previous?.Dispose();
 
         try
         {
@@ -112,6 +137,11 @@ internal sealed class GooglePoller : IDisposable
         catch (Exception ex)
         {
             Log.Warn("Google yoklaması başarısız.", ex);
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _running, null, cts);
+            cts.Dispose();
         }
     }
 

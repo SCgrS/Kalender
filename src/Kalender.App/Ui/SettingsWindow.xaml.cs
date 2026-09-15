@@ -5,6 +5,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Kalender.Core;
 using Kalender.Google;
@@ -53,6 +54,19 @@ public partial class SettingsWindow : Window
 
     private bool _loading;
     private int _page;
+
+    /// <summary>Google'a bağlanma akışı sürüyor; durum satırı o akışa ait.</summary>
+    private bool _connecting;
+    private CancellationTokenSource? _connectCancel;
+
+    /// <summary>Dönen çemberin açısı; bağlanma sürdükçe döner.</summary>
+    private readonly DoubleAnimation _spinnerTurn = new(0, 360, TimeSpan.FromSeconds(1.2))
+    {
+        RepeatBehavior = RepeatBehavior.Forever,
+    };
+
+    /// <summary>Takvim ve görev listesi kartlarının en son hangi kaynaklarla kurulduğu.</summary>
+    private readonly Dictionary<StackPanel, string> _sourceSignatures = new();
 
     internal SettingsWindow(IAppearanceHost host)
     {
@@ -751,23 +765,36 @@ public partial class SettingsWindow : Window
     {
         bool connected = _host.GoogleConnected;
 
-        ConnectButton.Content = connected ? "Yeniden bağlan" : "Google'a bağlan";
-        DisconnectButton.IsEnabled = connected;
         GoogleDetailsPanel.Visibility = connected ? Visibility.Visible : Visibility.Collapsed;
+
+        // Bağlanma sürerken düğmeler ve durum satırı o akışa ait; yoklama
+        // bittiğinde gelen tazeleme aşama metnini ezmesin.
+        if (!_connecting)
+        {
+            ConnectButton.Content = connected ? "Yeniden bağlan" : "Google'a bağlan";
+            DisconnectButton.IsEnabled = connected;
+        }
 
         if (!connected)
         {
-            GoogleStatusText.Text = string.IsNullOrWhiteSpace(S.Google.ClientId)
-                ? "Bağlı değil. Önce aşağıdaki iki değeri yapıştırın."
-                : "Bağlı değil. \"Google'a bağlan\" düğmesine basın; tarayıcıda onay ekranı açılacak.";
+            if (!_connecting)
+            {
+                GoogleStatusText.Text = string.IsNullOrWhiteSpace(S.Google.ClientId)
+                    ? "Bağlı değil. Önce aşağıdaki iki değeri yapıştırın."
+                    : "Bağlı değil. \"Google'a bağlan\" düğmesine basın; tarayıcıda onay ekranı açılacak.";
+            }
+
             return;
         }
 
-        string durum = _host.GoogleOnline ? "bağlı" : "bağlı, şu an çevrimdışı (yerel kopya gösteriliyor)";
+        if (!_connecting)
+        {
+            string durum = _host.GoogleOnline ? "bağlı" : "bağlı, şu an çevrimdışı (yerel kopya gösteriliyor)";
 
-        GoogleStatusText.Text =
-            $"{_host.GoogleAccountEmail ?? "Hesap"} · {durum}"
-            + $"\nBu ayda {_host.GoogleEventCount} etkinlik, {_host.GoogleTaskCount} görev.";
+            GoogleStatusText.Text =
+                $"{_host.GoogleAccountEmail ?? "Hesap"} · {durum}"
+                + $"\nBu ayda {_host.GoogleEventCount} etkinlik, {_host.GoogleTaskCount} görev.";
+        }
 
         BuildSourceList(CalendarListPanel, _host.GoogleCalendars.Select(c => (c.Id, c.Name)).ToList(),
             S.Google.SelectedCalendarIds);
@@ -780,9 +807,20 @@ public partial class SettingsWindow : Window
     /// Takvim ya da görev listesi satırlarını kurar: solda ad, sağda anahtar,
     /// aralarında ince çizgi. Seçim listesi boşsa "hepsi" anlamına gelir;
     /// kullanıcı ilk kez bir anahtarı kapatınca liste gerçek seçimle doldurulur.
+    ///
+    /// Her yoklamadan sonra çağrılır; kaynaklar değişmediyse satırlara
+    /// dokunulmaz, yoksa kullanıcının tam tıklayacağı anahtar altından kayardı.
     /// </summary>
     private void BuildSourceList(StackPanel panel, List<(string Id, string Name)> sources, List<string> selected)
     {
+        string signature = string.Join("\n", sources.Select(s => s.Id + "\t" + s.Name));
+        if (_sourceSignatures.TryGetValue(panel, out string? previous) && previous == signature
+            && panel.Children.Count > 0)
+        {
+            return;
+        }
+
+        _sourceSignatures[panel] = signature;
         panel.Children.Clear();
 
         var satir = (Style)FindResource("Satir");
@@ -894,32 +932,63 @@ public partial class SettingsWindow : Window
         UpdateGoogleUi();
     }
 
+    /// <summary>
+    /// Bağlanma akışı: tarayıcıda onay, ardından ilk veri alışı. Bu sırada
+    /// dönen çember görünür, düğme "Vazgeç" olur ve durum satırı aşamayı
+    /// yazar. Önceden düğme yalnızca sönüyor, onaydan sonraki alış sırasında
+    /// "onay bekleniyor" yazısı kalıyor ve hata iletisi tazelemeyle siliniyordu.
+    /// </summary>
     private async void OnConnectGoogle(object sender, RoutedEventArgs e)
     {
+        if (_connecting)
+        {
+            _connectCancel?.Cancel();
+            return;
+        }
+
         OnGoogleCredentialsChanged(sender, e);
 
-        ConnectButton.IsEnabled = false;
-        GoogleStatusText.Text = "Tarayıcıda onay bekleniyor…";
+        using var cancel = new CancellationTokenSource();
+        _connectCancel = cancel;
+        SetConnecting(true);
+        GoogleStatusText.Text = "Tarayıcıda Google onay ekranı açıldı; onayınız bekleniyor…";
 
+        SignInResult result;
         try
         {
-            SignInResult result = await _host.ConnectGoogleAsync();
-
-            if (!result.Success)
-            {
-                GoogleStatusText.Text = result.Message;
-            }
+            result = await _host.ConnectGoogleAsync(
+                message => GoogleStatusText.Text = message, cancel.Token);
         }
         catch (Exception ex)
         {
             Log.Error("Google bağlantısı kurulamadı.", ex);
-            GoogleStatusText.Text = "Bağlantı kurulamadı: " + ex.Message;
+            result = new SignInResult(false, "Bağlantı kurulamadı: " + ex.Message);
         }
         finally
         {
-            ConnectButton.IsEnabled = true;
-            LoadFromSettings();
+            _connectCancel = null;
+            SetConnecting(false);
         }
+
+        LoadFromSettings();
+
+        if (!result.Success)
+        {
+            // Tazeleme "bağlı değil" yazdı; nedenini görünür bırakıyoruz.
+            GoogleStatusText.Text = result.Message;
+        }
+    }
+
+    /// <summary>Dönen çemberi ve düğmeleri bağlanma akışına göre kurar.</summary>
+    private void SetConnecting(bool on)
+    {
+        _connecting = on;
+
+        ConnectSpinner.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        ConnectSpinnerAngle.BeginAnimation(RotateTransform.AngleProperty, on ? _spinnerTurn : null);
+
+        ConnectButton.Content = on ? "Vazgeç" : (_host.GoogleConnected ? "Yeniden bağlan" : "Google'a bağlan");
+        DisconnectButton.IsEnabled = !on && _host.GoogleConnected;
     }
 
     private void OnDisconnectGoogle(object sender, RoutedEventArgs e)
@@ -1168,6 +1237,9 @@ public partial class SettingsWindow : Window
         _host.MonitorsChanged -= OnMonitorsChanged;
         _host.GoogleStateChanged -= OnGoogleStateChanged;
         _applyTimer.Stop();
+
+        // Pencere kapanırken tarayıcıda onay bekleniyorsa bekleyiş bitsin.
+        _connectCancel?.Cancel();
 
         // Bekleyen bir değişiklik varsa kapanmadan önce diske yazılsın.
         _host.ApplyAppearance();

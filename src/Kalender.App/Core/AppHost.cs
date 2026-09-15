@@ -97,18 +97,22 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     public int GoogleTaskCount => _google?.Data.Tasks.Count ?? 0;
 
-    /// <summary>Google hesabına bağlanır (tarayıcıda onay açılır).</summary>
-    public async Task<SignInResult> ConnectGoogleAsync()
+    /// <summary>
+    /// Google hesabına bağlanır (tarayıcıda onay açılır) ve ilk veriyi alır.
+    /// Aşama değişince <paramref name="progress"/> ile arayüze haber verilir.
+    /// </summary>
+    public async Task<SignInResult> ConnectGoogleAsync(Action<string>? progress, CancellationToken cancel)
     {
         if (_googleAuth is null)
         {
             return new SignInResult(false, "Uygulama henüz hazır değil.");
         }
 
-        SignInResult result = await _googleAuth.SignInAsync().ConfigureAwait(true);
+        SignInResult result = await _googleAuth.SignInAsync(cancel).ConfigureAwait(true);
 
         if (result.Success)
         {
+            progress?.Invoke("Bağlandı; takvimler ve görevler alınıyor…");
             await RefreshGoogleAsync(force: true).ConfigureAwait(true);
         }
 
@@ -248,6 +252,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         _googleAuth.StateChanged += OnGoogleStateChanged;
         _poller.StatusChanged += UpdateTrayTooltip;
+
+        // Her yoklamadan sonra ayarlar penceresi de tazelensin: takvim listesi
+        // ve sayılar ilk alıştan sonra kendiliğinden dolsun, kullanıcı sayfayı
+        // kapatıp açmak zorunda kalmasın.
+        _poller.StatusChanged += () => GoogleStateChanged?.Invoke();
         _poller.Start();
 
         _layer.SetToday(_dayWatcher.Today);
@@ -256,6 +265,13 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Açılışta başlatma kaydını ayarla eşitle; kullanıcı yolunu değiştirmiş
         // ya da uygulamayı taşımış olabilir.
         StartupManager.Apply(_settings.Current.StartWithWindows);
+
+        // Eski bir kurucuyla kurulmuş kopyada indirme işareti kalmış olabilir;
+        // Windows her açılışta onay istememesi için burada da temizleniyor.
+        if (Installer.RunningInstalled && Environment.ProcessPath is { } exe)
+        {
+            Installer.RemoveMarkOfTheWeb(exe);
+        }
 
         if (!_settings.Current.FirstRunDone)
         {

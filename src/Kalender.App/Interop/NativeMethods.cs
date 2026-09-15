@@ -495,6 +495,17 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW")]
     public static extern IntPtr GetModuleHandle(string? lpModuleName);
 
+    /// <summary>
+    /// Dosyayı ya da "dosya:akış" biçiminde verilen alternatif veri akışını siler.
+    /// .NET'in File.Delete'i akış adındaki iki noktayı yol olarak kabul etmiyor.
+    /// </summary>
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "DeleteFileW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool DeleteFile(string lpFileName);
+
+    public const int ERROR_FILE_NOT_FOUND = 2;
+    public const int ERROR_PATH_NOT_FOUND = 3;
+
     // -------------------------------------------------------------- shell32.dll
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "Shell_NotifyIconW")]

@@ -165,7 +165,9 @@ internal sealed class GoogleAuthenticator : IDisposable
         }
         catch (OperationCanceledException)
         {
-            return new SignInResult(false, "Süre doldu; bağlanma iptal edildi.");
+            return new SignInResult(false, cancel.IsCancellationRequested
+                ? "Bağlanmaktan vazgeçildi."
+                : "Tarayıcıda onay gelmedi; süre doldu. Yeniden deneyebilirsiniz.");
         }
         catch (Exception ex)
         {

@@ -34,7 +34,9 @@ Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit; yönetici hakkı gerekmez.
 1. Yukarıdaki bağlantıya tıklayıp dosyayı indirin.
 2. İndirilen `Kalender-Kurulum.exe` dosyasına **çift tıklayın**.
 3. Dosya imzalı olmadığı için Windows SmartScreen uyarı gösterebilir: **Daha fazla bilgi**
-   yazısına tıklayın, sonra **Yine de çalıştır** düğmesine basın.
+   yazısına tıklayın, sonra **Yine de çalıştır** düğmesine basın. Bu uyarı yalnızca kurucu
+   için ve bir kez çıkar: kurulan kopya "internetten indirildi" işaretini taşımaz, Windows
+   sonraki açılışlarda yeniden sormaz.
 4. Açılan pencerede **Kur**'a basın. Kurulum birkaç saniye sürer, ardından Kalender başlar.
 
 Kurulum sistem klasörlerine hiçbir şey yazmaz:
@@ -98,6 +100,11 @@ Platform** sayfasına yönlendirir.
    değil)** yolunu izleyin; uygulama Google'ca incelenmediği için bu uyarı beklenen bir durum.
 5. İzin verince tarayıcıda "Kalender bağlandı" yazısını görürsünüz; sekmeyi kapatabilirsiniz.
 
+Bağlanırken durum satırının yanında dönen bir çember görünür: önce tarayıcıdaki onay
+beklenir, sonra takvimler ve görevler ilk kez alınır; bu birkaç saniye sürebilir. Bekleyişi
+bırakmak için aynı düğmeye (**Vazgeç**) basın. Bir sorunla karşılaşırsanız **Bağlantıyı kes**'e
+basın, ardından **Google'a bağlan** ile yeniden bağlanıp bir süre bekleyin.
+
 Bağlandıktan sonra aynı sayfada **Ne sıklıkla yenilensin?** (30 saniye – 24 saat),
 **Gösterilecek takvimler**, **Gösterilecek görev listeleri** ve **Görev noktacığı rengi**
 seçenekleri açılır. Bağlantıyı koparmak için **Bağlantıyı kes**: yetki dosyası ve yerel veri
@@ -129,15 +136,17 @@ anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş s
   yukarıdaki bölümde anlatıldı.
 - **Genel** — **Windows açılışında Kalender'i başlat**, **Takvimi Windows duvar kağıdına
   işle** (kapatırsanız duvar kağıdınıza dokunulmaz ama takvim de görünmez), **Günlük
-  ayrıntısı** (Yalnız hatalar / Bilgi / Ayrıntılı) ve **Günlük klasörünü aç**, **Sürümler
-  sayfası**, **Kalender'i kaldır**.
+  ayrıntısı** (Yalnız hatalar / Bilgi / Ayrıntılı) ve **Günlük klasörünü aç**; **Hakkında**
+  bölümünde sürüm, geliştirici bağlantısı ([x.com/CgrShn](https://x.com/CgrShn)), **Sürümler
+  sayfası** ve **Kalender'i kaldır**.
 
 Sol alttaki **güneş / ay** anahtarı yalnızca ayarlar penceresinin görünümünü değiştirir; ilk
 açılışta Windows'un uygulama teması izlenir.
 
 ## Tepsi menüsü
 
-Saatin yanındaki Kalender simgesine sağ tıklayın:
+Saatin yanındaki Kalender simgesine sağ tıklayın; simge görünmüyorsa görev çubuğundaki **^**
+(gizli simgeler) okunun altındadır:
 
 | Satır | Ne yapar |
 | --- | --- |

@@ -574,18 +574,42 @@
                         <TextBlock Style="{StaticResource GrupAciklamasi}"
                                    Text="Kalender hesabınıza yalnızca okuma izniyle bağlanır; etkinlik ya da görev eklemez, silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur." />
                         <Border Style="{StaticResource Kart}">
-                            <DockPanel Style="{StaticResource Satir}">
-                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
-                                            Margin="16,0,0,0" VerticalAlignment="Center">
-                                    <Button x:Name="ConnectButton" Content="Google'a bağlan" Click="OnConnectGoogle" />
-                                    <Button x:Name="DisconnectButton" Content="Bağlantıyı kes" Margin="8,0,0,0"
-                                            Click="OnDisconnectGoogle" />
-                                </StackPanel>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Google hesabı" />
-                                    <TextBlock x:Name="GoogleStatusText" Style="{StaticResource SatirAciklamasi}" />
-                                </StackPanel>
-                            </DockPanel>
+                            <StackPanel>
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                                Margin="16,0,0,0" VerticalAlignment="Center">
+                                        <Button x:Name="ConnectButton" Content="Google'a bağlan" MinWidth="132"
+                                                Click="OnConnectGoogle" />
+                                        <Button x:Name="DisconnectButton" Content="Bağlantıyı kes" Margin="8,0,0,0"
+                                                Click="OnDisconnectGoogle" />
+                                    </StackPanel>
+                                    <!-- Bağlanırken dönen çember: tarayıcıda onay beklenirken ve ilk veri
+                                         alınırken görünür. Açı koddan döndürülür (SetConnecting). -->
+                                    <Grid x:Name="ConnectSpinner" DockPanel.Dock="Left" Width="18" Height="18"
+                                          Margin="0,0,12,0" VerticalAlignment="Center" Visibility="Collapsed"
+                                          AutomationProperties.Name="Bağlanılıyor">
+                                        <Ellipse Stroke="{DynamicResource KenarGucluFirca}" StrokeThickness="2" />
+                                        <Path Stroke="{DynamicResource VurguFirca}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M 9,1 A 8,8 0 0 1 17,9" RenderTransformOrigin="0.5,0.5">
+                                            <Path.RenderTransform>
+                                                <RotateTransform x:Name="ConnectSpinnerAngle" />
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Google hesabı" />
+                                        <TextBlock x:Name="GoogleStatusText" Style="{StaticResource SatirAciklamasi}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}" MinHeight="0">
+                                    <Path DockPanel.Dock="Left" Style="{StaticResource Simge}" Data="{StaticResource SimgeBilgi}"
+                                          Stroke="{DynamicResource SolukYaziFirca}" Margin="0,1,10,0" VerticalAlignment="Top" />
+                                    <TextBlock Style="{StaticResource SatirAciklamasi}" Margin="0"
+                                               Text="Bağlanmak birkaç saniye sürebilir: önce tarayıcıda onay beklenir, sonra takvimler ve görevler ilk kez alınır. Bir sorunla karşılaşırsanız Bağlantıyı kes'e basın, ardından Google'a bağlan ile yeniden bağlanıp bir süre bekleyin." />
+                                </DockPanel>
+                            </StackPanel>
                         </Border>
 
                         <TextBlock Style="{StaticResource GrupBasligi}" Text="İstemci bilgileri" />
@@ -776,6 +800,10 @@
                                         <TextBlock Style="{StaticResource SatirBasligi}" Text="Kalender"
                                                    FontWeight="SemiBold" />
                                         <TextBlock x:Name="VersionText" Style="{StaticResource SatirAciklamasi}" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"><Run
+                                            Text="Geliştirici: " /><Hyperlink NavigateUri="https://x.com/CgrShn"
+                                            RequestNavigate="OnLinkClicked"
+                                            AutomationProperties.Name="Geliştirici: x.com/CgrShn">x.com/CgrShn</Hyperlink></TextBlock>
                                         <TextBlock Style="{StaticResource SatirAciklamasi}" Margin="0,6,0,0"
                                                    Text="Kalender kendini otomatik güncellemez. Yeni sürüm çıktığında sürümler sayfasından indirebilirsiniz." />
                                     </StackPanel>

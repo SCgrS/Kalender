@@ -19,6 +19,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly IntPtr _hwnd;
     private Icon? _icon;
     private bool _added;
+    private bool _menuOpen;
     private string _tooltip = "Kalender";
 
     public TrayIcon(AppMessageWindow host)
@@ -91,17 +92,27 @@ internal sealed class TrayIcon : IDisposable
         Show(_tooltip);
     }
 
+    /// <summary>
+    /// Tepsi olayları. NOTIFYICON_VERSION_4 ile kabuk, sağ tık için hem
+    /// WM_RBUTTONUP'ı hem de onun ardından WM_CONTEXTMENU'yü gönderir; sol tık
+    /// için de WM_LBUTTONUP'ın ardından NIN_SELECT gelir. İkisini birden
+    /// dinlemek menüyü iki kez açmaya kalkıyordu: ikinci çağrı açık menüleri
+    /// kapattığı için birincisi kapanıyor, ikincisi de "zaten açık menü var"
+    /// diye reddediliyordu; kullanıcı sağ tıkladığında hiçbir şey olmuyordu.
+    /// Bu yüzden yalnızca sürüm 4'ün kendi olayları dinleniyor. WM_CONTEXTMENU
+    /// klavyeden (Shift+F10, menü tuşu) de gelir, NIN_KEYSELECT ise Enter ve
+    /// Boşluk'tan.
+    /// </summary>
     private void OnTrayEvent(uint message, int x, int y)
     {
         switch (message)
         {
             case NativeMethods.WM_CONTEXTMENU:
-            case NativeMethods.WM_RBUTTONUP:
                 ShowMenu(x, y);
                 break;
 
             case NativeMethods.NIN_SELECT:
-            case NativeMethods.WM_LBUTTONUP:
+            case NativeMethods.NIN_KEYSELECT:
                 Clicked?.Invoke();
                 break;
         }
@@ -109,13 +120,30 @@ internal sealed class TrayIcon : IDisposable
 
     private void ShowMenu(int x, int y)
     {
+        // Menü açıkken gelen ikinci istek yok sayılır; TrackPopupMenu zaten iç
+        // içe çalışmaz ve ikinci deneme açık olanı kapatırdı.
+        if (_menuOpen)
+        {
+            return;
+        }
+
         IReadOnlyList<PopupMenuItem>? items = MenuBuilder?.Invoke();
         if (items is null || items.Count == 0)
         {
             return;
         }
 
-        uint secim = PopupMenu.Show(_hwnd, x, y, items);
+        uint secim;
+        _menuOpen = true;
+        try
+        {
+            secim = PopupMenu.Show(_hwnd, x, y, items);
+        }
+        finally
+        {
+            _menuOpen = false;
+        }
+
         if (secim != 0)
         {
             MenuItemClicked?.Invoke(secim);

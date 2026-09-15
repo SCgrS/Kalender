@@ -19,9 +19,20 @@ namespace Kalender.Ui;
 /// masaüstünde sürüklenemez. Bunun yerine ilgili monitörü kaplayan, aynı
 /// zemini gösteren geçici bir pencere açılıyor; kullanıcı takvimi burada
 /// yerleştirip kaydediyor.
+///
+/// Pencere hedef monitörün üstünde <b>yaratılıyor</b>, sonradan oraya
+/// taşınmıyor. WPF, Left/Top verilirse pencereyi o noktadaki monitörün
+/// DPI'ıyla kurar. Önceden pencere ana ekranda kurulup SetWindowPos ile
+/// taşınıyordu; ölçeği farklı bir ekrana geçince Windows WM_DPICHANGED
+/// gönderiyor, WPF de pencereyi kendi önerdiği dikdörtgene sonradan
+/// (SWP_ASYNCWINDOWPOS) çekiyordu. Sonuç: %150'lik ikinci ekran için açılan
+/// pencere ana ekranda, yarım boyda görünüyordu.
 /// </summary>
 public partial class PlacementOverlayWindow : Window
 {
+    /// <summary>Sınır düzeltmesinin en çok kaç kez yineleneceği; sonsuz döngüye karşı.</summary>
+    private const int MaxBoundsFixes = 8;
+
     private readonly MonitorTarget _monitor;
     private readonly AppSettings _settings;
     private readonly CalendarDataSnapshot _data;
@@ -34,6 +45,7 @@ public partial class PlacementOverlayWindow : Window
 
     private bool _dragging;
     private System.Windows.Point _grabOffset;
+    private int _boundsFixes;
 
     internal PlacementOverlayWindow(MonitorTarget monitor, AppSettings settings,
         MonitorPlacement placement, CalendarDataSnapshot data, DateOnly today)
@@ -56,8 +68,22 @@ public partial class PlacementOverlayWindow : Window
         StageScale.ScaleX = 1.0 / monitor.DpiScale;
         StageScale.ScaleY = 1.0 / monitor.DpiScale;
 
+        // Pencerenin tanıtıcısı yaratılırken WPF bu Left/Top noktasının hangi
+        // monitöre düştüğüne bakıp o monitörün DPI'ını kullanıyor; değerler o
+        // monitörün ölçeğine bölünmüş fiziksel pikseldir. Kesin dikdörtgen
+        // hemen ardından SetWindowPos ile piksel cinsinden veriliyor.
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = monitor.Bounds.X / monitor.DpiScale;
+        Top = monitor.Bounds.Y / monitor.DpiScale;
+        Width = monitor.Bounds.Width / monitor.DpiScale;
+        Height = monitor.Bounds.Height / monitor.DpiScale;
+
         SourceInitialized += OnSourceInitialized;
         DpiChanged += OnDpiChanged;
+        Loaded += (_, _) => EnsureBounds("yüklenince");
+        ContentRendered += (_, _) => EnsureBounds("çizilince");
+        LocationChanged += (_, _) => EnsureBounds("taşınınca");
+        SizeChanged += (_, _) => EnsureBounds("boyutu değişince");
         Closed += (_, _) => _renderer.Dispose();
     }
 
@@ -70,16 +96,10 @@ public partial class PlacementOverlayWindow : Window
     {
         // Pencereyi tam olarak hedef monitörün üstüne, fiziksel piksel
         // cinsinden yerleştiriyoruz. WPF'in Left/Top değerleri çoklu DPI'da
-        // güvenilir değil.
-        IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        NativeMethods.SetWindowPos(
-            hwnd,
-            NativeMethods.HWND_TOPMOST,
-            _monitor.Bounds.X,
-            _monitor.Bounds.Y,
-            _monitor.Bounds.Width,
-            _monitor.Bounds.Height,
-            NativeMethods.SWP_SHOWWINDOW);
+        // güvenilir değil; gösterme işini WPF'e bırakıyoruz.
+        ApplyBounds(NativeMethods.SWP_NOACTIVATE);
+        UpdateStageScale();
+        LogPlacement("kuruldu");
 
         DrawBackground();
         DrawCalendar();
@@ -93,6 +113,98 @@ public partial class PlacementOverlayWindow : Window
     {
         StageScale.ScaleX = 1.0 / e.NewDpi.DpiScaleX;
         StageScale.ScaleY = 1.0 / e.NewDpi.DpiScaleY;
+
+        // WPF bu olayın ardından pencereyi Windows'un önerdiği dikdörtgene
+        // gecikmeli olarak taşır; o iş bitince kendi sınırlarımızı geri koyuyoruz.
+        _ = Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Background,
+            () => EnsureBounds("DPI değişince"));
+    }
+
+    // ------------------------------------------------------------- yerleşim
+
+    /// <summary>Pencereyi hedef monitörün fiziksel dikdörtgenine oturtur.</summary>
+    private void ApplyBounds(uint flags)
+    {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowPos(
+            hwnd,
+            NativeMethods.HWND_TOPMOST,
+            _monitor.Bounds.X,
+            _monitor.Bounds.Y,
+            _monitor.Bounds.Width,
+            _monitor.Bounds.Height,
+            flags);
+    }
+
+    /// <summary>
+    /// Pencere hedef monitörün dışına kaydıysa ya da boyutu bozulduysa geri
+    /// koyar. Kendi SetWindowPos çağrımız da bu olayları doğurur; dikdörtgen
+    /// zaten doğruysa hiçbir şey yapılmadığı için döngüye girilmez.
+    /// </summary>
+    private void EnsureBounds(string neden)
+    {
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(hwnd, out NativeMethods.RECT r))
+        {
+            return;
+        }
+
+        System.Drawing.Rectangle b = _monitor.Bounds;
+        if (r.Left == b.X && r.Top == b.Y && r.Right == b.Right && r.Bottom == b.Bottom)
+        {
+            return;
+        }
+
+        if (_boundsFixes >= MaxBoundsFixes)
+        {
+            Log.Warn($"Yerleştirme penceresi hedef ekrana oturtulamadı ({neden}): "
+                + $"({r.Left},{r.Top})-({r.Right},{r.Bottom}), beklenen {b}.");
+            return;
+        }
+
+        _boundsFixes++;
+        Log.Debug($"Yerleştirme penceresi {neden} kaymıştı: ({r.Left},{r.Top})-({r.Right},{r.Bottom}); "
+            + $"{b} uygulanıyor.");
+
+        ApplyBounds(NativeMethods.SWP_NOACTIVATE);
+        UpdateStageScale();
+    }
+
+    /// <summary>
+    /// Sahne fiziksel piksel uzayında çalışır; pencerenin o anki DPI'ına göre
+    /// küçültülür. Pencere hedef monitördeyse bu, monitörün kendi ölçeğidir.
+    /// </summary>
+    private void UpdateStageScale()
+    {
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
+        if (dpi.DpiScaleX <= 0 || dpi.DpiScaleY <= 0)
+        {
+            return;
+        }
+
+        StageScale.ScaleX = 1.0 / dpi.DpiScaleX;
+        StageScale.ScaleY = 1.0 / dpi.DpiScaleY;
+    }
+
+    private void LogPlacement(string asama)
+    {
+        if (Log.Level > LogLevel.Debug)
+        {
+            return;
+        }
+
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
+        NativeMethods.GetWindowRect(hwnd, out NativeMethods.RECT r);
+        DpiScale dpi = VisualTreeHelper.GetDpi(this);
+
+        Log.Debug($"Yerleştirme penceresi {asama}: hedef {_monitor}, pencere "
+            + $"({r.Left},{r.Top})-({r.Right},{r.Bottom}), DPI %{dpi.DpiScaleX * 100:0}.");
     }
 
     // ------------------------------------------------------------------ çizim
