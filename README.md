@@ -80,8 +80,14 @@ Platform** sayfasına yönlendirir.
 2. **App Information**: uygulama adı `Kalender`, destek e-postası kendi adresiniz → **Next**.
 3. **Audience**: **External** → **Next**. **Contact Information**: e-posta adresiniz → **Next**.
 4. **Finish**: ilkeyi kabul eden kutuyu işaretleyin → **Continue** → **Create**.
-5. Sol menüden **Audience**'a girin, **Test users** bölümünde **+ Add users** ile kendi
-   e-posta adresinizi ekleyip kaydedin. Eklemezseniz Google onay ekranında sizi reddeder.
+5. Sol menüden **Branding**'e girin. **Application home page** kutusuna
+   `https://github.com/SCgrS/Kalender`, **Application privacy policy link** kutusuna
+   `https://github.com/SCgrS/Kalender#verileriniz-nerede-duruyor` yazın. **Authorized
+   domains** altında **+ Add domain** ile `github.com` ekleyip **Save**'e basın. Logo
+   eklemeyin; logo, Google'ın uygulamayı ayrıca incelemesini gerektirir.
+6. Sol menüden **Audience**'a girip **Publish app** → **Confirm**'e basın; durum **In
+   production** olur. Yayınlamazsanız uygulama **Testing** durumunda kalır: kendinizi **Test
+   users** bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür.
 
 ### 4. İstemci kimliğini oluşturun
 
@@ -109,6 +115,10 @@ Bağlandıktan sonra aynı sayfada **Ne sıklıkla yenilensin?** (30 saniye – 
 **Gösterilecek takvimler**, **Gösterilecek görev listeleri** ve **Görev noktacığı rengi**
 seçenekleri açılır. Bağlantıyı koparmak için **Bağlantıyı kes**: yetki dosyası ve yerel veri
 kopyası silinir.
+
+Google izni kendiliğinden geçersiz sayarsa (izni geri aldıysanız ya da uygulama hâlâ
+**Testing** durumundaysa) Kalender bağlantıyı keser ve tepside bir uyarı balonu gösterir;
+**Google'a bağlan** ile yeniden bağlanın.
 
 ## Ayarlar
 
@@ -237,7 +247,10 @@ birkaç saniye sonra dosyaları siler.
   etkinlik** olarak kurun; etkinliklerin bütün kopyaları eksiksiz gelir.
 - **Takvim duvar kağıdının kendisidir.** Windows 11'in yeni yapılarında masaüstü katmanına
   çizim sessizce çalışmadığı için Kalender zemini ve takvimi tek görüntüde birleştirip
-  `%LOCALAPPDATA%\Kalender\zemin` altına yazar ve duvar kağıdı yapar; görüntü yalnızca içeriği
-  değiştiğinde yenilenir. Windows duvar kağıdını JPEG olarak önbelleğe aldığı için
+  `%LOCALAPPDATA%\Kalender\zemin` altına yazar ve duvar kağıdı yapar; görüntü içeriği
+  değiştiğinde yenilenir. Kalender ayrıca yarım dakikada bir Windows'un gerçekten bu görüntüyü
+  gösterdiğine bakar, başka bir şey görünüyorsa yeniden yazar. Ekran kapanıp açılırken ya da
+  bilgisayar uykudan uyanırken Windows monitörü birkaç saniye tanımayabilir; Kalender bu arada
+  çizmez, monitör tanınınca takvimi kayıtlı yerine koyar. Windows duvar kağıdını JPEG olarak önbelleğe aldığı için
   `JPEGImportQuality` 100'e çekilir. Duvar kağıdı bir ilkeyle kilitlenmişse takvim görünmez;
   tepside bir uyarı balonu çıkar.

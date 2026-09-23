@@ -15,9 +15,18 @@ internal sealed class MonitorTarget
     /// <summary>
     /// Ayarlarda anahtar olarak kullanılan, monitör donanımına bağlı kimlik.
     /// Ekranların yeri değiştiğinde ayarların karışmaması için aygıt adı
-    /// yerine bu kullanılır.
+    /// yerine bu kullanılır. Kimlik okunamadıysa aygıt adıdır; bkz.
+    /// <see cref="KimlikOkunamadi"/>.
     /// </summary>
     public required string StableId { get; init; }
+
+    /// <summary>
+    /// Donanım kimliği o an okunamadı, <see cref="StableId"/> yerine aygıt adı
+    /// kondu. Ekran kapanırken, uyanırken ya da açılışta monitör henüz hazır
+    /// değilken Windows kimliği birkaç saniye vermiyor. Bu adla kayıtlı
+    /// yerleşim kullanıcının ayarladığı yer değildir.
+    /// </summary>
+    public bool KimlikOkunamadi { get; init; }
 
     /// <summary>Sanal masaüstü koordinatlarında monitörün alanı (fiziksel piksel).</summary>
     public required Rectangle Bounds { get; init; }
@@ -31,6 +40,18 @@ internal sealed class MonitorTarget
     public required bool IsPrimary { get; init; }
 
     public double DpiScale => Dpi / 96.0;
+
+    /// <summary>Aynı ekranın, verilen donanım kimliğini taşıyan kopyası.</summary>
+    public MonitorTarget KimlikIle(string kimlik) => new()
+    {
+        Handle = Handle,
+        DeviceName = DeviceName,
+        StableId = kimlik,
+        Bounds = Bounds,
+        WorkArea = WorkArea,
+        Dpi = Dpi,
+        IsPrimary = IsPrimary,
+    };
 
     public override string ToString()
         => $"{DeviceName} {Bounds.Width}x{Bounds.Height} @{Bounds.X},{Bounds.Y} DPI {Dpi}{(IsPrimary ? " (ana)" : string.Empty)}";
@@ -65,11 +86,14 @@ internal static class MonitorEnumerator
                     dpi = dpiX;
                 }
 
+                string? kimlik = ResolveStableId(info.szDevice);
+
                 list.Add(new MonitorTarget
                 {
                     Handle = hMonitor,
                     DeviceName = info.szDevice,
-                    StableId = ResolveStableId(info.szDevice),
+                    StableId = kimlik ?? info.szDevice,
+                    KimlikOkunamadi = kimlik is null,
                     Bounds = ToRectangle(info.rcMonitor),
                     WorkArea = ToRectangle(info.rcWork),
                     Dpi = dpi,
@@ -132,10 +156,11 @@ internal static class MonitorEnumerator
         => new(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
 
     /// <summary>
-    /// Aygıt adından donanım kimliğini çıkarır. Bulunamazsa aygıt adına düşülür;
-    /// bu da çalışır ama ekranlar yer değiştirdiğinde ayarlar karışabilir.
+    /// Aygıt adından donanım kimliğini çıkarır. Bulunamazsa null döner; çağıran
+    /// aygıt adına düşer. Bu da çalışır ama ekranlar yer değiştirdiğinde
+    /// ayarlar karışabilir.
     /// </summary>
-    private static string ResolveStableId(string deviceName)
+    private static string? ResolveStableId(string deviceName)
     {
         try
         {
@@ -159,6 +184,6 @@ internal static class MonitorEnumerator
             Log.Warn($"Monitör kimliği okunamadı ({deviceName}).", ex);
         }
 
-        return deviceName;
+        return null;
     }
 }

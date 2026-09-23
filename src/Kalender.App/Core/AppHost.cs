@@ -251,6 +251,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _calendarData.SetViewMonth(_viewMonth);
 
         _googleAuth.StateChanged += OnGoogleStateChanged;
+        _googleAuth.YetkiDustu += OnGoogleYetkiDustu;
         _poller.StatusChanged += UpdateTrayTooltip;
 
         // Her yoklamadan sonra ayarlar penceresi de tazelensin: takvim listesi
@@ -519,6 +520,20 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             UpdateTrayTooltip();
             GoogleStateChanged?.Invoke();
         });
+    }
+
+    /// <summary>
+    /// Google izni kendiliğinden düştü. Tepsi ipucu değişiyor ama kimse ona
+    /// bakmıyor; etkinlikler takvimden sessizce kaybolunca kullanıcı bunu
+    /// bağlantı sorunu sanıyordu. Balonla haber veriyoruz.
+    /// </summary>
+    private void OnGoogleYetkiDustu()
+    {
+        Application.Current?.Dispatcher.BeginInvoke(() => _tray?.ShowBalloon(
+            "Kalender",
+            "Google bağlantısı düştü; etkinlikler gösterilemiyor. Tepsi simgesine tıklayıp "
+                + "Ayarlar > Google'dan yeniden bağlanın.",
+            warning: true));
     }
 
     /// <summary>

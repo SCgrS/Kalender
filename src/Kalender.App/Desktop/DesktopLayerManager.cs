@@ -42,6 +42,21 @@ internal sealed class DesktopLayerManager : IDisposable
     /// </summary>
     private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(8);
 
+    /// <summary>
+    /// Monitör kimliği okunamadığında çizimin en fazla ne kadar erteleneceği.
+    /// Süre dolarsa (kimliği hiç okunmayan bir ekran) aygıt adıyla çizilir.
+    /// </summary>
+    private static readonly TimeSpan KimlikBeklemeSuresi = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Ekranda gerçekten bizim görüntümüzün durduğu kaç nöbet turunda bir
+    /// denetlenir (8 sn × 4, yaklaşık yarım dakika).
+    /// </summary>
+    private const int DuvarKagidiDenetimAraligi = 4;
+
+    /// <summary>Windows'un hiç monitör bağlı değilken gösterdiği sanal ekranın aygıt adı.</summary>
+    private const string BaglantisizEkran = "WinDisc";
+
     private readonly SettingsStore _settings;
     private readonly DesktopSurfaceRenderer _renderer = new();
     private readonly WallpaperCanvas _canvas = new();
@@ -58,6 +73,20 @@ internal sealed class DesktopLayerManager : IDisposable
     private bool _unavailableReported;
     private bool _disposed;
 
+    /// <summary>Aygıt adı -> bu süreçte o adla en son okunan donanım kimliği.</summary>
+    private readonly Dictionary<string, string> _bilinenKimlikler = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Kimliği okunamayan bir ekran yüzünden ne zamandan beri bekleniyor.</summary>
+    private DateTime? _kimlikBeklemeBasi;
+
+    /// <summary>Bekleme süresi doldu, geçici adla çiziliyor.</summary>
+    private bool _aygitAdiylaCiziliyor;
+
+    private int _nobetSayaci;
+
+    /// <summary>Kimliği okunamayan bir ekran yüzünden çizim şu an erteleniyor mu?</summary>
+    private bool Beklemede => _kimlikBeklemeBasi is not null && !_aygitAdiylaCiziliyor;
+
     public DesktopLayerManager(SettingsStore settings)
     {
         _settings = settings;
@@ -70,7 +99,7 @@ internal sealed class DesktopLayerManager : IDisposable
         };
 
         _watchdogTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle) { Interval = WatchdogInterval };
-        _watchdogTimer.Tick += (_, _) => EnsureAlive();
+        _watchdogTimer.Tick += (_, _) => Nobet();
         _watchdogTimer.Start();
     }
 
@@ -184,7 +213,7 @@ internal sealed class DesktopLayerManager : IDisposable
             _canvas.Forget();
         }
 
-        IReadOnlyList<MonitorTarget> monitors = MonitorEnumerator.All();
+        IReadOnlyList<MonitorTarget> monitors = EkranlariOku();
         if (monitors.Count == 0)
         {
             Log.Warn("Hiç monitör bulunamadı; takvim çizilemiyor.");
@@ -192,10 +221,24 @@ internal sealed class DesktopLayerManager : IDisposable
             return;
         }
 
+        if (KimlikBekleniyor(monitors))
+        {
+            return;
+        }
+
         string signature = BuildConfigSignature(monitors);
         bool configChanged = signature != _configSignature;
         _configSignature = signature;
         _monitors = monitors;
+
+        if (configChanged)
+        {
+            // Görüntü özetleri monitör kimliğine göre tutuluyor. Kimlik bir süre
+            // başka bir ad taşıyıp geri dönünce eski kimliğin özeti yeni
+            // görüntüyle aynı çıkıyor ve yazma atlanıyordu; ekranda arada
+            // yazılmış, takvimi yanlış yerde gösteren görüntü kalıyordu.
+            _canvas.Forget();
+        }
 
         Refresh();
 
@@ -262,8 +305,14 @@ internal sealed class DesktopLayerManager : IDisposable
                 {
                     // Bu monitörü ilk kez görüyoruz; takvimi varsayılan yerine koy.
                     placement = PlacementDefaults.For(monitor);
-                    settings.Monitors[monitor.StableId] = placement;
-                    placementsAdded = true;
+
+                    // Geçici ad ayarlara yazılmıyor: kimlik okununca monitör kendi
+                    // kaydıyla geri geliyor, bu kayıt yalnızca kalabalık ediyordu.
+                    if (!monitor.KimlikOkunamadi)
+                    {
+                        settings.Monitors[monitor.StableId] = placement;
+                        placementsAdded = true;
+                    }
                 }
 
                 bool drawCalendar = ShouldDrawCalendar(settings, monitor, placement);
@@ -336,13 +385,131 @@ internal sealed class DesktopLayerManager : IDisposable
             return false;
         }
 
-        if (BuildConfigSignature(MonitorEnumerator.All()) != _configSignature)
+        IReadOnlyList<MonitorTarget> monitors = EkranlariOku();
+        if (BuildConfigSignature(monitors) != _configSignature)
         {
-            Log.Info("Ekran yapılandırması bildirimsiz değişmiş, takvim yeniden kuruluyor.");
+            // Kimlik beklenirken her denemede yazmıyoruz; bekleme bir kez yazıldı.
+            if (!monitors.Any(m => m.KimlikOkunamadi))
+            {
+                Log.Info("Ekran yapılandırması bildirimsiz değişmiş, takvim yeniden kuruluyor.");
+            }
+
             Rebuild();
+        }
+        else if (Beklemede && !monitors.Any(m => m.KimlikOkunamadi))
+        {
+            // Beklenen kimlik geldi, yapılandırma öncekiyle aynı. Beklerken
+            // (ekran bağlı değilken) yazılan görüntü yerine ulaşmamış olabilir;
+            // bir kez yeniden yazıyoruz.
+            KimlikBekleniyor(monitors);
+            _canvas.Forget();
+            Refresh();
         }
 
         return _screens.Count > 0;
+    }
+
+    /// <summary>
+    /// Nöbet zamanlayıcısının her turu: ekran yapılandırmasına, birkaç turda bir
+    /// de ekranda gerçekten bizim görüntümüzün durup durmadığına bakar.
+    /// </summary>
+    private void Nobet()
+    {
+        EnsureAlive();
+
+        if (++_nobetSayaci % DuvarKagidiDenetimAraligi != 0)
+        {
+            return;
+        }
+
+        // Kimlik beklenirken monitör geçiş hâlinde; o arada okunan duvar kağıdı
+        // yanıltıcı olabilir.
+        if (_screens.Count > 0
+            && !Beklemede
+            && _settings.Current.SyncSystemWallpaper
+            && !_canvas.EkrandakilerBizimMi())
+        {
+            _canvas.Forget();
+            Refresh();
+        }
+    }
+
+    /// <summary>
+    /// Monitörleri okur. Kimliği o an okunamayan ekrana, aynı aygıt adıyla bu
+    /// süreçte daha önce okunmuş donanım kimliğini verir: ekran kapanıp
+    /// açılırken Windows aygıt adını (\\.\DISPLAY1) koruyor, kimliği bir süre
+    /// vermiyor.
+    /// </summary>
+    private IReadOnlyList<MonitorTarget> EkranlariOku()
+    {
+        IReadOnlyList<MonitorTarget> monitors = MonitorEnumerator.All();
+        if (!monitors.Any(m => m.KimlikOkunamadi))
+        {
+            return monitors;
+        }
+
+        return monitors
+            .Select(m => m.KimlikOkunamadi && _bilinenKimlikler.TryGetValue(m.DeviceName, out string? kimlik)
+                ? m.KimlikIle(kimlik)
+                : m)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Kimliği okunamayan bir ekran varsa çizimi erteler; nöbet zamanlayıcısı
+    /// birkaç saniyede bir yeniden dener.
+    ///
+    /// Ekran kapanırken, uyanırken ya da açılışta monitör henüz hazır değilken
+    /// Windows donanım kimliğini birkaç saniye vermiyor. O arada çizilince
+    /// takvim geçici ada ait kayda, yani varsayılan yere konuyordu; kimlik geri
+    /// gelince de içerik aynı olduğu için düzeltilmiyordu. Kimlik
+    /// <see cref="KimlikBeklemeSuresi"/> boyunca gelmezse (kimliği hiç okunmayan
+    /// bir ekran) eskisi gibi aygıt adıyla çizilir.
+    /// </summary>
+    /// <returns>Beklenecekse true; o turda hiçbir şey çizilmez.</returns>
+    private bool KimlikBekleniyor(IReadOnlyList<MonitorTarget> monitors)
+    {
+        foreach (MonitorTarget m in monitors.Where(m => !m.KimlikOkunamadi))
+        {
+            _bilinenKimlikler[m.DeviceName] = m.StableId;
+        }
+
+        if (!monitors.Any(m => m.KimlikOkunamadi))
+        {
+            _kimlikBeklemeBasi = null;
+            _aygitAdiylaCiziliyor = false;
+            return false;
+        }
+
+        DateTime simdi = DateTime.UtcNow;
+        if (_kimlikBeklemeBasi is null)
+        {
+            _kimlikBeklemeBasi = simdi;
+            Log.Info("Monitör kimliği okunamadı, ekran hazır olunca çizilecek: "
+                + string.Join(", ", monitors.Where(m => m.KimlikOkunamadi).Select(m => m.DeviceName)));
+        }
+
+        // "WinDisc", Windows'un hiç ekran bağlı değilken koyduğu sanal ekran:
+        // monitör kapalı ya da kablosu çekili. Ona çizmenin anlamı yok; gerçek
+        // monitör gelene kadar süre sınırı olmadan bekleniyor.
+        if (monitors.Any(m => m.KimlikOkunamadi
+                && string.Equals(m.DeviceName, BaglantisizEkran, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (simdi - _kimlikBeklemeBasi.Value < KimlikBeklemeSuresi)
+        {
+            return true;
+        }
+
+        if (!_aygitAdiylaCiziliyor)
+        {
+            _aygitAdiylaCiziliyor = true;
+            Log.Info("Monitör kimliği hâlâ okunamıyor; takvim aygıt adıyla çiziliyor.");
+        }
+
+        return false;
     }
 
     /// <summary>

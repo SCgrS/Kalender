@@ -71,6 +71,13 @@ internal sealed class GoogleAuthenticator : IDisposable
     /// <summary>Bağlantı durumu değişti (bağlandı ya da koptu).</summary>
     public event Action? StateChanged;
 
+    /// <summary>
+    /// Google kayıtlı izni yenilerken geçersiz saydı ve bağlantı kendiliğinden
+    /// kesildi. Önceden bu sessizce oluyordu: etkinlikler takvimden kayboluyor,
+    /// kullanıcı da bunu bağlantı sorunu sanıyordu.
+    /// </summary>
+    public event Action? YetkiDustu;
+
     // ------------------------------------------------------------- bağlanma
 
     public async Task<SignInResult> SignInAsync(CancellationToken cancel = default)
@@ -278,10 +285,29 @@ internal sealed class GoogleAuthenticator : IDisposable
     }
 
     /// <summary>Yetki kalıcı olarak geçersizse (kullanıcı izni geri aldı) bağlantıyı düşürür.</summary>
-    public void InvalidateAuthorization()
+    /// <param name="yenilenirken">
+    /// Kayıtlı izin yenilenirken mi düştü? Öyleyse kullanıcıya haber verilir.
+    /// Bağlanma sırasındaki bir hata zaten bağlanma ekranında gösteriliyor.
+    /// </param>
+    public void InvalidateAuthorization(bool yenilenirken)
     {
-        Log.Warn("Google yetkisi geçersiz; bağlantı kesiliyor.");
+        if (yenilenirken)
+        {
+            // Hata olarak yazılıyor ki varsayılan günlük ayarında da görünsün.
+            Log.Error("Google kayıtlı izni geçersiz saydı; bağlantı kesildi. Uygulama Google Cloud'da "
+                + "\"Testing\" durumundaysa Google izni 7 günde bir düşürür.");
+        }
+        else
+        {
+            Log.Warn("Google yetkisi geçersiz; bağlantı kesiliyor.");
+        }
+
         SignOut();
+
+        if (yenilenirken)
+        {
+            YetkiDustu?.Invoke();
+        }
     }
 
     private async Task<TokenResponse?> PostTokenAsync(Dictionary<string, string> form, CancellationToken cancel)
@@ -299,7 +325,8 @@ internal sealed class GoogleAuthenticator : IDisposable
             // invalid_grant: yetki iptal edilmiş ya da süresi dolmuş.
             if (body.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase))
             {
-                InvalidateAuthorization();
+                InvalidateAuthorization(
+                    yenilenirken: form.TryGetValue("grant_type", out string? tur) && tur == "refresh_token");
             }
 
             return null;

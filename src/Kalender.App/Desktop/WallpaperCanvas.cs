@@ -39,11 +39,18 @@ internal sealed class WallpaperCanvas
     /// <summary>Kullanılmayan görüntü dosyalarının silinmeden önce bekletildiği süre.</summary>
     private static readonly TimeSpan FileGrace = TimeSpan.FromMinutes(2);
 
+    /// <summary>BMP dosya başlığı (BITMAPFILEHEADER + BITMAPINFOHEADER) boyutu.</summary>
+    private const int HeaderSize = 14 + 40;
+
     /// <summary>Monitör kimliği -> en son yazılan görüntünün özeti.</summary>
     private readonly Dictionary<string, string> _hashes = new(StringComparer.Ordinal);
 
-    /// <summary>Monitör kimliği -> sıradaki dosya yuvası (a/b).</summary>
-    private readonly Dictionary<string, int> _slots = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Monitör kimliği -> en son yazılan dosya ve yazarken kullanılan aygıt yolu.
+    /// Windows'un gerçekten bunu gösterip göstermediği buradan denetlenir;
+    /// dosya temizliği de bu dosyalara dokunmaz.
+    /// </summary>
+    private readonly Dictionary<string, (string? Aygit, string Dosya)> _sonYazilanlar = new(StringComparer.Ordinal);
 
     private bool _qualityChecked;
 
@@ -66,6 +73,12 @@ internal sealed class WallpaperCanvas
         if (screens.Count == 0)
         {
             return new CanvasResult(true, 0);
+        }
+
+        // Artık bağlı olmayan ekranların kaydı denetimi yanıltmasın.
+        foreach (string eski in _sonYazilanlar.Keys.Where(k => screens.All(s => s.Monitor.StableId != k)).ToList())
+        {
+            _sonYazilanlar.Remove(eski);
         }
 
         try
@@ -112,11 +125,19 @@ internal sealed class WallpaperCanvas
                     continue;
                 }
 
-                string file = NextFile(screen.Monitor.StableId);
-                SaveBmp(screen.Image, file);
+                string file = DosyaYolu(screen.Monitor.StableId, hash);
+
+                // Ad içerikten türediği için aynı adlı, tam boy bir dosya zaten
+                // bu görüntüdür. Ekranda duruyor olabilir; üstüne yazmıyoruz.
+                if (!BmpHazir(file, screen.Image))
+                {
+                    SaveBmp(screen.Image, file);
+                }
+
                 wallpaper.SetWallpaper(id, file);
 
                 _hashes[screen.Monitor.StableId] = hash;
+                _sonYazilanlar[screen.Monitor.StableId] = (id, file);
                 written++;
 
                 Log.Debug($"Duvar kağıdı yazıldı: {screen.Monitor} -> {Path.GetFileName(file)}");
@@ -144,22 +165,75 @@ internal sealed class WallpaperCanvas
         }
     }
 
+    /// <summary>
+    /// Windows her ekranda gerçekten en son yazdığımız görüntüyü mü gösteriyor?
+    ///
+    /// İçeriği aynı olan görüntü yeniden yazılmıyor. Ama duvar kağıdını Windows
+    /// da değiştirebiliyor: açılışta kendi önbelleğindeki eski görüntüyü
+    /// koyabiliyor, tema eşitlemesi ya da kullanıcı başka bir resim seçebiliyor.
+    /// Önceden Kalender bunu fark etmiyordu; takvim bir sonraki değişikliğe
+    /// (yeni etkinlik, gün dönümü) kadar ekrana gelmiyordu. Emin olamadığımız
+    /// durumda true döner, yanlış alarmla boşuna yazmayalım.
+    /// </summary>
+    public bool EkrandakilerBizimMi()
+    {
+        if (_sonYazilanlar.Count == 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+
+            foreach ((string? aygit, string dosya) in _sonYazilanlar.Values)
+            {
+                // Aygıt yolu olmadan (tek ekranda ortak olarak) yazılan görüntü
+                // denetlenemiyor: ekran başına duvar kağıdında Windows ortak
+                // yolu boş döndürüyor.
+                if (aygit is null)
+                {
+                    continue;
+                }
+
+                string gorunen = wallpaper.GetWallpaper(aygit) ?? string.Empty;
+                if (!string.Equals(gorunen, dosya, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.Info("Ekranda Kalender'in görüntüsü yok ("
+                        + (gorunen.Length == 0 ? "boş" : Path.GetFileName(gorunen))
+                        + "); yeniden yazılacak.");
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Ekrandaki duvar kağıdı okunamadı: " + ex.Message);
+            return true;
+        }
+    }
+
     // --------------------------------------------------------------- dosyalar
 
     /// <summary>
-    /// Bir monitörün sıradaki dosyası. İki ad arasında gidip geliyoruz:
-    /// Windows duvar kağıdını yola göre önbelleğe alıyor, aynı yola farklı
-    /// içerik yazmak bazen hiç yansımıyor.
+    /// Bir monitörün görüntü dosyası. Ad, görüntünün özetinden türetiliyor.
+    ///
+    /// Windows duvar kağıdını yola, dosya boyutuna ve ölçüye göre önbelleğe
+    /// alıyor; sıkıştırmasız BMP'nin boyutu da içerik değişse bile aynı
+    /// kalıyor. Aynı yola farklı içerik yazınca Windows eski görüntüyü
+    /// göstermeye devam edebiliyor. Önceden iki ad (a/b) arasında gidip
+    /// geliniyordu ama her açılışta yine "a"dan başlandığı için bir önceki
+    /// oturumun dosyasıyla çakışılabiliyordu. Artık farklı içerik her zaman
+    /// farklı ad demek.
     /// </summary>
-    private string NextFile(string monitorId)
+    private static string DosyaYolu(string monitorId, string hash)
     {
-        _slots.TryGetValue(monitorId, out int slot);
-        _slots[monitorId] = slot ^ 1;
-
         Directory.CreateDirectory(Paths.CanvasFolder);
 
-        string yuva = slot == 0 ? "a" : "b";
-        return Path.Combine(Paths.CanvasFolder, $"zemin-{ShortId(monitorId)}-{yuva}.bmp");
+        string ozet = hash[..Math.Min(12, hash.Length)].ToLowerInvariant();
+        return Path.Combine(Paths.CanvasFolder, $"zemin-{ShortId(monitorId)}-{ozet}.bmp");
     }
 
     /// <summary>
@@ -174,7 +248,6 @@ internal sealed class WallpaperCanvas
     /// </summary>
     private static void SaveBmp(Bitmap image, string path)
     {
-        const int HeaderSize = 14 + 40;
         int width = image.Width;
         int height = image.Height;
         int stride = ((width * 3) + 3) & ~3;
@@ -222,6 +295,17 @@ internal sealed class WallpaperCanvas
         }
     }
 
+    /// <summary>
+    /// Dosya bu görüntünün eksiksiz bir BMP'si mi? Yarım kalmış bir yazımda
+    /// dosya kısa kalır; o zaman yeniden yazılır.
+    /// </summary>
+    private static bool BmpHazir(string path, Bitmap image)
+    {
+        var info = new FileInfo(path);
+        long beklenen = HeaderSize + ((long)(((image.Width * 3) + 3) & ~3) * image.Height);
+        return info.Exists && info.Length == beklenen;
+    }
+
     /// <summary>Monitör kimliğinden kısa ve dosya adında kullanılabilir bir imza (FNV-1a).</summary>
     private static string ShortId(string monitorId)
     {
@@ -237,16 +321,21 @@ internal sealed class WallpaperCanvas
     /// <summary>
     /// Artık kullanılmayan görüntüleri siler. Windows dosyayı uygulamadan
     /// hemen sonra hâlâ okuyor olabildiği için yeni yazılanlara dokunmuyoruz.
+    /// Ekranda duran görüntüler de korunur: Explorer yeniden başladığında ya
+    /// da çözünürlük değiştiğinde Windows onları yeniden okuyor.
     /// </summary>
-    private static void CleanUnusedFiles()
+    private void CleanUnusedFiles()
     {
         try
         {
             DateTime esik = DateTime.UtcNow - FileGrace;
+            var ekrandakiler = new HashSet<string>(
+                _sonYazilanlar.Values.Select(v => v.Dosya), StringComparer.OrdinalIgnoreCase);
+
             // Uzantısız: 1.4.4'e kadar yazılan PNG'ler de temizlensin.
             foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*"))
             {
-                if (File.GetLastWriteTimeUtc(file) < esik)
+                if (!ekrandakiler.Contains(file) && File.GetLastWriteTimeUtc(file) < esik)
                 {
                     File.Delete(file);
                 }
