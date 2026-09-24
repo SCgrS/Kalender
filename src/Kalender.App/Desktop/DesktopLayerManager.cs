@@ -22,6 +22,14 @@ internal sealed record CalendarBlockHit(CalendarLayout Layout, DayCell? Cell);
 internal sealed record ScreenSurface(MonitorTarget Monitor, DesktopSurface Surface);
 
 /// <summary>
+/// Bir monitör ve üzerine çizilen takvimin geometrisi (takvim gizliyse null).
+/// Görüntünün kendisi tutulmuyor: duvar kağıdına yazıldıktan sonra yalnızca
+/// takvimin ekrandaki yeri gerekiyor; 2560 × 1440 bir ekranda görüntü 14 MB
+/// bellek tutuyordu.
+/// </summary>
+internal sealed record EkrandakiTakvim(MonitorTarget Monitor, CalendarLayout? Layout);
+
+/// <summary>
 /// Masaüstündeki takvimin tamamını yönetir: her monitör için zemin ve takvimi
 /// tek bir görüntüde birleştirir, bunu <see cref="WallpaperCanvas"/> ile duvar
 /// kağıdına yazar ve ekran yapılandırması değiştiğinde her şeyi yeniler.
@@ -60,7 +68,7 @@ internal sealed class DesktopLayerManager : IDisposable
     private readonly SettingsStore _settings;
     private readonly DesktopSurfaceRenderer _renderer = new();
     private readonly WallpaperCanvas _canvas = new();
-    private readonly List<ScreenSurface> _screens = new();
+    private readonly List<EkrandakiTakvim> _screens = new();
     private readonly DispatcherTimer _rebuildTimer;
     private readonly DispatcherTimer _watchdogTimer;
     private readonly DispatcherTimer _tazelemeTimer;
@@ -350,9 +358,8 @@ internal sealed class DesktopLayerManager : IDisposable
 
         // Geometri her hâlükârda güncellenir: gün kutusu, takvim duvar kağıdına
         // yazılamasa bile doğru yeri bilmeli.
-        List<ScreenSurface> previous = _screens.ToList();
         _screens.Clear();
-        _screens.AddRange(fresh);
+        _screens.AddRange(fresh.Select(s => new EkrandakiTakvim(s.Monitor, s.Surface.Layout)));
 
         if (settings.SyncSystemWallpaper)
         {
@@ -369,9 +376,10 @@ internal sealed class DesktopLayerManager : IDisposable
             }
         }
 
-        foreach (ScreenSurface old in previous)
+        // Görüntüler yazıldı; bundan sonra yalnızca takvimin yeri gerekiyor.
+        foreach (ScreenSurface s in fresh)
         {
-            old.Surface.Dispose();
+            s.Surface.Dispose();
         }
     }
 
@@ -572,14 +580,14 @@ internal sealed class DesktopLayerManager : IDisposable
     /// </summary>
     public DayHit? HitTest(Point screenPoint)
     {
-        foreach (ScreenSurface screen in _screens)
+        foreach (EkrandakiTakvim screen in _screens)
         {
             if (!screen.Monitor.Bounds.Contains(screenPoint))
             {
                 continue;
             }
 
-            CalendarLayout? layout = screen.Surface.Layout;
+            CalendarLayout? layout = screen.Layout;
             if (layout is null)
             {
                 return null;
@@ -610,14 +618,14 @@ internal sealed class DesktopLayerManager : IDisposable
     /// </summary>
     public CalendarBlockHit? HitTestBlock(Point screenPoint)
     {
-        foreach (ScreenSurface screen in _screens)
+        foreach (EkrandakiTakvim screen in _screens)
         {
             if (!screen.Monitor.Bounds.Contains(screenPoint))
             {
                 continue;
             }
 
-            CalendarLayout? layout = screen.Surface.Layout;
+            CalendarLayout? layout = screen.Layout;
             if (layout is null)
             {
                 return null;
@@ -685,7 +693,7 @@ internal sealed class DesktopLayerManager : IDisposable
             AppSettings settings = _settings.Current;
             var plain = new List<ScreenSurface>();
 
-            foreach (ScreenSurface screen in _screens)
+            foreach (EkrandakiTakvim screen in _screens)
             {
                 if (!settings.Monitors.TryGetValue(screen.Monitor.StableId, out MonitorPlacement? placement))
                 {
@@ -712,16 +720,6 @@ internal sealed class DesktopLayerManager : IDisposable
         }
     }
 
-    private void DisposeSurfaces()
-    {
-        foreach (ScreenSurface screen in _screens)
-        {
-            screen.Surface.Dispose();
-        }
-
-        _screens.Clear();
-    }
-
     public void Dispose()
     {
         _disposed = true;
@@ -736,7 +734,7 @@ internal sealed class DesktopLayerManager : IDisposable
             PaintPlainBackground();
         }
 
-        DisposeSurfaces();
+        _screens.Clear();
         _renderer.Dispose();
     }
 }

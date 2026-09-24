@@ -108,6 +108,14 @@ public partial class DayPopupWindow : Window
                 | NativeMethods.WS_EX_NOACTIVATE
                 | NativeMethods.WS_EX_TRANSPARENT
                 | NativeMethods.WS_EX_TOOLWINDOW));
+
+        // Kutu küçük; ekran kartı yerine işlemciyle çizilmesi fark edilmiyor.
+        // Ekran kartıyla çizilince WPF, ayarlar penceresi hiç açılmasa da
+        // Direct3D aygıtını kuruyor ve süreç boyunca ~4 MB tutuyordu.
+        if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is HwndTarget target)
+        {
+            target.RenderMode = RenderMode.SoftwareOnly;
+        }
     }
 
     /// <summary>

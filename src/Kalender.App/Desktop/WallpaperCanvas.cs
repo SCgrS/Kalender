@@ -235,6 +235,11 @@ internal sealed class WallpaperCanvas
     /// kodladığı için sıkıştırmanın masaüstüne yararı yok. Dosya büyük ama her
     /// ekran için en fazla iki tane durur. 24 bit, çünkü 32 bitlik BMP'nin
     /// dördüncü baytını bazı okuyucular saydamlık sanıyor.
+    ///
+    /// Görüntü kendi 32 bitlik biçiminde okunup satır satır 24 bite burada
+    /// çevriliyor. Önceden LockBits'ten doğrudan 24 bit isteniyordu; GDI+ bunun
+    /// için görüntünün tamamının 24 bitlik bir kopyasını açıyordu (2560 × 1440'ta
+    /// 11 MB). Dosya arabelleği de 1 MB'tan 64 KB'a indi.
     /// </summary>
     private static void SaveBmp(Bitmap image, string path)
     {
@@ -244,13 +249,15 @@ internal sealed class WallpaperCanvas
         int stride = ((width * 3) + 3) & ~3;
         int imageSize = stride * height;
 
-        // Görüntü baştan sona opak; 24 bite çevirirken ön-çarpılmış alfa bir şey değiştirmez.
+        // Görüntü baştan sona opak; 24 bite çevirirken ön-çarpılmış alfa bir şey
+        // değiştirmez, dördüncü bayt atılıyor. Görüntü zaten bu biçimde üretildiği
+        // için LockBits kopya açmıyor.
         BitmapData data = image.LockBits(
-            new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
 
         try
         {
-            using var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 20);
+            using var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
             using var w = new BinaryWriter(file);
 
             // BITMAPFILEHEADER
@@ -272,11 +279,20 @@ internal sealed class WallpaperCanvas
             w.Write(0);
             w.Write(0);
 
+            byte[] source = new byte[width * 4];
             byte[] row = new byte[stride];
-            int copy = Math.Min(stride, Math.Abs(data.Stride));
             for (int y = height - 1; y >= 0; y--)
             {
-                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, copy);
+                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), source, 0, source.Length);
+
+                // BGRA -> BGR; satır sonundaki dolgu baytları sıfır kalıyor.
+                for (int s = 0, d = 0; d < width * 3; s += 4, d += 3)
+                {
+                    row[d] = source[s];
+                    row[d + 1] = source[s + 1];
+                    row[d + 2] = source[s + 2];
+                }
+
                 w.Write(row);
             }
         }

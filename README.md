@@ -25,7 +25,7 @@ görevleri küçük bir kutuda listelenir. Google hesabına yalnızca okuma izni
 
 ### [⬇ Kalender-Kurulum.exe indir](https://github.com/SCgrS/Kalender/releases/latest/download/Kalender-Kurulum.exe)
 
-Tek dosya, 63 MB. Çalışması için gereken her şey içinde; ayrıca .NET kurmanız gerekmez.
+Tek dosya, 139 MB. Çalışması için gereken her şey içinde; ayrıca .NET kurmanız gerekmez.
 Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit; yönetici hakkı gerekmez.
 
 > Depo özel (private) olduğu için indirme bağlantısı yalnızca GitHub'da oturumu açık olan

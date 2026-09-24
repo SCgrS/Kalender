@@ -25,12 +25,14 @@ New-Item -ItemType Directory -Force -Path $gecici | Out-Null
 
 Write-Host "Yayin hazirlaniyor..." -ForegroundColor Cyan
 
+# Sikistirma bilerek kapali: sikistirilmis tek dosyada kutuphaneler acilista
+# bellege aciliyor, Kalender ~100 MB fazla RAM tutuyordu (ayrinti csproj'da).
 dotnet publish $proje `
     -c Release `
     -r win-x64 `
     --self-contained true `
     -p:PublishSingleFile=true `
-    -p:EnableCompressionInSingleFile=true `
+    -p:EnableCompressionInSingleFile=false `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:DebugType=embedded `
     -o $gecici

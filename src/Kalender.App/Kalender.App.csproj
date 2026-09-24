@@ -19,9 +19,9 @@
     <!-- Kaynak dosyalar UTF-8; Turkce karakterler dogru okunsun diye acikca belirtiliyor. -->
     <CodePage>65001</CodePage>
 
-    <Version>1.6.2</Version>
-    <AssemblyVersion>1.6.2.0</AssemblyVersion>
-    <FileVersion>1.6.2.0</FileVersion>
+    <Version>1.6.3</Version>
+    <AssemblyVersion>1.6.3.0</AssemblyVersion>
+    <FileVersion>1.6.3.0</FileVersion>
     <Product>Kalender</Product>
     <Company>Kalender</Company>
     <Description>Masaustu duvar kagidina islenmis aylik takvim</Description>
@@ -31,7 +31,11 @@
          yayin.ps1 tarafindan komut satirindan verilir; boylece gunluk derleme hizli kalir. -->
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Sikistirma bilerek kapali. Sikistirilmis tek dosyada .NET ve WPF
+         kutuphaneleri acilista bellege acilip orada kaliyordu; Kalender bu yuzden
+         ~100 MB fazla RAM tutuyordu. Sikistirmasiz dosyada kutuphaneler exe'den
+         dogrudan okunuyor. Bedeli: exe 63 MB yerine ~139 MB. -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
     <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>embedded</DebugType>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
