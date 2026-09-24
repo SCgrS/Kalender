@@ -249,7 +249,9 @@ birkaç saniye sonra dosyaları siler.
   çizim sessizce çalışmadığı için Kalender zemini ve takvimi tek görüntüde birleştirip
   `%LOCALAPPDATA%\Kalender\zemin` altına yazar ve duvar kağıdı yapar; görüntü içeriği
   değiştiğinde yenilenir. Kalender ayrıca yarım dakikada bir Windows'un gerçekten bu görüntüyü
-  gösterdiğine bakar, başka bir şey görünüyorsa yeniden yazar. Ekran kapanıp açılırken ya da
+  gösterdiğine bakar, başka bir şey görünüyorsa yeniden yazar. Windows açılışta ya da uykudan
+  uyanınca ilk yazılan görüntüyü bazen göstermediği için Kalender açılıştan bir dakika, uyanmadan
+  20 saniye sonra görüntüyü bir kez daha yazar. Ekran kapanıp açılırken ya da
   bilgisayar uykudan uyanırken Windows monitörü birkaç saniye tanımayabilir; Kalender bu arada
   çizmez, monitör tanınınca takvimi kayıtlı yerine koyar. Windows duvar kağıdını JPEG olarak önbelleğe aldığı için
   `JPEGImportQuality` 100'e çekilir. Duvar kağıdı bir ilkeyle kilitlenmişse takvim görünmez;

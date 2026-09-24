@@ -63,6 +63,7 @@ internal sealed class DesktopLayerManager : IDisposable
     private readonly List<ScreenSurface> _screens = new();
     private readonly DispatcherTimer _rebuildTimer;
     private readonly DispatcherTimer _watchdogTimer;
+    private readonly DispatcherTimer _tazelemeTimer;
 
     private IReadOnlyList<MonitorTarget> _monitors = Array.Empty<MonitorTarget>();
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
@@ -101,6 +102,9 @@ internal sealed class DesktopLayerManager : IDisposable
         _watchdogTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle) { Interval = WatchdogInterval };
         _watchdogTimer.Tick += (_, _) => Nobet();
         _watchdogTimer.Start();
+
+        _tazelemeTimer = new DispatcherTimer(DispatcherPriority.Background);
+        _tazelemeTimer.Tick += (_, _) => ZorlaTazele();
     }
 
     /// <summary>Takvim duvar kağıdına hiç yazılamadığında bir kez tetiklenir.</summary>
@@ -410,6 +414,56 @@ internal sealed class DesktopLayerManager : IDisposable
     }
 
     /// <summary>
+    /// Verilen süre sonra görüntüyü, içeriği aynı olsa bile yeni bir dosyayla
+    /// bir kez daha yazar ve masaüstünü yeniden boyatır.
+    ///
+    /// Açılışta ve uykudan uyanınca ilk yazılan görüntü bazen ekrana hiç
+    /// gelmiyor: Explorer daha oturmadan yazılınca Windows bir önceki
+    /// oturumdan kalan görüntüyü göstermeye devam ediyor ve takvim eski yerinde
+    /// ya da eski hâliyle kalıyor. Windows'un kaydı bizim dosyamızı gösterdiği
+    /// için yarım dakikalık denetim bunu her zaman yakalayamıyor.
+    /// </summary>
+    public void TazelemeIste(TimeSpan gecikme)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _tazelemeTimer.Stop();
+        _tazelemeTimer.Interval = gecikme;
+        _tazelemeTimer.Start();
+    }
+
+    private void ZorlaTazele()
+    {
+        _tazelemeTimer.Stop();
+
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (Beklemede)
+        {
+            // Monitör henüz tanınmadı; tanınınca zaten yazılacak, biz yine de
+            // biraz sonra bir kez daha deneriz.
+            TazelemeIste(TimeSpan.FromSeconds(10));
+            return;
+        }
+
+        if (_screens.Count == 0 || !_settings.Current.SyncSystemWallpaper)
+        {
+            return;
+        }
+
+        Log.Info("Görüntü güvence için yeniden yazılıyor.");
+        _canvas.Forget();
+        Refresh();
+        DesktopRefresher.ForceRedraw();
+    }
+
+    /// <summary>
     /// Nöbet zamanlayıcısının her turu: ekran yapılandırmasına, birkaç turda bir
     /// de ekranda gerçekten bizim görüntümüzün durup durmadığına bakar.
     /// </summary>
@@ -673,6 +727,7 @@ internal sealed class DesktopLayerManager : IDisposable
         _disposed = true;
         _rebuildTimer.Stop();
         _watchdogTimer.Stop();
+        _tazelemeTimer.Stop();
 
         // Takvimi duvar kağıdından siliyoruz; yoksa yarın da bugünün takvimi
         // ekranda asılı kalır.

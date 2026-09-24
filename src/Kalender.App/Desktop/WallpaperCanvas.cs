@@ -39,9 +39,6 @@ internal sealed class WallpaperCanvas
     /// <summary>Kullanılmayan görüntü dosyalarının silinmeden önce bekletildiği süre.</summary>
     private static readonly TimeSpan FileGrace = TimeSpan.FromMinutes(2);
 
-    /// <summary>BMP dosya başlığı (BITMAPFILEHEADER + BITMAPINFOHEADER) boyutu.</summary>
-    private const int HeaderSize = 14 + 40;
-
     /// <summary>Monitör kimliği -> en son yazılan görüntünün özeti.</summary>
     private readonly Dictionary<string, string> _hashes = new(StringComparer.Ordinal);
 
@@ -125,15 +122,8 @@ internal sealed class WallpaperCanvas
                     continue;
                 }
 
-                string file = DosyaYolu(screen.Monitor.StableId, hash);
-
-                // Ad içerikten türediği için aynı adlı, tam boy bir dosya zaten
-                // bu görüntüdür. Ekranda duruyor olabilir; üstüne yazmıyoruz.
-                if (!BmpHazir(file, screen.Image))
-                {
-                    SaveBmp(screen.Image, file);
-                }
-
+                string file = DosyaYolu(screen.Monitor.StableId);
+                SaveBmp(screen.Image, file);
                 wallpaper.SetWallpaper(id, file);
 
                 _hashes[screen.Monitor.StableId] = hash;
@@ -199,7 +189,7 @@ internal sealed class WallpaperCanvas
                 string gorunen = wallpaper.GetWallpaper(aygit) ?? string.Empty;
                 if (!string.Equals(gorunen, dosya, StringComparison.OrdinalIgnoreCase))
                 {
-                    Log.Info("Ekranda Kalender'in görüntüsü yok ("
+                    Log.Warn("Ekranda Kalender'in görüntüsü yok ("
                         + (gorunen.Length == 0 ? "boş" : Path.GetFileName(gorunen))
                         + "); yeniden yazılacak.");
                     return false;
@@ -218,22 +208,22 @@ internal sealed class WallpaperCanvas
     // --------------------------------------------------------------- dosyalar
 
     /// <summary>
-    /// Bir monitörün görüntü dosyası. Ad, görüntünün özetinden türetiliyor.
+    /// Bir monitörün yeni görüntü dosyası. Her yazışta yeni bir ad veriliyor.
     ///
     /// Windows duvar kağıdını yola, dosya boyutuna ve ölçüye göre önbelleğe
     /// alıyor; sıkıştırmasız BMP'nin boyutu da içerik değişse bile aynı
     /// kalıyor. Aynı yola farklı içerik yazınca Windows eski görüntüyü
-    /// göstermeye devam edebiliyor. Önceden iki ad (a/b) arasında gidip
-    /// geliniyordu ama her açılışta yine "a"dan başlandığı için bir önceki
-    /// oturumun dosyasıyla çakışılabiliyordu. Artık farklı içerik her zaman
-    /// farklı ad demek.
+    /// göstermeye devam edebiliyor, aynı yolu yeniden vermek de ekranı
+    /// tazelemiyor. Önceden iki ad (a/b) arasında gidip geliniyordu ama her
+    /// açılışta yine "a"dan başlandığı için bir önceki oturumun dosyasıyla
+    /// çakışılabiliyordu. Eski dosyaları <see cref="CleanUnusedFiles"/> siler.
     /// </summary>
-    private static string DosyaYolu(string monitorId, string hash)
+    private static string DosyaYolu(string monitorId)
     {
         Directory.CreateDirectory(Paths.CanvasFolder);
 
-        string ozet = hash[..Math.Min(12, hash.Length)].ToLowerInvariant();
-        return Path.Combine(Paths.CanvasFolder, $"zemin-{ShortId(monitorId)}-{ozet}.bmp");
+        return Path.Combine(Paths.CanvasFolder,
+            $"zemin-{ShortId(monitorId)}-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.bmp");
     }
 
     /// <summary>
@@ -248,6 +238,7 @@ internal sealed class WallpaperCanvas
     /// </summary>
     private static void SaveBmp(Bitmap image, string path)
     {
+        const int HeaderSize = 14 + 40;
         int width = image.Width;
         int height = image.Height;
         int stride = ((width * 3) + 3) & ~3;
@@ -293,17 +284,6 @@ internal sealed class WallpaperCanvas
         {
             image.UnlockBits(data);
         }
-    }
-
-    /// <summary>
-    /// Dosya bu görüntünün eksiksiz bir BMP'si mi? Yarım kalmış bir yazımda
-    /// dosya kısa kalır; o zaman yeniden yazılır.
-    /// </summary>
-    private static bool BmpHazir(string path, Bitmap image)
-    {
-        var info = new FileInfo(path);
-        long beklenen = HeaderSize + ((long)(((image.Width * 3) + 3) & ~3) * image.Height);
-        return info.Exists && info.Length == beklenen;
     }
 
     /// <summary>Monitör kimliğinden kısa ve dosya adında kullanılabilir bir imza (FNV-1a).</summary>

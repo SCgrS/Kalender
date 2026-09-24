@@ -38,6 +38,15 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// </summary>
     private static readonly TimeSpan ViewResetDelay = TimeSpan.FromMinutes(2);
 
+    /// <summary>
+    /// Açılıştan ve uykudan uyanmadan sonra görüntünün güvence için bir kez
+    /// daha yazılma süresi. Windows'un masaüstünü kurması bitmiş olsun diye
+    /// açılışta daha uzun bekleniyor.
+    /// </summary>
+    private static readonly TimeSpan AcilisTazelemeGecikmesi = TimeSpan.FromMinutes(1);
+
+    private static readonly TimeSpan UyanmaTazelemeGecikmesi = TimeSpan.FromSeconds(20);
+
     private readonly SettingsStore _settings = new();
     private AppMessageWindow? _messages;
     private TrayIcon? _tray;
@@ -262,6 +271,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         _layer.SetToday(_dayWatcher.Today);
         _layer.Rebuild();
+        _layer.TazelemeIste(AcilisTazelemeGecikmesi);
 
         // Açılışta başlatma kaydını ayarla eşitle; kullanıcı yolunu değiştirmiş
         // ya da uygulamayı taşımış olabilir.
@@ -721,6 +731,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         _dayWatcher?.Recheck();
         _layer?.EnsureAlive();
+        _layer?.TazelemeIste(UyanmaTazelemeGecikmesi);
 
         // Uykuda geçen sürede ay dönmüş ve liste eskimiş olabilir.
         _ = RefreshHolidaysAsync(force: false);
