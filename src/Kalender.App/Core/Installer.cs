@@ -45,7 +45,13 @@ internal static class Installer
     public static bool IsInstalled => File.Exists(InstalledExe);
 
     public static string Version =>
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+        VersionText(Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0));
+
+    /// <summary>
+    /// Sürümün kullanıcıya gösterilen yazılışı. Sürüm numaraları iki bölümlüdür
+    /// (1.9); üçüncü bölüm yalnızca sıfırdan büyükse yazılır (eski 1.6.4 gibi).
+    /// </summary>
+    public static string VersionText(Version v) => v.Build > 0 ? v.ToString(3) : v.ToString(2);
 
     private static string ShortcutPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Programs), ShortcutName);

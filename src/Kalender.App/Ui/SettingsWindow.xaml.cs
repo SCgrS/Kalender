@@ -101,7 +101,7 @@ public partial class SettingsWindow : Window
             LogLevelCombo.Items.Add(label);
         }
 
-        VersionText.Text = "Sürüm " + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");
+        VersionText.Text = "Sürüm " + Installer.Version;
 
         BackgroundColorButton.ColorPicked += OnBackgroundColorPicked;
         TextColorButton.ColorPicked += OnTextColorPicked;
@@ -1431,7 +1431,7 @@ public partial class SettingsWindow : Window
         }
 
         UpdateService u = _host.Updates;
-        string? yeni = u.Available?.Version.ToString(3);
+        string? yeni = u.Available is UpdateInfo bulunan ? Installer.VersionText(bulunan.Version) : null;
 
         UpdateButton.Visibility = yeni is not null && S.CheckForUpdates ? Visibility.Visible : Visibility.Collapsed;
         UpdateButton.ToolTip = u.State == UpdateState.Failed ? u.Error : null;

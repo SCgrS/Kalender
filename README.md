@@ -53,7 +53,7 @@ Kurulum sistem klasörlerine hiçbir şey yazmaz:
 ### Güncelleme
 
 1.8.0'dan itibaren Kalender yeni sürümü kendisi bulur ve haber verir. Açılıştan bir dakika sonra,
-ardından birkaç saatte bir yeni sürüm olup olmadığına bakar; varsa kurulum penceresine benzeyen bir
+ardından 12 saatte bir yeni sürüm olup olmadığına bakar; varsa kurulum penceresine benzeyen bir
 pencere açılır: **Kalender'in yeni sürümü çıktı**. **Güncelle**'ye basınca kurulum dosyası
 indirilir, SHA-256 özeti ve sürüm bilgisi doğrulanır, Kalender kapanıp yeni sürüm kurulur ve
 kendiliğinden yeniden açılır; takvim bu sırada masaüstünden kalkmaz. **Sonra**'ya basarsanız pencere
@@ -62,7 +62,7 @@ kapanır ve bir hafta sonra yeniden hatırlatılır.
 Beklemek istemezseniz ayarlar penceresinin sol altındaki **Yeni sürüm: …** bildirimine tıklayarak
 da güncelleyebilirsiniz. Ayarlarınız, Google bağlantınız ve yerel veri kopyanız uygulama klasörünün
 dışında durduğu için güncellemede korunur. GitHub'a sürüm numarası dışında bir bilgi gitmez. Denetim
-**Ayarlar > Genel > Güncellemeleri denetle** ile kapatılabilir; o zaman pencere de açılmaz.
+**Ayarlar > Genel > Güncellemeleri otomatik denetle** ile kapatılabilir; o zaman pencere de açılmaz.
 
 Elle güncellemek için yeni sürümün `Kalender-Kurulum.exe` dosyasını indirip çalıştırın, açılan
 pencerede **Güncelle**'ye basın. 1.7.0 ve öncesinde bildirim yoktur; bu sürümlerden 1.8.0'a bir kez
@@ -166,7 +166,7 @@ anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş s
   işle** (kapatırsanız duvar kağıdınıza dokunulmaz ama takvim de görünmez), **Günlük
   ayrıntısı** (Yalnız hatalar / Bilgi / Ayrıntılı) ve **Günlük klasörünü aç**; **Hakkında**
   bölümünde sürüm ve güncelleme durumu, geliştirici bağlantısı
-  ([x.com/CgrShn](https://x.com/CgrShn)), **Sürümler sayfası**, **Güncellemeleri denetle** ve
+  ([x.com/CgrShn](https://x.com/CgrShn)), **Sürümler sayfası**, **Güncellemeleri otomatik denetle** ve
   **Kalender'i kaldır**.
 
 Sol alttaki **güneş / ay** anahtarı yalnızca ayarlar penceresinin görünümünü değiştirir; ilk

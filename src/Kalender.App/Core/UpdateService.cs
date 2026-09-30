@@ -41,7 +41,7 @@ internal enum UpdateState
 /// <summary>
 /// Yeni sürümü GitHub'daki sürümler sayfasından denetler, istenince indirip kurar.
 ///
-/// Denetim açılıştan bir dakika sonra, ardından birkaç saatte bir yapılır. Yeni
+/// Denetim açılıştan bir dakika sonra, ardından 12 saatte bir yapılır. Yeni
 /// sürüm bulunursa <see cref="PromptRequested"/> ile haber verilir; uygulama
 /// güncelleme penceresini açar. Kullanıcı güncellemezse pencere haftada bir
 /// kez yeniden gösterilir (bkz. <see cref="ReminderInterval"/>).
@@ -90,7 +90,7 @@ internal sealed class UpdateService : IDisposable
     /// <summary>Açılışta ilk denetimden önceki bekleme; açılış işleriyle yarışmasın.</summary>
     internal static readonly TimeSpan FirstCheckDelay = TimeSpan.FromMinutes(1);
 
-    private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(6);
+    private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(12);
 
     /// <summary>Ayarlar penceresi açılınca son deneme bundan eskiyse yeniden bakılır.</summary>
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(30);
@@ -219,7 +219,7 @@ internal sealed class UpdateService : IDisposable
             {
                 if (Available?.Version != latest.Version)
                 {
-                    Log.Info($"Yeni sürüm bulundu: {latest.Version.ToString(3)}");
+                    Log.Info($"Yeni sürüm bulundu: {Installer.VersionText(latest.Version)}");
                 }
 
                 Available = latest;
@@ -279,7 +279,7 @@ internal sealed class UpdateService : IDisposable
             Changed?.Invoke();
 
             StartInstaller(file, fromPrompt);
-            Log.Info($"Güncelleme başlatıldı: {CurrentVersion.ToString(3)} -> {info.Version.ToString(3)}");
+            Log.Info($"Güncelleme başlatıldı: {Installer.VersionText(CurrentVersion)} -> {Installer.VersionText(info.Version)}");
 
             ExitRequested?.Invoke();
         }
@@ -366,7 +366,7 @@ internal sealed class UpdateService : IDisposable
             ? value.GetString()
             : null;
 
-    private static ProductInfoHeaderValue UserAgent => new("Kalender", CurrentVersion.ToString(3));
+    private static ProductInfoHeaderValue UserAgent => new("Kalender", Installer.VersionText(CurrentVersion));
 
     // --------------------------------------------------------------- indirme
 
@@ -376,7 +376,7 @@ internal sealed class UpdateService : IDisposable
 
         // Adında "Kurulum" geçiyor: anahtarı tanımayan bir sürüm çıkarsa bile
         // dosya çift tıklanmış gibi kurulum penceresini açar.
-        string target = Path.Combine(DownloadFolder, $"Kalender-Kurulum-{info.Version.ToString(3)}.exe");
+        string target = Path.Combine(DownloadFolder, $"Kalender-Kurulum-{Installer.VersionText(info.Version)}.exe");
         string partial = target + ".indiriliyor";
 
         using var cts = new CancellationTokenSource(DownloadTimeout);
@@ -437,8 +437,8 @@ internal sealed class UpdateService : IDisposable
         if (!string.Equals(v.ProductName, "Kalender", StringComparison.Ordinal) || version != info.Version)
         {
             throw new InvalidDataException(
-                $"İndirilen dosya beklenen Kalender {info.Version.ToString(3)} değil "
-                + $"({v.ProductName} {version.ToString(3)}).");
+                $"İndirilen dosya beklenen Kalender {Installer.VersionText(info.Version)} değil "
+                + $"({v.ProductName} {Installer.VersionText(version)}).");
         }
     }
 

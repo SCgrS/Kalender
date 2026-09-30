@@ -71,7 +71,7 @@ public partial class SetupWindow : Window
             return;
         }
 
-        string yeni = info.Version.ToString(3);
+        string yeni = Installer.VersionText(info.Version);
 
         switch (u.State)
         {
@@ -96,7 +96,7 @@ public partial class SetupWindow : Window
 
             default:
                 HeadingText.Text = "Kalender'in yeni sürümü çıktı";
-                BodyText.Text = $"Bu bilgisayarda {UpdateService.CurrentVersion.ToString(3)} sürümü kurulu; "
+                BodyText.Text = $"Bu bilgisayarda {Installer.VersionText(UpdateService.CurrentVersion)} sürümü kurulu; "
                     + $"yeni sürüm {yeni}. Güncelle'ye basınca yeni sürüm indirilip kurulur ve Kalender "
                     + "kendiliğinden yeniden açılır. Ayarlarınıza dokunulmaz.";
                 NoteText.Text = "Şimdi güncellemezseniz bir hafta sonra yeniden hatırlatılır. Ayarlar "

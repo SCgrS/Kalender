@@ -209,6 +209,10 @@ internal static class Program
 
     private static Task DenetleAsync(object hizmet, bool hatirlat) => (Task)Cagir(hizmet, "CheckAsync", hatirlat)!;
 
+    /// <summary>Sürümün kullanıcıya gösterilen yazılışı (iki bölümlü; uygulamanın kendi işleviyle).</summary>
+    private static string Kisa(Version surum)
+        => (string)Cagir(Tip("Kalender.Core.Installer"), "VersionText", surum)!;
+
     private static string Durum(object hizmet) => Oku(hizmet, "State")!.ToString()!;
 
     private static object SurumBilgisi(Version surum, string adres, long boy, string? sha)
@@ -260,7 +264,14 @@ internal static class Program
     {
         string urun = Uyg.GetCustomAttribute<AssemblyProductAttribute>()!.Product;
         Version kurulu = KuruluSurum;
-        Console.WriteLine($"{urun} {kurulu.ToString(3)} güncelleme sınaması");
+        Console.WriteLine($"{urun} {Kisa(kurulu)} güncelleme sınaması");
+
+        Console.WriteLine("0) Sürüm numarasının yazılışı");
+        Denetle("sürüm iki bölümlü yazılır", Kisa(new Version(1, 9, 0)) == "1.9" && Kisa(new Version(1, 9)) == "1.9"
+            && Kisa(new Version(1, 10, 0, 0)) == "1.10");
+        Denetle("eski üç bölümlü sürüm olduğu gibi yazılır", Kisa(new Version(1, 6, 4)) == "1.6.4");
+        Denetle("bu sürümün numarası iki bölümlü", Kisa(kurulu).Count(c => c == '.') == 1
+            && (string)DuraganOku(Tip("Kalender.Core.Installer"), "Version")! == Kisa(kurulu), Kisa(kurulu));
 
         using var sunucu = new Sunucu();
         const string yol = "/releases/latest";
@@ -286,12 +297,12 @@ internal static class Program
         // --------------------------------------------------------------- denetim
         Console.WriteLine("2) Denetim ve pencere isteği");
 
-        sunucu.Koy(yol, 200, SurumYaniti("v99.0.0"));
+        sunucu.Koy(yol, 200, SurumYaniti("v99.0"));
 
         {
             var (h, _, istek) = YeniHizmet();
             await DenetleAsync(h, true);
-            Denetle("yeni sürüm bulunur", Durum(h) == "Available"
+            Denetle("iki bölümlü etiketli yeni sürüm bulunur", Durum(h) == "Available"
                 && Oku(Oku(h, "Available")!, "Version")!.ToString() == "99.0.0", Durum(h));
             Denetle("zamanlanmış denetim pencere ister", istek() == 1, $"{istek()} istek");
             ((IDisposable)h).Dispose();
@@ -357,7 +368,7 @@ internal static class Program
         byte[] cop = RandomNumberGenerator.GetBytes(300_000);
         string copSha = Convert.ToHexString(SHA256.HashData(cop));
         sunucu.Koy("/kurulum.exe", 200, cop);
-        sunucu.Koy(yol, 200, SurumYaniti("v99.0.0"));
+        sunucu.Koy(yol, 200, SurumYaniti("v99.0"));
 
         {
             var (h, _, _) = YeniHizmet();
@@ -375,8 +386,9 @@ internal static class Program
             Denetle("başlık ürünün adını taşır", pencere.Title == urun + " güncellemesi", pencere.Title);
             Denetle("yeni sürüm çıktığını söyler", Metin(pencere, "HeadingText").EndsWith("yeni sürümü çıktı"),
                 Metin(pencere, "HeadingText"));
-            Denetle("kurulu ve yeni sürümü yazar", Metin(pencere, "BodyText").Contains(kurulu.ToString(3))
-                && Metin(pencere, "BodyText").Contains("99.0.0"));
+            Denetle("kurulu ve yeni sürümü iki bölümlü yazar",
+                Metin(pencere, "BodyText").Contains($"{Kisa(kurulu)} sürümü kurulu")
+                && Metin(pencere, "BodyText").Contains("yeni sürüm 99.0. "), Metin(pencere, "BodyText"));
             Denetle("ayarlara dokunulmayacağını söyler", Metin(pencere, "BodyText").Contains("Ayarlarınıza dokunulmaz"));
             Denetle("haftalık hatırlatmayı söyler", Metin(pencere, "NoteText").Contains("bir hafta sonra"));
             Denetle("düğmeler: Güncelle ve Sonra", (string)guncelle.Content == "Güncelle"

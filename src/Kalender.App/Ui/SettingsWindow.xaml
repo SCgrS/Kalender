@@ -863,12 +863,10 @@
                                 <Separator />
                                 <DockPanel Style="{StaticResource Satir}">
                                     <CheckBox x:Name="UpdateCheckBox" DockPanel.Dock="Right" Margin="24,0,0,0"
-                                              AutomationProperties.Name="Güncellemeleri denetle"
+                                              AutomationProperties.Name="Güncellemeleri otomatik denetle"
                                               Checked="OnUpdateCheckChanged" Unchecked="OnUpdateCheckChanged" />
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Güncellemeleri denetle" />
-                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Açılıştan bir dakika sonra, ardından birkaç saatte bir GitHub'daki sürümler sayfasına bakılır; sürüm numarası dışında hiçbir bilgi gönderilmez. Yeni sürüm varsa bir pencereyle haber verilir; Güncelle'ye basınca indirilip kurulur, ayarlarınız ve Google bağlantınız korunur. Güncellemezseniz haftada bir yeniden hatırlatılır." />
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Güncellemeleri otomatik denetle" />
                                     </StackPanel>
                                 </DockPanel>
                                 <Separator />
