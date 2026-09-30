@@ -34,9 +34,9 @@ internal sealed record EkrandakiTakvim(MonitorTarget Monitor, CalendarLayout? La
 /// tek bir görüntüde birleştirir, bunu <see cref="WallpaperCanvas"/> ile duvar
 /// kağıdına yazar ve ekran yapılandırması değiştiğinde her şeyi yeniler.
 ///
-/// Takvimin ekranda hangi piksellerde durduğunu da burası bilir; gün kutusu ve
-/// sağ tık menüsü <see cref="HitTest"/> ile <see cref="HitTestBlock"/> üzerinden
-/// buraya soruyor.
+/// Takvimin ekranda hangi piksellerde durduğunu da burası bilir; gün kutusu,
+/// sağ tık menüsü ve ay düğmeleri <see cref="HitTest"/>, <see cref="HitTestBlock"/>
+/// ve <see cref="HitTestNav"/> üzerinden buraya soruyor.
 /// </summary>
 internal sealed class DesktopLayerManager : IDisposable
 {
@@ -151,7 +151,8 @@ internal sealed class DesktopLayerManager : IDisposable
 
     /// <summary>
     /// Ekranda hangi ayın çizileceğini belirler. Normalde içinde bulunduğumuz
-    /// aydır; sağ tık menüsünden ileri geri gidildiğinde geçici olarak değişir.
+    /// aydır; ay düğmeleriyle ya da sağ tık menüsünden ileri geri gidildiğinde
+    /// geçici olarak değişir.
     /// </summary>
     /// <param name="refresh">
     /// Hemen yeniden çizilsin mi? Yeni ayın verisi hemen ardından
@@ -641,6 +642,23 @@ internal sealed class DesktopLayerManager : IDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Ekran koordinatındaki nokta ay düğmelerinden birinin üzerinde mi?
+    /// -1 önceki ay, +1 sonraki ay, 0 hiçbiri.
+    /// </summary>
+    public int HitTestNav(Point screenPoint)
+    {
+        foreach (EkrandakiTakvim screen in _screens)
+        {
+            if (screen.Monitor.Bounds.Contains(screenPoint))
+            {
+                return screen.Layout?.HitTestNav(ToLocal(screen.Monitor, screenPoint)) ?? 0;
+            }
+        }
+
+        return 0;
     }
 
     /// <summary>Ekran koordinatındaki noktayı monitörün kendi koordinatına çevirir.</summary>

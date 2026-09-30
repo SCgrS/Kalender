@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Kalender.Core;
 using Kalender.Google;
@@ -130,6 +131,7 @@ public partial class SettingsWindow : Window
         SourceInitialized += (_, _) => UiTema.BaslikCubugunuBoya(this, _darkWindow);
 
         BuildPresets();
+        BuildReadyPhotos();
         BuildMonitorRows();
         LoadFromSettings();
 
@@ -138,7 +140,8 @@ public partial class SettingsWindow : Window
         // Pencere etkinleşince klavye odağı seçili sayfada olsun; oklar hemen çalışır.
         FocusManager.SetFocusedElement(this, (ListBoxItem)NavList.Items[0]);
 
-        PresetPanel.PreviewGotKeyboardFocus += OnPresetPanelPreviewGotKeyboardFocus;
+        PresetPanel.PreviewGotKeyboardFocus += OnSwatchPanelPreviewGotKeyboardFocus;
+        ReadyPhotoPanel.PreviewGotKeyboardFocus += OnSwatchPanelPreviewGotKeyboardFocus;
 
         // Çözünürlük ya da ölçek değişirse satırlardaki ölçüler eskir; taşıma
         // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
@@ -260,7 +263,7 @@ public partial class SettingsWindow : Window
             // Dar sütunda tam yol dosya adının ortasından kırılıyordu; tam yol ipucunda.
             PhotoPathText.Text = string.IsNullOrWhiteSpace(a.PhotoPath)
                 ? "Şu an fotoğraf kullanılmıyor."
-                : "Seçili fotoğraf: " + Path.GetFileName(a.PhotoPath);
+                : "Seçili fotoğraf: " + PhotoName(a.PhotoPath);
             PhotoPathText.ToolTip = string.IsNullOrWhiteSpace(a.PhotoPath) ? null : a.PhotoPath;
 
             RemovePhotoButton.IsEnabled = !string.IsNullOrWhiteSpace(a.PhotoPath);
@@ -304,6 +307,7 @@ public partial class SettingsWindow : Window
             SelectedScreensRadio.IsChecked = a.DisplayTarget == DisplayTarget.SelectedScreens;
 
             RefreshPresetSelection();
+            RefreshReadyPhotoSelection();
 
             foreach (MonitorRow row in _rows)
             {
@@ -392,26 +396,108 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Hazır renkler tek sekme durağıdır. Gruba klavyeyle dışarıdan girilince
-    /// (Tab, Shift+Tab) odak gruptaki ilk ya da en son gezilen renge değil,
-    /// seçili renge gider; ekran okuyucu da girişte seçimi okur. Grup içinde
-    /// oklarla gezinmeye ve fareyle tıklanan renge karışılmaz.
+    /// Hazır renkler ve hazır fotoğraflar birer sekme durağıdır. Gruba
+    /// klavyeyle dışarıdan girilince (Tab, Shift+Tab) odak gruptaki ilk ya da
+    /// en son gezilen öğeye değil, seçili öğeye gider; ekran okuyucu da
+    /// girişte seçimi okur. Grup içinde oklarla gezinmeye ve fareyle tıklanan
+    /// öğeye karışılmaz.
     /// </summary>
-    private void OnPresetPanelPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    private void OnSwatchPanelPreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        bool grupIcinden = e.OldFocus is Visual eski && PresetPanel.IsAncestorOf(eski);
+        if (sender is not Panel grup)
+        {
+            return;
+        }
+
+        bool grupIcinden = e.OldFocus is Visual eski && grup.IsAncestorOf(eski);
         if (grupIcinden || InputManager.Current.MostRecentInputDevice is not KeyboardDevice)
         {
             return;
         }
 
-        RadioButton? secili = PresetPanel.Children.OfType<RadioButton>().FirstOrDefault(s => s.IsChecked == true);
+        RadioButton? secili = grup.Children.OfType<RadioButton>().FirstOrDefault(s => s.IsChecked == true);
         if (secili is not null && !ReferenceEquals(e.NewFocus, secili))
         {
             e.Handled = true;
             secili.Focus();
         }
     }
+
+    /// <summary>
+    /// Hazır fotoğrafların küçük resimleri. Renk örnekleriyle aynı biçimde
+    /// seçilir: seçilinin çevresinde vurgu halkası ve onay işareti durur.
+    /// </summary>
+    private void BuildReadyPhotos()
+    {
+        ReadyPhotoPanel.Children.Clear();
+
+        var style = (Style)FindResource("RenkOrnegi");
+
+        foreach (HazirFotograf foto in HazirFotograflar.All)
+        {
+            // 16:9 küçük resim; halka ve iç kenarlıkla birlikte 128 × 76, dördü tek sıraya sığsın.
+            var kutu = new RadioButton
+            {
+                Style = style,
+                Tag = foto,
+                Width = 128,
+                Height = 76,
+                Margin = new Thickness(0, 0, 8, 8),
+                Background = ThumbnailBrush(foto),
+                Foreground = Brushes.White,
+                ToolTip = $"{foto.Name} · Fotoğraf: {foto.Photographer} (Unsplash)",
+            };
+
+            AutomationProperties.SetName(kutu, foto.Name);
+
+            kutu.Click += OnReadyPhotoClicked;
+            ReadyPhotoPanel.Children.Add(kutu);
+        }
+    }
+
+    /// <summary>Küçük resmi gömülü kaynaktan okur; okunamazsa düz gri.</summary>
+    private static Brush ThumbnailBrush(HazirFotograf foto)
+    {
+        try
+        {
+            using Stream? akis = HazirFotograflar.OpenThumbnail(foto);
+            if (akis is not null)
+            {
+                var resim = new BitmapImage();
+                resim.BeginInit();
+                resim.CacheOption = BitmapCacheOption.OnLoad;
+                resim.StreamSource = akis;
+                resim.EndInit();
+                resim.Freeze();
+
+                var firca = new ImageBrush(resim) { Stretch = Stretch.UniformToFill };
+                firca.Freeze();
+                return firca;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug($"Küçük resim okunamadı ({foto.Id}): {ex.Message}");
+        }
+
+        return Brushes.Gray;
+    }
+
+    /// <summary>Zemin şu an hazır fotoğraflardan biriyse onu işaretler.</summary>
+    private void RefreshReadyPhotoSelection()
+    {
+        HazirFotograf? secili = S.Appearance.BackgroundMode == BackgroundMode.Photo
+            ? HazirFotograflar.Find(S.Appearance.PhotoPath)
+            : null;
+
+        foreach (RadioButton kutu in ReadyPhotoPanel.Children.OfType<RadioButton>())
+        {
+            kutu.IsChecked = secili is not null && Equals(kutu.Tag, secili);
+        }
+    }
+
+    /// <summary>Fotoğrafın ayarlarda görünen adı: hazır fotoğrafın adı ya da dosya adı.</summary>
+    private static string PhotoName(string path) => HazirFotograflar.Find(path)?.Name ?? Path.GetFileName(path);
 
     private void BuildMonitorRows()
     {
@@ -491,6 +577,41 @@ public partial class SettingsWindow : Window
 
         S.Appearance.BackgroundMode = BackgroundMode.Photo;
         S.Appearance.PhotoPath = path;
+
+        LoadFromSettings();
+        ScheduleApply();
+    }
+
+    /// <summary>
+    /// Hazır fotoğraflardan biri seçildi: exe'den diske çıkarılır ve zemin
+    /// olur. Hepsi koyu fotoğraflar; fotoğraf zeminde yazı rengini kullanıcı
+    /// seçtiği için koyu bir yazı rengi kalmışsa takvim okunmasın diye beyaza
+    /// dönülür. Açık bir renk seçilmişse dokunulmaz.
+    /// </summary>
+    private void OnReadyPhotoClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: HazirFotograf foto })
+        {
+            return;
+        }
+
+        string? yol = HazirFotograflar.Prepare(foto);
+        if (yol is null)
+        {
+            LoadFromSettings();
+            MessageBox.Show(this,
+                "Fotoğraf hazırlanamadı. Ayrıntılar günlük dosyasına yazıldı.",
+                "Kalender", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        S.Appearance.BackgroundMode = BackgroundMode.Photo;
+        S.Appearance.PhotoPath = yol;
+
+        if (!ColorTools.IsLight(ColorTools.Parse(S.Appearance.TextColor, System.Drawing.Color.White)))
+        {
+            S.Appearance.TextColor = "#FFFFFF";
+        }
 
         LoadFromSettings();
         ScheduleApply();
@@ -1084,6 +1205,43 @@ public partial class SettingsWindow : Window
                 "Yerleştirme ekranı açılamadı. Ayrıntılar günlük dosyasına yazıldı.",
                 "Kalender", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    /// <summary>
+    /// "Varsayılana dön": takvimi her ekranda varsayılan yerine (sağ alt köşe;
+    /// bkz. <see cref="PlacementDefaults"/>) ve %100 boyutuna döndürür. Hangi
+    /// ekranlarda görüneceği, "bu ekranda göster" ve ekran fotoğrafları
+    /// korunur. Elle yerleştirme emeği boşa gitmesin diye önce sorulur.
+    /// </summary>
+    private void OnResetPlacement(object sender, RoutedEventArgs e)
+    {
+        MessageBoxResult cevap = MessageBox.Show(this,
+            "Takvim bütün ekranlarda varsayılan yerine ve %100 boyutuna dönsün mü?",
+            "Kalender", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+
+        if (cevap != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        foreach (MonitorTarget monitor in _host.Monitors)
+        {
+            // Kimliği o an okunamayan ekranın geçici adı ayarlara yazılmıyor.
+            if (monitor.KimlikOkunamadi)
+            {
+                continue;
+            }
+
+            MonitorPlacement varsayilan = PlacementDefaults.For(monitor);
+            MonitorPlacement yerlesim = S.PlacementFor(monitor.StableId);
+            yerlesim.XRatio = varsayilan.XRatio;
+            yerlesim.YRatio = varsayilan.YRatio;
+            yerlesim.ScalePercent = varsayilan.ScalePercent;
+        }
+
+        BuildMonitorRows();
+        LoadFromSettings();
+        _host.ApplyAppearance();
     }
 
     private void OnPickMonitorPhoto(object sender, RoutedEventArgs e)

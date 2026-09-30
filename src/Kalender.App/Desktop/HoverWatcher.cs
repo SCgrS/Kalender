@@ -49,6 +49,9 @@ internal sealed class HoverWatcher : IDisposable
     private bool _shown;
     private bool _overCalendar;
 
+    /// <summary>İmlecin bir önceki turdaki yeri; takvimde gezinmeyi anlamak için.</summary>
+    private Point _lastPoint;
+
     public HoverWatcher(DesktopLayerManager layer, Func<CalendarDataSnapshot> data)
     {
         _layer = layer;
@@ -66,10 +69,17 @@ internal sealed class HoverWatcher : IDisposable
 
     /// <summary>
     /// İmleç masaüstünde takvim bloğunun üzerine girdi (true) ya da çıktı (false).
-    /// Sağ tık kancası yalnızca "true" olduğu sürece takılı durur; masaüstünün
-    /// geri kalanında sistemin fare girdisine hiç dokunulmaz.
+    /// Fare kancası (sağ tık menüsü, ay düğmeleri) yalnızca "true" olduğu sürece
+    /// takılı durur; masaüstünün geri kalanında sistemin fare girdisine hiç dokunulmaz.
     /// </summary>
     public event Action<bool>? CalendarHoverChanged;
+
+    /// <summary>
+    /// İmleç takvim bloğunun üzerinde hareket etti. Başka bir aya gidilmişken
+    /// bu aya dönüş sayacı buna göre baştan başlar: gün kutusunu okuyan
+    /// kullanıcının önünden ay kaçmasın.
+    /// </summary>
+    public event Action? CalendarActivity;
 
     public void Start() => _timer.Start();
 
@@ -118,10 +128,18 @@ internal sealed class HoverWatcher : IDisposable
                 && !ForegroundCovers(point)
                 && NotificationsAllowed();
 
-            // Sağ tık kancası fare tuşu basılıyken de takılı kalmalı: karar
-            // basma anında verilir, bırakma anında uygulanır. Bu yüzden blok
+            // Fare kancası tuş basılıyken de takılı kalmalı: karar basma
+            // anında verilir, bırakma anında uygulanır. Bu yüzden blok
             // denetimi tuş denetiminden önce yapılıyor.
-            SetCalendarHover(masaustuGorunuyor && _layer.HitTestBlock(point) is not null);
+            bool takvimde = masaustuGorunuyor && _layer.HitTestBlock(point) is not null;
+            SetCalendarHover(takvimde);
+
+            if (takvimde && point != _lastPoint)
+            {
+                CalendarActivity?.Invoke();
+            }
+
+            _lastPoint = point;
 
             if (!masaustuGorunuyor || NativeMethods.IsMouseButtonDown())
             {

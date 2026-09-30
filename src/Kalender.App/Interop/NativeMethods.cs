@@ -186,10 +186,14 @@ internal static class NativeMethods
     public const uint SMTO_ABORTIFHUNG = 0x0002;
 
     // Sistem ölçüleri
+    public const int SM_CXICONSPACING = 38;
     public const int SM_XVIRTUALSCREEN = 76;
     public const int SM_YVIRTUALSCREEN = 77;
     public const int SM_CXVIRTUALSCREEN = 78;
     public const int SM_CYVIRTUALSCREEN = 79;
+
+    /// <summary>Liste görünümündeki simgeler arası aralık; sonuç (cx, cy) tek sayıda gelir.</summary>
+    public const uint LVM_GETITEMSPACING = 0x1033;
 
     public const uint MONITORINFOF_PRIMARY = 0x00000001;
     public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
@@ -354,6 +358,12 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetricsForDpi(int nIndex, uint dpi);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -35,7 +35,7 @@ internal sealed class MonitorRow : INotifyPropertyChanged
         {
             string photo = string.IsNullOrWhiteSpace(Placement.PhotoPath)
                 ? "genel zemin"
-                : Path.GetFileName(Placement.PhotoPath);
+                : HazirFotograflar.Find(Placement.PhotoPath)?.Name ?? Path.GetFileName(Placement.PhotoPath);
 
             return $"{Monitor.Bounds.Width} × {Monitor.Bounds.Height} · %{Monitor.Dpi * 100 / 96} ölçek · {photo}";
         }

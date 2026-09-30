@@ -19,9 +19,9 @@
     <!-- Kaynak dosyalar UTF-8; Turkce karakterler dogru okunsun diye acikca belirtiliyor. -->
     <CodePage>65001</CodePage>
 
-    <Version>1.6.4</Version>
-    <AssemblyVersion>1.6.4.0</AssemblyVersion>
-    <FileVersion>1.6.4.0</FileVersion>
+    <Version>1.7.0</Version>
+    <AssemblyVersion>1.7.0.0</AssemblyVersion>
+    <FileVersion>1.7.0.0</FileVersion>
     <Product>Kalender</Product>
     <Company>Kalender</Company>
     <Description>Masaustu duvar kagidina islenmis aylik takvim</Description>
@@ -48,6 +48,10 @@
   <ItemGroup>
     <!-- Tepsi simgesi tek dosya yayinda da bulunabilsin diye gomuluyor. -->
     <EmbeddedResource Include="Assets\Kalender.ico" LogicalName="Kalender.Assets.Kalender.ico" />
+    <!-- Hazir zemin fotograflari (Unsplash lisansli; UCUNCU-TARAF.md) ve ayarlar
+         penceresindeki kucuk resimleri. Secilince AppData'ya cikarilir. -->
+    <EmbeddedResource Include="Assets\DuvarKagitlari\*.jpg"
+                      LogicalName="Kalender.Assets.DuvarKagitlari.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

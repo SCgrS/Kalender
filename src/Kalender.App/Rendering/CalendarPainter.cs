@@ -16,8 +16,18 @@ namespace Kalender.Rendering;
 internal sealed class CalendarPainter : IDisposable
 {
     // Ölçek 1.0 iken punto ve ölçüler (piksel).
-    private const float MonthFontSize = 46f;
+    private const float MonthFontSize = 52f;
     private const float MonthLetterSpacing = 6f;
+
+    // Ay düğmelerinin okları (ölçek 1.0 iken): uçtan kuyruğa yarım yükseklik,
+    // yatay derinlik ve çizgi kalınlığı. Kalınlık, yazıların kalınlığına yakın.
+    private const float NavArrowHalfHeight = 10f;
+    private const float NavArrowDepth = 9.5f;
+    private const float NavArrowStroke = 4f;
+    private const float NavDividerStroke = 2f;
+
+    /// <summary>Kapsülün ortasındaki ayırıcı çizginin saydamlığı (0-255).</summary>
+    private const int NavDividerAlpha = 70;
 
     // Gün adı harfleri, rakamlardan birkaç punto büyük duruyor; şartname böyle istiyor.
     private const float WeekdayFontSize = 43f;
@@ -78,8 +88,74 @@ internal sealed class CalendarPainter : IDisposable
         float scale = layout.Scale;
 
         DrawMonthTitle(g, layout, theme, scale);
+        DrawNavButtons(g, layout, theme, scale);
         DrawWeekdayHeader(g, layout, theme, appearance, scale);
         DrawDays(g, layout, theme, appearance, data, today, scale);
+    }
+
+    /// <summary>
+    /// Ay adının hizasındaki önceki/sonraki ay düğmeleri: tek bir kapsülün
+    /// içinde iki ok, ortada ince bir ayırıcı. Kapsül bugünün dairesiyle aynı
+    /// renkte; kullanıcı daireye renk verdiyse düğmeler de ona uyar.
+    ///
+    /// Takvim duvar kağıdına işlendiği için düğmelerin üzerine gelme ya da
+    /// basılma hâli çizilmez; tıklama sonucu ayın değişmesi yeterli geri bildirim.
+    /// </summary>
+    private static void DrawNavButtons(Graphics g, CalendarLayout layout, Theme theme, float scale)
+    {
+        RectangleF kapsul = layout.NavBounds;
+
+        using (GraphicsPath yol = Capsule(kapsul))
+        using (var dolgu = new SolidBrush(theme.TodayCircle))
+        {
+            g.FillPath(dolgu, yol);
+        }
+
+        float orta = (layout.PrevNavCenter.X + layout.NextNavCenter.X) / 2f;
+        float bosluk = kapsul.Height / 4f;
+        using (var ayirici = new Pen(ColorTools.WithAlpha(theme.Text, NavDividerAlpha), NavDividerStroke * scale))
+        {
+            g.DrawLine(ayirici, orta, kapsul.Top + bosluk, orta, kapsul.Bottom - bosluk);
+        }
+
+        using var kalem = new Pen(theme.Text, NavArrowStroke * scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+            LineJoin = LineJoin.Round,
+        };
+
+        DrawChevron(g, kalem, layout.PrevNavCenter, -1, scale);
+        DrawChevron(g, kalem, layout.NextNavCenter, 1, scale);
+    }
+
+    /// <summary>Ortası verilen noktada, <paramref name="yon"/> yönüne bakan ok (-1 sol, 1 sağ).</summary>
+    private static void DrawChevron(Graphics g, Pen kalem, PointF merkez, int yon, float scale)
+    {
+        float yarimYukseklik = NavArrowHalfHeight * scale;
+        float yarimDerinlik = NavArrowDepth * scale / 2f;
+
+        // Uç, bakılan yönde; kuyruk uçları öbür yanda. Okun kutusu merkezde kalır.
+        float uc = merkez.X + (yon * yarimDerinlik);
+        float kuyruk = merkez.X - (yon * yarimDerinlik);
+
+        g.DrawLines(kalem, new[]
+        {
+            new PointF(kuyruk, merkez.Y - yarimYukseklik),
+            new PointF(uc, merkez.Y),
+            new PointF(kuyruk, merkez.Y + yarimYukseklik),
+        });
+    }
+
+    /// <summary>Uçları tam yarım daire olan yuvarlatılmış dikdörtgen.</summary>
+    private static GraphicsPath Capsule(RectangleF r)
+    {
+        float d = Math.Min(r.Width, r.Height);
+        var yol = new GraphicsPath();
+        yol.AddArc(r.X, r.Y, d, d, 90, 180);
+        yol.AddArc(r.Right - d, r.Y, d, d, 270, 180);
+        yol.CloseFigure();
+        return yol;
     }
 
     private void DrawMonthTitle(Graphics g, CalendarLayout layout, Theme theme, float scale)

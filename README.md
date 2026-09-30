@@ -16,16 +16,20 @@ görevleri küçük bir kutuda listelenir. Google hesabına yalnızca okuma izni
 - Pazar günleri, isteğe bağlı olarak cumartesiler ve Türkiye resmi tatilleri kırmızı gösterilir.
 - Gün rakamının altında, o güne düşen etkinlik ve görevler için renkli noktacıklar çıkar.
 - Bir günün üzerinde beklediğinizde o günün tatili, etkinlikleri ve görevleri listelenir.
+- Ay adının hizasındaki **‹ ›** düğmeleriyle önceki ya da sonraki aya geçilir; takvime 30 saniye
+  dokunulmazsa içinde bulunulan aya döner.
 - Takvimin üzerine sağ tıklayınca güne gitme, ay değiştirme ve yeni kayıt açma menüsü çıkar.
-- Zemin düz renk ya da kendi fotoğrafınız olabilir; konum, boyut ve fotoğraf her monitör için
-  ayrı ayarlanır.
+- Zemin düz renk, uygulamayla gelen dört fotoğraftan biri ya da kendi fotoğrafınız olabilir;
+  konum, boyut ve fotoğraf her monitör için ayrı ayarlanır.
+- Takvim ilk açılışta her ekranın sağ alt köşesinde durur: sağında bir masaüstü simgesi (ör. bir
+  klasör) sığacak kadar boşluk kalır, görev çubuğunun biraz üstündedir.
 - Kalender kapalıyken duvar kağıdında takvimsiz zemin kalır; ekran farklı görünmez.
 
 ## Kurulum
 
 ### [⬇ Kalender-Kurulum.exe indir](https://github.com/SCgrS/Kalender/releases/latest/download/Kalender-Kurulum.exe)
 
-Tek dosya, 139 MB. Çalışması için gereken her şey içinde; ayrıca .NET kurmanız gerekmez.
+Tek dosya, yaklaşık 144 MB. Çalışması için gereken her şey içinde; ayrıca .NET kurmanız gerekmez.
 Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit; yönetici hakkı gerekmez.
 
 > Depo özel (private) olduğu için indirme bağlantısı yalnızca GitHub'da oturumu açık olan
@@ -126,9 +130,10 @@ Tepsi (saatin yanındaki bildirim alanı) simgesine **tıklayın** ya da sağ t�
 seçin. Kalender açıkken `Kalender.exe`'yi yeniden çalıştırmak da ayarları açar. Her değişiklik
 anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş sayfa vardır:
 
-- **Arka plan** — **Hazır renkler** (koyudan açığa sekiz renk: Mürekkep, Gece Mavisi, Kömür,
-  Çam Yeşili, Tarçın, Sis Grisi, Kum, Kağıt), **Kendi rengim** (düğmeye tıklayınca renk çarkı
-  açılır; `#2E3238` gibi kodu elle de yazabilirsiniz) ya da **Fotoğraf seç…**. Fotoğrafta
+- **Arka plan** — **Hazır renkler** (koyudan açığa sekiz renk: Siyah, Kuzgun, Mürekkep, Gece
+  Mavisi, Kömür, Kum Taşı, Kum, Kağıt), **Kendi rengim** (düğmeye tıklayınca renk çarkı
+  açılır; `#2E3238` gibi kodu elle de yazabilirsiniz), **Hazır fotoğraflar** (uygulamayla gelen
+  dört koyu fotoğraf; tıklayınca zemin o olur) ya da **Fotoğraf seç…**. Fotoğrafta
   **Yerleşim**: Kapla, Sığdır, Ortala, Döşe. **Takvimin arkasını karart** (yalnız fotoğraf
   zeminde) takvimi ortalayan bir kare koyar: değer arttıkça koyulaşır, köşeleri düzleşir ve
   kenarı keskinleşir; %100'de köşesiz, tam opak bir kare olur.
@@ -141,7 +146,8 @@ anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş s
 - **Boyut ve Konum** — **Tüm ekranlarda**, **Yalnız ana ekranda** ya da **Seçtiğim ekranlarda**
   (**Bu ekranda göster** kutusu). Her ekran için **Takvimi taşı** (sürükleyip bırakın;
   kenarlara ve ortaya yaklaşınca hizalanır, Esc vazgeçer), **Boyut** (%80–150) ve **Bu ekrana
-  fotoğraf…**.
+  fotoğraf…**. **Varsayılana dön** takvimi her ekranda sağ alt köşedeki ilk yerine ve %100
+  boyutuna getirir (önce sorar; ekran seçimi ve ekran fotoğrafları değişmez).
 - **Google** — hesap bağlantısı, istemci bilgileri ve bağlandıktan sonraki seçenekler;
   yukarıdaki bölümde anlatıldı.
 - **Genel** — **Windows açılışında Kalender'i başlat**, **Takvimi Windows duvar kağıdına
@@ -183,6 +189,18 @@ kapanır. Kutu tıklanmaz, sürüklenmez; ekran kenarına taşacaksa konumunu ke
 Kutunun zemini varsayılan olarak %95 opaktır. **Ayarlar > Renkler > Gün kutusu > Kutunun
 opaklığı** ile %40'a kadar indirebilirsiniz; yazılar her değerde tam opak kalır.
 
+## Ay düğmeleri
+
+Ay adının hizasında, sağda bir kapsülün içinde iki ok durur: **‹** Cuma ile Cumartesi'nin,
+**›** Cumartesi ile Pazar'ın tam üstündedir. Tıklayınca takvim bir ay geri ya da ileri gider;
+yeni ayın etkinlikleri Google'dan alınır. Düğmeye tıklamak masaüstüne geçmez (simge seçimi ya da
+seçim kutusu başlamaz). Kapsül bugünün dairesiyle aynı renktedir; takvim duvar kağıdının parçası
+olduğu için üzerine gelince değişmez, tıklayınca ay değişir.
+
+Başka bir aya gittiğinizde takvime **30 saniye dokunulmazsa kendiliğinden bu aya döner**. Ay
+düğmesine ya da sağ tık menüsüne tıklamak ve fareyi takvimin üzerinde gezdirmek (örneğin gün
+kutusunu okurken) dokunmak sayılır; süre her seferinde baştan başlar.
+
 ## Takvimin üzerinde sağ tık
 
 Masaüstündeki takvimin üzerine sağ tıklayınca Kalender'in kendi menüsü açılır. Masaüstünün geri
@@ -197,8 +215,8 @@ kalanında Windows'un kendi menüsü çıkmaya devam eder.
 | Yeni görev… | Google Takvim'i o günün görünümünde açar (görev için doğrudan adres yok) |
 | Ayarlar | Ayarlar penceresini açar |
 
-Başka bir aya gittiğinizde takvim **2 dakika sonra kendiliğinden bu aya döner**. Ay adının ya
-da gün harflerinin üzerine sağ tıklarsanız ilk satır *(ay) ayını Google Takvim'de aç* olur.
+Ay adının ya da gün harflerinin üzerine sağ tıklarsanız ilk satır *(ay) ayını Google Takvim'de
+aç* olur.
 
 ## Resmi tatiller
 
@@ -220,6 +238,8 @@ Her şey `%LOCALAPPDATA%\Kalender` altındadır; başka hiçbir yere yazılmaz:
 - `cache\google.json` — görünen ayın etkinlik ve görev kopyası; `cache\tatiller.json` — tatiller.
 - `zemin\` — duvar kağıdı olarak uygulanan görüntüler; `onceki-duvar-kagidi.json` — Kalender'den
   önceki duvar kağıdınızın yedeği; `logs\` — günlükler.
+- `duvar-kagitlari\` — hazır fotoğraflardan seçtiğiniz, uygulamanın içinden çıkarılan fotoğraf
+  (seçmezseniz klasör oluşmaz).
 
 Ağa yalnızca Google'ın Takvim ve Görevler API'lerine ve tatil ICS adresine çıkılır. Kayıt
 defterinde `HKCU\...\Run` (açılışta başlatma), `HKCU\...\Uninstall\Kalender` (uygulamalar

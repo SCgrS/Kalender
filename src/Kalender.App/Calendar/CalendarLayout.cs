@@ -31,9 +31,8 @@ internal sealed class DayCell
 
 /// <summary>
 /// Takvimin geometrisi. Hem çizim hem de fare konumundan gün bulma
-/// (hit-test) aynı nesneyi kullanır; böylece ikisi asla ayrışmaz.
-/// İleride takvim alanına özel sağ tık menüsü eklendiğinde de aynı
-/// hesap kullanılacak.
+/// (hit-test) aynı nesneyi kullanır; böylece ikisi asla ayrışmaz. Sağ tık
+/// menüsü ve ay düğmeleri de aynı hesaptan yararlanır.
 /// </summary>
 internal sealed class CalendarLayout
 {
@@ -49,6 +48,18 @@ internal sealed class CalendarLayout
     /// <summary>Başlık + gün adları + 6 hafta = 8 satırlık dikey ritim.</summary>
     private const int TotalRows = 2 + WeekRows;
 
+    /// <summary>Ölçek 1.0 iken ay düğmelerini taşıyan kapsülün yüksekliği (piksel).</summary>
+    private const float BaseNavHeight = 52f;
+
+    /// <summary>Ölçek 1.0 iken kapsülün, okların ortasından dışa taşma payı (piksel).</summary>
+    private const float BaseNavOverhang = 32f;
+
+    /// <summary>
+    /// Ölçek 1.0 iken tıklama alanının kapsülden her yana taşma payı (piksel).
+    /// Küçük bir hedefi fareyle tutturmak zor; alan yine de başlık satırında kalır.
+    /// </summary>
+    private const float BaseNavHitPad = 8f;
+
     private CalendarLayout(DateOnly monthStart, float scale, PointF origin,
         IReadOnlyList<DayCell> cells, RectangleF titleBounds, RectangleF[] weekdayCells)
     {
@@ -59,6 +70,21 @@ internal sealed class CalendarLayout
         TitleBounds = titleBounds;
         WeekdayCells = weekdayCells;
         Bounds = new RectangleF(origin, MeasureSize(scale));
+
+        // Ay düğmeleri ay adıyla aynı hizada: önceki ay oku Cuma ile Cumartesi
+        // sütunlarının, sonraki ay oku Cumartesi ile Pazar sütunlarının arasında.
+        float colW = BaseColumnWidth * scale;
+        float y = titleBounds.Y + (titleBounds.Height / 2f);
+        PrevNavCenter = new PointF(origin.X + (5 * colW), y);
+        NextNavCenter = new PointF(origin.X + (6 * colW), y);
+
+        float overhang = BaseNavOverhang * scale;
+        float height = BaseNavHeight * scale;
+        NavBounds = new RectangleF(
+            PrevNavCenter.X - overhang,
+            y - (height / 2f),
+            NextNavCenter.X - PrevNavCenter.X + (2f * overhang),
+            height);
     }
 
     public DateOnly MonthStart { get; }
@@ -80,6 +106,15 @@ internal sealed class CalendarLayout
 
     /// <summary>42 gün hücresi; sırayla soldan sağa, yukarıdan aşağıya.</summary>
     public IReadOnlyList<DayCell> Cells { get; }
+
+    /// <summary>Önceki ay okunun ortası: Cuma ile Cumartesi sütunlarının arası, ay adı hizasında.</summary>
+    public PointF PrevNavCenter { get; }
+
+    /// <summary>Sonraki ay okunun ortası: Cumartesi ile Pazar sütunlarının arası, ay adı hizasında.</summary>
+    public PointF NextNavCenter { get; }
+
+    /// <summary>İki oku içine alan kapsül (ay düğmeleri).</summary>
+    public RectangleF NavBounds { get; }
 
     public float ColumnWidth => BaseColumnWidth * Scale;
 
@@ -169,5 +204,23 @@ internal sealed class CalendarLayout
         row = Math.Clamp(row, 0, WeekRows - 1);
 
         return Cells[(row * Columns) + col];
+    }
+
+    /// <summary>
+    /// Pencere koordinatındaki nokta ay düğmelerinden birinin üzerinde mi?
+    /// -1 önceki ay, +1 sonraki ay, 0 hiçbiri. Kapsül ortadaki çizgiyle
+    /// ikiye bölünür; tıklama alanı çizilen kapsülden biraz geniştir.
+    /// </summary>
+    public int HitTestNav(PointF point)
+    {
+        float pad = BaseNavHitPad * Scale;
+        RectangleF alan = RectangleF.Inflate(NavBounds, pad, pad);
+        if (!alan.Contains(point))
+        {
+            return 0;
+        }
+
+        float orta = (PrevNavCenter.X + NextNavCenter.X) / 2f;
+        return point.X < orta ? -1 : 1;
     }
 }

@@ -49,11 +49,15 @@ internal enum DisplayTarget
 /// <summary>Bir monitöre özel yerleşim ve zemin ayarları.</summary>
 internal sealed class MonitorPlacement
 {
-    /// <summary>Takvim bloğunun sol üst köşesi, monitör genişliğine oranla (0-1).</summary>
-    public double XRatio { get; set; } = 0.58;
+    /// <summary>
+    /// Takvim bloğunun sol üst köşesi, monitör genişliğine oranla (0-1).
+    /// Asıl varsayılan ekrana göre <see cref="PlacementDefaults"/>'ta
+    /// hesaplanır; buradaki değer onun 2560 × 1440 ekrandaki karşılığı.
+    /// </summary>
+    public double XRatio { get; set; } = 0.6934;
 
     /// <summary>Takvim bloğunun sol üst köşesi, monitör yüksekliğine oranla (0-1).</summary>
-    public double YRatio { get; set; } = 0.27;
+    public double YRatio { get; set; } = 0.4514;
 
     /// <summary>Takvim boyutu yüzdesi (80-150).</summary>
     public int ScalePercent { get; set; } = 100;

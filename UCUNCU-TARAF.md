@@ -30,6 +30,27 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
   zaten bu listeye girmezdi; mesele boyut ve denetim.
 - **Çizim** için `System.Drawing.Common` kullanılıyor; bu Microsoft'un kendi paketi.
 
+## Hazır zemin fotoğrafları
+
+Paket değil, içerik: `src/Kalender.App/Assets/DuvarKagitlari` altındaki dört fotoğraf exe'nin
+içine gömülür; seçilince `%LOCALAPPDATA%\Kalender\duvar-kagitlari` klasörüne çıkarılır.
+
+| Dosya | Ayarlardaki adı | Fotoğrafçı | Kaynak |
+| --- | --- | --- | --- |
+| `sisli-cam-ormani.jpg` | Sisli çam ormanı | Dan Otis | https://unsplash.com/photos/OYFHT4X5isg |
+| `sisli-dag-sirtlari.jpg` | Sisli dağ sırtları | Chris wu | https://unsplash.com/photos/xyCpmrP_0Qo |
+| `yildizli-karli-daglar.jpg` | Yıldızlı gökte karlı dağlar | Patrick Carr | https://unsplash.com/photos/pAoo1Rs1Yy8 |
+| `gece-ovasi.jpg` | Gece ovası | Artur Adilkhanian | https://unsplash.com/photos/P-kcxScUBhU |
+
+Lisans: [Unsplash Lisansı](https://unsplash.com/license). Ücretsizdir, ticari kullanım dahil;
+fotoğrafçıdan izin almak ya da ad vermek gerekmez (yine de burada anılıyor). Fotoğraflar
+değiştirilmeden satılamaz ve Unsplash'e benzer ya da rakip bir hizmet kurmak için derlenemez.
+
+Fotoğraflar 3840 × 2160'a kırpılıp küçültüldü: sisli çam ormanı ve yıldızlı dağlar, takvimin
+durduğu sağ alt köşe sakin kalsın diye üst kısımdan kırpıldı. `-kucuk.jpg` dosyaları ayarlar
+penceresindeki 320 × 180 küçük resimlerdir. Dosyalarda kamera, konum ya da kişi bilgisi (EXIF,
+XMP) yoktur; yalnız renk profili vardır.
+
 ## İlerideki aşamalarda beklenenler
 
 Aşağıdakiler henüz eklenmedi; eklendiklerinde bu dosyada gerçek satırlar hâline gelecek.

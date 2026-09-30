@@ -64,8 +64,12 @@ internal sealed class Theme
             text = lightSurface ? Color.FromArgb(0x1A, 0x1D, 0x21) : Color.White;
         }
 
+        // Açık düz zeminde soluk renk zeminin kendisine doğru karıştırılır:
+        // beyaza doğru karıştırmak Kum Taşı gibi koyuca bej bir zeminde soluk
+        // günleri neredeyse görünmez yapıyordu (karşıtlık ~1,2:1). Fotoğrafta
+        // zemin rengi fotoğrafı anlatmadığı için eskisi gibi beyaz kullanılır.
         Color muted = lightSurface
-            ? ColorTools.Mix(text, Color.White, 0.55)
+            ? ColorTools.Mix(text, photoMode ? Color.White : background, 0.55)
             : ColorTools.Mix(text, Color.FromArgb(0x30, 0x34, 0x3A), 0.55);
 
         Color holiday = lightSurface

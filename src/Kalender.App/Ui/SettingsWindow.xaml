@@ -275,6 +275,16 @@
                         <TextBlock Style="{StaticResource GrupBasligi}" Text="Fotoğraf" />
                         <Border Style="{StaticResource Kart}">
                             <StackPanel>
+                                <StackPanel Margin="16,14,16,14">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Hazır fotoğraflar" />
+                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                               Text="Uygulamayla gelen fotoğraflar; takvimin renkleriyle okunacak koyu tonlarda seçildi. Birine tıklayınca zemin o fotoğraf olur." />
+                                    <!-- Küçük resimler koddan kurulur (BuildReadyPhotos). -->
+                                    <WrapPanel x:Name="ReadyPhotoPanel" Margin="-2,12,0,-8"
+                                               KeyboardNavigation.TabNavigation="Once"
+                                               KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </StackPanel>
+                                <Separator />
                                 <DockPanel Style="{StaticResource Satir}">
                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                                 Margin="16,0,0,0" VerticalAlignment="Center">
@@ -564,6 +574,19 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <TextBlock Style="{StaticResource GrupBasligi}" Text="Varsayılan" />
+                        <Border Style="{StaticResource Kart}">
+                            <DockPanel Style="{StaticResource Satir}">
+                                <Button DockPanel.Dock="Right" Content="Varsayılana dön" Margin="16,0,0,0"
+                                        VerticalAlignment="Center" Click="OnResetPlacement" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource SatirBasligi}" Text="Varsayılan boyut ve konum" />
+                                    <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                               Text="Takvim her ekranda sağ alt köşeye döner: sağında bir masaüstü simgesi sığacak kadar, görev çubuğunun biraz üstünde durur; boyutu %100 olur. Hangi ekranlarda görüneceği ve ekranlara seçtiğiniz fotoğraflar değişmez." />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 

@@ -34,9 +34,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>
     /// Başka bir aya gidildikten sonra kendiliğinden bu aya dönme süresi.
-    /// Takvim masaüstünün bir parçası; uzun süre yanlış ayda kalmamalı.
+    /// Takvim masaüstünün bir parçası; uzun süre yanlış ayda kalmamalı. Sayaç
+    /// takvime her dokunuşta (ay düğmesi, sağ tık menüsü, imleci takvimin
+    /// üzerinde gezdirme) baştan başlar; bu süre boyunca dokunulmazsa bu aya dönülür.
     /// </summary>
-    private static readonly TimeSpan ViewResetDelay = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan ViewResetDelay = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Açılıştan ve uykudan uyanmadan sonra görüntünün güvence için bir kez
@@ -60,7 +62,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private HoverWatcher? _hover;
     private DayPopupWindow? _popup;
     private SettingsWindow? _settingsWindow;
-    private CalendarRightClickHook? _rightClick;
+    private CalendarMouseHook? _mouseHook;
     private System.Windows.Threading.DispatcherTimer? _viewResetTimer;
     private CalendarDataSnapshot _data = CalendarDataSnapshot.Empty;
 
@@ -180,6 +182,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         _settings.Load();
 
+        // Zemin olarak seçili hazır fotoğraf diskten silindiyse yeniden çıkarılır.
+        HazirFotograflar.RestoreMissing(_settings.Current);
+
         _messages = AppMessageWindow.Create();
         _layer = new DesktopLayerManager(_settings);
         _dayWatcher = new DayChangeWatcher();
@@ -229,18 +234,22 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _hover.ShowRequested += OnPopupRequested;
         _hover.HideRequested += () => _popup?.HidePopup();
 
-        // Sağ tık menüsü: kanca yalnız imleç takvimin üzerindeyken takılı durur.
-        _rightClick = new CalendarRightClickHook(
+        // Sağ tık menüsü ve ay düğmeleri: kanca yalnız imleç takvimin
+        // üzerindeyken takılı durur. Noktanın masaüstünde olması da şart:
+        // takvimin üstünde duran bir pencere (örneğin bizim açık menümüz)
+        // varken tıklamayı yutmamalıyız.
+        _mouseHook = new CalendarMouseHook(
             Application.Current?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher,
-            // Noktanın masaüstünde olması da şart: takvimin üstünde duran bir
-            // pencere (örneğin bizim açık menümüz) varken tıklamayı yutmamalıyız.
-            point => HoverWatcher.IsOnDesktopSurface(point) && _layer.HitTestBlock(point) is not null);
-        _rightClick.RightClicked += OnCalendarRightClick;
+            point => HoverWatcher.IsOnDesktopSurface(point) && _layer.HitTestBlock(point) is not null,
+            point => HoverWatcher.IsOnDesktopSurface(point) ? _layer.HitTestNav(point) : 0);
+        _mouseHook.RightClicked += OnCalendarRightClick;
+        _mouseHook.NavClicked += OnNavClicked;
         _hover.CalendarHoverChanged += inside =>
         {
             _hoverInside = inside;
-            UpdateRightClickHook();
+            UpdateMouseHook();
         };
+        _hover.CalendarActivity += RestartViewResetTimer;
 
         _hover.Start();
 
@@ -249,7 +258,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             Interval = ViewResetDelay,
         };
-        _viewResetTimer.Tick += (_, _) => GoToCurrentMonth();
+        _viewResetTimer.Tick += (_, _) => ChangeMonth(GoToCurrentMonth);
 
         // Tatil listesi arka planda inebiliyor; arayüz iş parçacığına taşıyoruz.
         _holidays.Updated += OnHolidaysUpdated;
@@ -365,7 +374,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
                 // Menü açıkken imleç menünün üzerindeydi, yani "takvimden
                 // çıkıldı" sayılıyordu ve kancayı sökmeyi ertelemiştik.
-                UpdateRightClickHook();
+                UpdateMouseHook();
             }
 
             if (_pendingMenuPoint is System.Drawing.Point sonraki)
@@ -382,15 +391,15 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                     break;
 
                 case MenuPrevMonth:
-                    ShiftMonth(-1);
+                    ChangeMonth(() => ShiftMonth(-1));
                     break;
 
                 case MenuNextMonth:
-                    ShiftMonth(1);
+                    ChangeMonth(() => ShiftMonth(1));
                     break;
 
                 case MenuThisMonth:
-                    GoToCurrentMonth();
+                    ChangeMonth(GoToCurrentMonth);
                     break;
 
                 case MenuNewEvent:
@@ -413,25 +422,52 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     }
 
     /// <summary>
-    /// Sağ tık kancası takılı mı olmalı? İmleç takvimin üzerindeyken ya da
+    /// Fare kancası takılı mı olmalı? İmleç takvimin üzerindeyken ya da
     /// bizim menümüz açıkken evet, başka her durumda hayır. Menü açıkken
     /// sökülürse sonraki sağ tık kabuğa gidiyor ve Windows'un masaüstü menüsü
     /// bizimkinin üstüne biniyor.
     /// </summary>
-    private void UpdateRightClickHook()
+    private void UpdateMouseHook()
     {
-        if (_rightClick is null)
+        if (_mouseHook is null)
         {
             return;
         }
 
         if (_hoverInside || _menuOpen)
         {
-            _rightClick.Arm();
+            _mouseHook.Arm();
         }
         else
         {
-            _rightClick.Disarm();
+            _mouseHook.Disarm();
+        }
+    }
+
+    /// <summary>Ay düğmelerinden birine tıklandı: -1 önceki ay, +1 sonraki ay.</summary>
+    private void OnNavClicked(int delta) => ChangeMonth(() => ShiftMonth(delta));
+
+    /// <summary>
+    /// Görünen ayı değiştirir. Yeni ay çizilip duvar kağıdına yazılırken fare
+    /// kancası sökülü tutulur: arayüz iş parçacığı o sırada meşgul ve takılı
+    /// bir alt düzey kanca bütün sistemin fare hareketini bekletirdi. Buraya
+    /// tıklamanın iki yarısı da kancadan geçtikten sonra gelinir; sökmek
+    /// kabuğa yarım bir olay çifti göndermez.
+    /// </summary>
+    private void ChangeMonth(Action change)
+    {
+        _mouseHook?.Disarm();
+        try
+        {
+            change();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Ay değiştirilemedi.", ex);
+        }
+        finally
+        {
+            UpdateMouseHook();
         }
     }
 
@@ -443,8 +479,28 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _viewMonth = _viewMonth.AddMonths(delta);
         ApplyViewMonth();
 
+        if (_viewMonth == CurrentMonth)
+        {
+            // Düğmelerle bu aya geri gelindi; sayacın bekleyeceği bir şey kalmadı.
+            _viewResetTimer?.Stop();
+            return;
+        }
+
         _viewResetTimer?.Stop();
         _viewResetTimer?.Start();
+    }
+
+    /// <summary>
+    /// Takvime dokunuldu (imleç üzerinde gezindi): başka bir aydaysak bu aya
+    /// dönüş sayacı baştan başlar. Bu ayda iken sayaç zaten çalışmıyor.
+    /// </summary>
+    private void RestartViewResetTimer()
+    {
+        if (_viewResetTimer is { IsEnabled: true })
+        {
+            _viewResetTimer.Stop();
+            _viewResetTimer.Start();
+        }
     }
 
     /// <summary>İçinde bulunduğumuz aya döner ve sayacı durdurur.</summary>
@@ -767,7 +823,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _settingsWindow?.Close();
         _viewResetTimer?.Stop();
         _hover?.Dispose();
-        _rightClick?.Dispose();
+        _mouseHook?.Dispose();
         _popup?.Close();
         _poller?.Dispose();
         _google?.Dispose();
