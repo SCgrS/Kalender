@@ -28,6 +28,10 @@ internal static class Installer
 {
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Kalender";
     private const string ShortcutName = "Kalender.lnk";
+    private const string RunOnceKey = @"Software\Microsoft\Windows\CurrentVersion\RunOnce";
+
+    /// <summary>Kaldırmada RunOnce altına yazılan yedek silme kayıtlarının ad öneki.</summary>
+    private const string CleanupValuePrefix = "KalenderTemizlik";
 
     /// <summary>Uygulama dosyalarının durduğu klasör. Ayarlar ve önbellek bunun dışındadır.</summary>
     public static string AppFolder => Path.Combine(Paths.RootFolder, "app");
@@ -65,6 +69,10 @@ internal static class Installer
 
             // Kurulu sürüm açıksa dosyayı değiştiremeyiz; önce kibarca kapatıyoruz.
             AppInstance.StopRunning();
+
+            // Önceki bir kaldırmadan oturum açılışına ertelenmiş silme kalmışsa
+            // iptal et; yoksa bu yeni kurulum bir sonraki açılışta silinirdi.
+            RemovePendingCleanup();
 
             Directory.CreateDirectory(AppFolder);
             File.Copy(source, InstalledExe, overwrite: true);
@@ -256,44 +264,177 @@ internal static class Installer
     }
 
     /// <summary>
-    /// Çalışan dosya kendini silemediği için, biz çıktıktan birkaç saniye sonra
-    /// klasörü silen küçük bir toplu iş başlatılır. Yalnızca Kalender'in kendi
-    /// klasörlerine dokunur.
+    /// Çalışan dosya kendini silemediği için, bu süreç kapandıktan sonra
+    /// klasörleri silen gizli bir PowerShell betiği başlatılır. Yalnızca
+    /// Kalender'in kendi klasörlerine dokunur.
+    ///
+    /// Eskiden bu iş bir .cmd dosyasıyla ve sabit 3 saniyelik beklemeyle
+    /// yapılıyordu; iki yerde bozuluyordu:
+    /// - .NET 8'de Encoding.Default UTF-8'dir, cmd ise dosyayı konsolun OEM kod
+    ///   sayfasıyla okur. Kullanıcı adında "Ç, ğ, ı, Ş" olan hesaplarda yol
+    ///   bozuluyor ve hiçbir şey silinmiyordu (2026-09-30'da evde görüldü:
+    ///   app\Kalender.exe yerinde kaldı). Betik artık Base64 kodlanmış Unicode
+    ///   komut satırıyla veriliyor; dosyaya hiç yazılmıyor.
+    /// - Kaldırma kurulu exe'nin kendisinden çalışıyor ve sonuç penceresi
+    ///   açık durdukça exe kilitli kalıyor. Betik bu süreç gerçekten kapanana
+    ///   kadar bekliyor, sonra 30 saniyeye kadar yeniden deniyor.
+    ///
+    /// Silme yine de yarım kalırsa (örneğin kullanıcı oturumu kapatırsa) iş
+    /// kaybolmasın diye hedefler önce HKCU RunOnce altına yazılır; bir sonraki
+    /// oturum açılışında Windows kalan klasörleri siler. Başarıyla silinen
+    /// hedefin kaydı hemen kaldırılır, yeni bir kurulum da hepsini iptal eder.
     /// </summary>
     private static void ScheduleFileRemoval(bool removeData)
     {
         try
         {
-            string target = removeData ? Paths.RootFolder : AppFolder;
+            var targets = new List<string> { removeData ? Paths.RootFolder : AppFolder };
+            targets.AddRange(SingleFileExtractionFolders());
 
-            // Güvenlik: yol beklediğimiz yerin altında değilse hiçbir şey silme.
-            string root = Paths.RootFolder;
-            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            // Güvenlik: yalnızca kendi klasörümüz ve Temp\.net altındaki açılım klasörleri silinir.
+            string extractionBase = Path.Combine(Path.GetTempPath(), ".net");
+            targets.RemoveAll(t =>
+                !t.StartsWith(Paths.RootFolder, StringComparison.OrdinalIgnoreCase)
+                && !t.StartsWith(extractionBase, StringComparison.OrdinalIgnoreCase));
+
+            if (targets.Count == 0)
             {
-                Log.Warn("Silinecek klasör beklenen yerin dışında; işlem yapılmadı: " + target);
                 return;
             }
 
-            string batch = Path.Combine(Path.GetTempPath(), "kalender-kaldir.cmd");
-            var sb = new StringBuilder();
-            sb.AppendLine("@echo off");
-            sb.AppendLine("timeout /t 3 /nobreak >nul");
-            sb.AppendLine($"rd /s /q \"{target}\"");
-            sb.AppendLine("del \"%~f0\"");
+            string script = BuildRemovalScript(targets, Environment.ProcessId);
+            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
 
-            // Toplu iş dosyası Windows kabuğunca okunacağı için sistem kod
-            // sayfasıyla yazılıyor; yollarda Türkçe karakter olabilir.
-            File.WriteAllText(batch, sb.ToString(), Encoding.Default);
-
-            Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{batch}\"")
+            var info = new ProcessStartInfo("powershell.exe")
             {
                 CreateNoWindow = true,
                 UseShellExecute = false,
-            });
+
+                // Çalışma klasörü silinecek klasörün içinde kalırsa Windows onu silemez.
+                WorkingDirectory = Path.GetTempPath(),
+            };
+
+            foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", encoded })
+            {
+                info.ArgumentList.Add(arg);
+            }
+
+            Process.Start(info);
         }
         catch (Exception ex)
         {
             Log.Warn("Dosya silme işi başlatılamadı.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Tek dosyalık exe, içindeki yerel kütüphaneleri ilk açılışta
+    /// %TEMP%\.net\&lt;exe adı&gt; altına açar (.NET'in kendi davranışı). Kurulu
+    /// kopyanın (Kalender) ve kurucunun (Kalender-Kurulum*) klasörleri
+    /// kaldırmadan sonra onlarca megabaytlık kalıntıdır. Çalışan sürecin klasörü
+    /// kilitli olduğu için silme, sürecin kapanmasını bekleyen betiğe bırakılır.
+    /// Kalender Lite'ın klasörleri (KalenderLite, Kalender-Lite-Kurulum*) bu
+    /// adlara uymaz, dokunulmaz.
+    /// </summary>
+    private static List<string> SingleFileExtractionFolders()
+    {
+        var found = new List<string>();
+        try
+        {
+            string baseFolder = Path.Combine(Path.GetTempPath(), ".net");
+            if (!Directory.Exists(baseFolder))
+            {
+                return found;
+            }
+
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Kalender" };
+            string current = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? string.Empty);
+            if (current.StartsWith("Kalender", StringComparison.OrdinalIgnoreCase)
+                && !current.StartsWith("Kalender-Lite", StringComparison.OrdinalIgnoreCase)
+                && !current.StartsWith("KalenderLite", StringComparison.OrdinalIgnoreCase))
+            {
+                names.Add(current);
+            }
+
+            foreach (string folder in Directory.EnumerateDirectories(baseFolder))
+            {
+                string name = Path.GetFileName(folder);
+                if (names.Contains(name) || name.StartsWith("Kalender-Kurulum", StringComparison.OrdinalIgnoreCase))
+                {
+                    found.Add(folder);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Temp altındaki açılım klasörleri listelenemedi.", ex);
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Bekle-sil-yeniden dene betiğinin metni. Ayrı bir yöntem, çünkü betik
+    /// uygulamadan bağımsız olarak PowerShell'de sınanabilsin.
+    /// </summary>
+    /// <param name="targets">Silinecek klasörler (tam yol).</param>
+    /// <param name="processId">Kapanması beklenecek süreç (kaldırma penceresini gösteren).</param>
+    internal static string BuildRemovalScript(IReadOnlyList<string> targets, int processId)
+    {
+        // Tek tırnaklı PowerShell dizesinde tek tırnak ikilenerek kaçar.
+        static string Quote(string s) => "'" + s.Replace("'", "''") + "'";
+
+        var sb = new StringBuilder();
+        sb.AppendLine("$ErrorActionPreference = 'SilentlyContinue'");
+        sb.AppendLine("$hedefler = @(" + string.Join(", ", targets.Select(Quote)) + ")");
+        sb.AppendLine("$anahtar = 'HKCU:\\" + RunOnceKey + "'");
+        sb.AppendLine("$onek = '" + CleanupValuePrefix + "'");
+        sb.AppendLine("# Guvence: silme yarim kalirsa bir sonraki oturum acilisinda Windows tamamlar.");
+        sb.AppendLine("if (-not (Test-Path -LiteralPath $anahtar)) { New-Item -Path $anahtar -Force | Out-Null }");
+        sb.AppendLine("for ($n = 0; $n -lt $hedefler.Count; $n++) {");
+        sb.AppendLine("  Set-ItemProperty -LiteralPath $anahtar -Name ($onek + ($n + 1)) -Value ('cmd.exe /c rd /s /q \"' + $hedefler[$n] + '\"')");
+        sb.AppendLine("}");
+        sb.AppendLine("# Kaldirma penceresi kapanip exe serbest kalsin.");
+        sb.AppendLine("Wait-Process -Id " + processId);
+        sb.AppendLine("Start-Sleep -Milliseconds 500");
+        sb.AppendLine("for ($n = 0; $n -lt $hedefler.Count; $n++) {");
+        sb.AppendLine("  $h = $hedefler[$n]");
+        sb.AppendLine("  for ($i = 0; $i -lt 60 -and (Test-Path -LiteralPath $h); $i++) {");
+        sb.AppendLine("    Remove-Item -LiteralPath $h -Recurse -Force");
+        sb.AppendLine("    if (Test-Path -LiteralPath $h) { Start-Sleep -Milliseconds 500 }");
+        sb.AppendLine("  }");
+        sb.AppendLine("  if (-not (Test-Path -LiteralPath $h)) { Remove-ItemProperty -LiteralPath $anahtar -Name ($onek + ($n + 1)) }");
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Önceki bir kaldırmanın RunOnce altına bıraktığı, oturum açılışında klasör
+    /// silecek kayıtları kaldırır. Kurulumun başında çağrılır; yoksa ertelenmiş
+    /// silme yeni kurulumu bir sonraki açılışta götürürdü.
+    /// </summary>
+    private static void RemovePendingCleanup()
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunOnceKey, writable: true);
+            if (key is null)
+            {
+                return;
+            }
+
+            foreach (string name in key.GetValueNames())
+            {
+                if (name.StartsWith(CleanupValuePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    key.DeleteValue(name, throwOnMissingValue: false);
+                    Log.Info("Bekleyen temizlik kaydı iptal edildi: " + name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Bekleyen temizlik kaydı silinemedi.", ex);
         }
     }
 }

@@ -235,8 +235,10 @@ listesi) ve `HKCU\Control Panel\Desktop\JPEGImportQuality` (yedeklenir, geri al�
 
 Açılan pencerede **Ayarlarımı ve yerel veri kopyamı da sil** kutusu vardır; işaretlemezseniz
 ayarlarınız kalır ve yeniden kurduğunuzda her şey yerinde olur. Kaldırma, Kalender'den önceki
-duvar kağıdınızı geri yükler; kısayolu, açılış kaydını, uygulamalar listesindeki kaydı ve
-birkaç saniye sonra dosyaları siler.
+duvar kağıdınızı geri yükler; kısayolu, açılış kaydını ve uygulamalar listesindeki kaydı siler.
+Program dosyaları ve Windows'un geçici klasörüne açtığı kütüphaneler, kaldırma penceresi
+kapanınca silinir (kullanıcı adında Türkçe harf olsa da). Bu silme yarım kalırsa Windows kalanı
+bir sonraki oturum açılışında tamamlar.
 
 ## Bilinen sınırlar
 
