@@ -237,11 +237,19 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Sağ tık menüsü ve ay düğmeleri: kanca yalnız imleç takvimin
         // üzerindeyken takılı durur. Noktanın masaüstünde olması da şart:
         // takvimin üstünde duran bir pencere (örneğin bizim açık menümüz)
-        // varken tıklamayı yutmamalıyız.
+        // varken tıklamayı yutmamalıyız. Takvimin üstündeki bir masaüstü
+        // simgesine (klasör, kısayol) tıklama da simgeye gider. Denetimler
+        // ucuzdan pahalıya sıralı; simge sorusu yalnız gerekirse sorulur.
         _mouseHook = new CalendarMouseHook(
             Application.Current?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher,
-            point => HoverWatcher.IsOnDesktopSurface(point) && _layer.HitTestBlock(point) is not null,
-            point => HoverWatcher.IsOnDesktopSurface(point) ? _layer.HitTestNav(point) : 0);
+            point => _layer.HitTestBlock(point) is not null
+                && HoverWatcher.IsOnDesktopSurface(point)
+                && !MasaustuSimgeleri.Ustunde(point),
+            point => _layer.HitTestNav(point) is NavButton dugme and not NavButton.None
+                && HoverWatcher.IsOnDesktopSurface(point)
+                && !MasaustuSimgeleri.Ustunde(point)
+                    ? dugme
+                    : NavButton.None);
         _mouseHook.RightClicked += OnCalendarRightClick;
         _mouseHook.NavClicked += OnNavClicked;
         _hover.CalendarHoverChanged += inside =>
@@ -444,8 +452,24 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
     }
 
-    /// <summary>Ay düğmelerinden birine tıklandı: -1 önceki ay, +1 sonraki ay.</summary>
-    private void OnNavClicked(int delta) => ChangeMonth(() => ShiftMonth(delta));
+    /// <summary>Ay düğmelerinden birine basıldı: önceki ay, sonraki ay ya da bu aya dönüş.</summary>
+    private void OnNavClicked(NavButton dugme)
+    {
+        switch (dugme)
+        {
+            case NavButton.Previous:
+                ChangeMonth(() => ShiftMonth(-1));
+                break;
+
+            case NavButton.Next:
+                ChangeMonth(() => ShiftMonth(1));
+                break;
+
+            case NavButton.Today:
+                ChangeMonth(GoToCurrentMonth);
+                break;
+        }
+    }
 
     /// <summary>
     /// Görünen ayı değiştirir. Yeni ay çizilip duvar kağıdına yazılırken fare
@@ -520,6 +544,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// <summary>Görünen ayı çizime ve veri katmanına uygular.</summary>
     private void ApplyViewMonth()
     {
+        // Bu ay yakın zamanda gösterildiyse Google verisi bellekte; Google'dan
+        // yeniden gelmesi beklenmeden onunla çizilir, noktacıklar kaybolmaz.
+        (DateOnly ilk, DateOnly son) = CalendarLayout.GridRange(_viewMonth);
+        _google?.GecmistenGetir(ilk, son);
+
         // Çizimi veri katmanı yapar: yeni ayın verisi derlenince Changed ile
         // bir kez çizilir. Katman ayrıca çizseydi görüntü iki kez yazılırdı.
         _layer?.SetViewMonth(_viewMonth, refresh: _calendarData is null);

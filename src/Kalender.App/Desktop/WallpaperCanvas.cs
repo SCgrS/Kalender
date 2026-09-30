@@ -100,13 +100,20 @@ internal sealed class WallpaperCanvas
                 return new CanvasResult(true, 0);
             }
 
+            // Hiç yazılmamış ya da Forget ile sıfırlanmışsa (açılış, ayar
+            // değişikliği, ekran değişimi, duvar kağıdının elden gitmesi) tam yol.
+            bool tamYol = _hashes.Count == 0;
+
             var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
             WallpaperService.EnsureBackup(wallpaper);
             EnsureImportQuality();
 
             // Görüntüler ekranın tam piksel ölçüsünde üretiliyor; "Doldur"
-            // yerleşimiyle bire bir oturuyorlar.
-            wallpaper.SetPosition(DesktopWallpaperPosition.Fill);
+            // yerleşimiyle bire bir oturuyorlar. Zaten öyleyse dokunulmuyor.
+            if (wallpaper.GetPosition() != DesktopWallpaperPosition.Fill)
+            {
+                wallpaper.SetPosition(DesktopWallpaperPosition.Fill);
+            }
 
             IReadOnlyList<string> devicePaths = ReadDevicePaths(wallpaper);
             int written = 0;
@@ -140,7 +147,16 @@ internal sealed class WallpaperCanvas
                 // açıyoruz. Bu çağrı ilk görüntü yazıldıktan SONRA yapılmalı:
                 // ortada hiç resim yokken kabuk açacak dosyayı bulamıyor ve
                 // 0x80070002 ile hata veriyor.
-                WallpaperService.EnableImages(wallpaper);
+                //
+                // Yalnız tam yolda çağrılıyor: kip zaten açıkken de Windows
+                // duvar kağıdını baştan işliyordu (~280 ms, ekranda ikinci bir
+                // yenilenme); ay düğmeleriyle gezinirken geçişi yavaşlatıyordu.
+                // Kullanıcı sonradan düz renge geçerse ekrandaki görüntü bizim
+                // olmaz, nöbet denetimi Forget ile tam yolu yeniden açar.
+                if (tamYol)
+                {
+                    WallpaperService.EnableImages(wallpaper);
+                }
 
                 HasPainted = true;
                 CleanUnusedFiles();

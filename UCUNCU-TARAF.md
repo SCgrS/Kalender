@@ -29,6 +29,10 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
   uygulamaya hiçbir gizli anahtar gömmek zorunda kalmıyoruz. Google'ın kendi kütüphaneleri
   zaten bu listeye girmezdi; mesele boyut ve denetim.
 - **Çizim** için `System.Drawing.Common` kullanılıyor; bu Microsoft'un kendi paketi.
+- **Takvimin üstündeki masaüstü simgesini tanıma** (`Desktop/MasaustuSimgeleri`) Windows'un
+  erişilebilirlik arayüzüyle (oleacc, MSAA) yapılıyor; ekran okuyucuların da kullandığı yol,
+  paket gerekmiyor. Varsayılan yerdeki simge sütunu hesabı (`Desktop/MasaustuSimgeIzgarasi`)
+  masaüstü listesinin kendi simge aralığını okuyor.
 
 ## Hazır zemin fotoğrafları
 

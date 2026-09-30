@@ -47,7 +47,7 @@ internal static class MasaustuSimgeIzgarasi
     {
         try
         {
-            IntPtr liste = MasaustuListesi();
+            IntPtr liste = MasaustuSimgeleri.Liste();
             if (liste == IntPtr.Zero)
             {
                 return 0;
@@ -70,34 +70,5 @@ internal static class MasaustuSimgeIzgarasi
             Log.Debug("Masaüstü simge aralığı okunamadı: " + ex.Message);
             return 0;
         }
-    }
-
-    /// <summary>
-    /// Masaüstü simgelerini tutan liste penceresi. SHELLDLL_DefView normalde
-    /// Progman'ın çocuğudur; duvar kağıdı geçişinden sonra bir WorkerW'ye taşınabilir.
-    /// </summary>
-    private static IntPtr MasaustuListesi()
-    {
-        IntPtr defView = NativeMethods.FindWindowEx(
-            NativeMethods.FindWindow("Progman", null), IntPtr.Zero, "SHELLDLL_DefView", null);
-
-        if (defView == IntPtr.Zero)
-        {
-            NativeMethods.EnumWindows((hwnd, _) =>
-            {
-                IntPtr aday = NativeMethods.FindWindowEx(hwnd, IntPtr.Zero, "SHELLDLL_DefView", null);
-                if (aday == IntPtr.Zero)
-                {
-                    return true;
-                }
-
-                defView = aday;
-                return false;
-            }, IntPtr.Zero);
-        }
-
-        return defView == IntPtr.Zero
-            ? IntPtr.Zero
-            : NativeMethods.FindWindowEx(defView, IntPtr.Zero, "SysListView32", null);
     }
 }

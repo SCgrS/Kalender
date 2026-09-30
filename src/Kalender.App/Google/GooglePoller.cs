@@ -32,6 +32,10 @@ internal sealed class GooglePoller : IDisposable
     private CancellationTokenSource? _running;
     private Task? _current;
     private bool _currentForced;
+
+    /// <summary>Süren yenilemenin istediği gün aralığı.</summary>
+    private (DateOnly First, DateOnly Last) _currentRange;
+
     private bool _disposed;
 
     public GooglePoller(GoogleCalendarProvider provider, CalendarDataService data, SettingsStore settings)
@@ -89,6 +93,10 @@ internal sealed class GooglePoller : IDisposable
     /// gelen iki istek birbirini düşürüyor, ilk veri bir sonraki yoklamaya
     /// kalıyordu. Zorlanan (tam) yenileme süren artımlı işi yine iptal eder;
     /// sağlayıcı kapıyı bekleyerek sıraya girer.
+    ///
+    /// Süren iş başka bir ay içinse de katılınmaz, yerine yenisi başlar: ay
+    /// düğmeleriyle gezinirken yoklama sürüyorsa yeni ayın verisi önceden bir
+    /// sonraki yoklamaya (30 sn–24 saat) kalıyordu.
     /// </summary>
     public Task RefreshAsync(bool force)
     {
@@ -97,13 +105,16 @@ internal sealed class GooglePoller : IDisposable
             return Task.CompletedTask;
         }
 
+        (DateOnly First, DateOnly Last) range = _data.VisibleRange;
+
         Task? running = _current;
-        if (running is { IsCompleted: false } && (!force || _currentForced))
+        if (running is { IsCompleted: false } && (!force || _currentForced) && range == _currentRange)
         {
             return running;
         }
 
         _currentForced = force;
+        _currentRange = range;
         _current = RunAsync(force);
         return _current;
     }

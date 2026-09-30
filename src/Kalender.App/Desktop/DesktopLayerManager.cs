@@ -644,21 +644,18 @@ internal sealed class DesktopLayerManager : IDisposable
         return null;
     }
 
-    /// <summary>
-    /// Ekran koordinatındaki nokta ay düğmelerinden birinin üzerinde mi?
-    /// -1 önceki ay, +1 sonraki ay, 0 hiçbiri.
-    /// </summary>
-    public int HitTestNav(Point screenPoint)
+    /// <summary>Ekran koordinatındaki nokta hangi ay düğmesinin üzerinde?</summary>
+    public NavButton HitTestNav(Point screenPoint)
     {
         foreach (EkrandakiTakvim screen in _screens)
         {
             if (screen.Monitor.Bounds.Contains(screenPoint))
             {
-                return screen.Layout?.HitTestNav(ToLocal(screen.Monitor, screenPoint)) ?? 0;
+                return screen.Layout?.HitTestNav(ToLocal(screen.Monitor, screenPoint)) ?? NavButton.None;
             }
         }
 
-        return 0;
+        return NavButton.None;
     }
 
     /// <summary>Ekran koordinatındaki noktayı monitörün kendi koordinatına çevirir.</summary>

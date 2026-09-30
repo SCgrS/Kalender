@@ -52,6 +52,9 @@ internal sealed class HoverWatcher : IDisposable
     /// <summary>İmlecin bir önceki turdaki yeri; takvimde gezinmeyi anlamak için.</summary>
     private Point _lastPoint;
 
+    /// <summary>Üstünde masaüstü simgesi bulunan, kutusu bu yüzden açılmayan gün.</summary>
+    private DateOnly? _simgeliGun;
+
     public HoverWatcher(DesktopLayerManager layer, Func<CalendarDataSnapshot> data)
     {
         _layer = layer;
@@ -106,6 +109,7 @@ internal sealed class HoverWatcher : IDisposable
     public void Reset()
     {
         _hoveredDay = null;
+        _simgeliGun = null;
         if (_shown)
         {
             _shown = false;
@@ -159,6 +163,7 @@ internal sealed class HoverWatcher : IDisposable
             {
                 // Başka bir güne geçildi: sayaç sıfırlanır, açık kutu kapanır.
                 _hoveredDay = hit.Cell.Date;
+                _simgeliGun = null;
                 _hoveredCell = hit.CellScreenBounds;
                 _enteredAt = DateTime.UtcNow;
                 _leftAt = DateTime.MaxValue;
@@ -183,6 +188,20 @@ internal sealed class HoverWatcher : IDisposable
             if (content is null || !content.HasAnything)
             {
                 // O günde gösterecek bir şey yoksa boş kutu açmıyoruz.
+                return;
+            }
+
+            // Günün üstünde bir masaüstü simgesi duruyorsa imleç simgededir;
+            // kutu simgenin üstüne açılmasın. Soru kutu açılacağı an, her gün
+            // için bir kez sorulur; imleç başka güne geçince yeniden.
+            if (_simgeliGun == hit.Cell.Date)
+            {
+                return;
+            }
+
+            if (MasaustuSimgeleri.Ustunde(point))
+            {
+                _simgeliGun = hit.Cell.Date;
                 return;
             }
 

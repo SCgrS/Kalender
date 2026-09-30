@@ -37,6 +37,9 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// <summary>Bu süre geçtiyse artımlı değil tam yenileme yapılır.</summary>
     private static readonly TimeSpan FullSyncEvery = TimeSpan.FromMinutes(30);
 
+    /// <summary>Bellekte tutulan, daha önce gösterilmiş başka ay sayısı.</summary>
+    private const int GecmisSiniri = 3;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -51,6 +54,19 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// <summary>Süren eşitlemedeki istek sayısı ve alınan gövde toplamı; ayrıntılı günlük için.</summary>
     private int _syncRequests;
     private long _syncBodyBytes;
+
+    /// <summary>
+    /// Yakın zamanda gösterilen başka ayların verisi (en çok <see cref="GecmisSiniri"/>).
+    /// Ay düğmeleriyle gezinirken ya da 30 saniye sonra bu aya dönülürken, o
+    /// ayın verisi Google'dan yeniden gelene kadar (1–2 sn) noktacıklar
+    /// kaybolmasın diye tutuluyor. Yalnızca zaten gösterilmiş ayların verisi;
+    /// Google'dan fazladan bir şey istenmiyor, "yalnızca görünen ay" kuralı
+    /// korunuyor. Diske yazılmaz. <see cref="_veriKilidi"/> ile korunur:
+    /// eşitleme arka planda biter, gezinme arayüz iş parçacığında olur.
+    /// </summary>
+    private readonly List<ProviderBundle> _gecmis = new();
+
+    private readonly object _veriKilidi = new();
 
     public GoogleCalendarProvider(GoogleAuthenticator auth, SettingsStore settings)
     {
@@ -141,9 +157,59 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         }
     }
 
+    /// <summary>
+    /// Görünen ay değişti: o ay yakın zamanda gösterildiyse bellekteki verisi
+    /// hemen kullanılmaya başlar; bir sonraki eşitleme onu artımlı olarak
+    /// tazeler (yalnız değişen takvimler yeniden alınır). Bellekte yoksa hiçbir
+    /// şey değişmez; eşitleme eskisi gibi yeni ayı baştan alır.
+    /// </summary>
+    /// <returns>Bellekteki veri kullanılmaya başlandıysa true.</returns>
+    public bool GecmistenGetir(DateOnly from, DateOnly to)
+    {
+        lock (_veriKilidi)
+        {
+            if (Data.RangeFrom == from && Data.RangeTo == to)
+            {
+                return true;
+            }
+
+            ProviderBundle? bulunan = _gecmis.Find(b => b.RangeFrom == from && b.RangeTo == to);
+            if (bulunan is null)
+            {
+                return false;
+            }
+
+            _gecmis.Remove(bulunan);
+            Gecmise(Data);
+            Data = bulunan;
+            return true;
+        }
+    }
+
+    /// <summary>Yerinden edilen ayın verisini geçmişe ekler; en eskisi düşer. Kilit içinde çağrılır.</summary>
+    private void Gecmise(ProviderBundle bundle)
+    {
+        if (bundle.Calendars.Count == 0 && bundle.Events.Count == 0 && bundle.Tasks.Count == 0)
+        {
+            return;
+        }
+
+        _gecmis.RemoveAll(b => b.RangeFrom == bundle.RangeFrom && b.RangeTo == bundle.RangeTo);
+        _gecmis.Add(bundle);
+
+        while (_gecmis.Count > GecmisSiniri)
+        {
+            _gecmis.RemoveAt(0);
+        }
+    }
+
     public void ClearCache()
     {
-        Data = new ProviderBundle();
+        lock (_veriKilidi)
+        {
+            _gecmis.Clear();
+            Data = new ProviderBundle();
+        }
 
         try
         {
@@ -256,7 +322,20 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             await FetchEventsAsync(token, bundle, from, to, updatedMin, cancel).ConfigureAwait(false);
             await FetchTasksAsync(token, bundle, from, to, updatedMin, cancel).ConfigureAwait(false);
 
-            Data = bundle;
+            // Bu arada başka bir aya geçildiyse (yoklayıcı bu işi iptal etti)
+            // eski ayın verisi yenisinin üstüne yazılmasın.
+            cancel.ThrowIfCancellationRequested();
+
+            lock (_veriKilidi)
+            {
+                if (Data.RangeFrom != bundle.RangeFrom || Data.RangeTo != bundle.RangeTo)
+                {
+                    Gecmise(Data);
+                }
+
+                Data = bundle;
+            }
+
             IsOnline = true;
             SaveCache();
 

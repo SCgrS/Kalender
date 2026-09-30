@@ -1,23 +1,29 @@
+using System.Collections;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows.Threading;
 
 // Kalender / Kalender Lite 2026-09-30 revizyonunun sınaması (yansımayla): ay
-// düğmelerinin yeri ve tıklama alanları, fare kancasının sol ve sağ tık
-// davranışı (yapay olaylarla; kanca takılmaz), 52 piksellik ay adı, her ekran
-// için sağ alt varsayılan yer (sağında bir simge sütunu, görev çubuğunun biraz
-// üstü), hazır fotoğraflar ve zemin renklerinin sırası.
+// düğmelerinin (önceki ay oku, bu aya dönüş noktası, sonraki ay oku) yeri,
+// görünüşü ve tıklama alanları; fare kancasının sol ve sağ tık davranışı
+// (yapay olaylarla; kanca takılmaz, ay basınca değişir); 52 piksellik ay adı;
+// her ekran için sağ alt varsayılan yer (sağında bir simge sütunu, görev
+// çubuğunun biraz üstü); hazır fotoğraflar; zemin renklerinin sırası;
+// Kalender'de yakın zamanda gösterilen ayların Google verisinin bellekte tutulması.
 //
-// Gerçek masaüstüne, duvar kağıdına ya da ayar dosyasına dokunmaz. Hazır
-// fotoğraf klasörünü yalnız denemeden önce yoksa oluşturur ve sonunda siler;
-// kullanıcı bir hazır fotoğraf seçmişse o bölümü atlar. Çıkış kodu 0 = hepsi geçti.
-// Kullanım: dotnet run -c Release [-- <depo kökü>]
+// Gerçek masaüstüne, duvar kağıdına, ayar dosyasına ya da Google hesabına
+// dokunmaz. Hazır fotoğraf klasörünü yalnız denemeden önce yoksa oluşturur ve
+// sonunda siler; kullanıcı bir hazır fotoğraf seçmişse o bölümü atlar.
+// Çıkış kodu 0 = hepsi geçti. Kullanım: dotnet run -c Release [-- <depo kökü>]
 internal static class Program
 {
     private static readonly Assembly Uyg = typeof(Kalender.App).Assembly;
+    private static readonly List<string> _dugmeOlaylari = new();
     private static int _hata;
     private static int _gecen;
 
@@ -77,11 +83,12 @@ internal static class Program
         try
         {
             Geometri();
-            AyAdiKapsuleDegmiyor();
+            AyAdiVeDugmeler();
             FareKancasi();
             VarsayilanYer();
             HazirFotograflar(depo);
             Renkler();
+            GoogleGecmisi();
         }
         catch (Exception ex)
         {
@@ -106,14 +113,15 @@ internal static class Program
             object d = olustur.Invoke(null, new object[] { new DateOnly(2026, 9, 1), s, new PointF(100, 200) })!;
             var koken = (PointF)Oku(d, "Origin")!;
             var once = (PointF)Oku(d, "PrevNavCenter")!;
+            var nokta = (PointF)Oku(d, "TodayNavCenter")!;
             var sonra = (PointF)Oku(d, "NextNavCenter")!;
-            var kapsul = (RectangleF)Oku(d, "NavBounds")!;
+            var alan = (RectangleF)Oku(d, "NavBounds")!;
             var baslik = (RectangleF)Oku(d, "TitleBounds")!;
             var blok = (RectangleF)Oku(d, "Bounds")!;
             var gunAdlari = (RectangleF[])Oku(d, "WeekdayCells")!;
             MethodInfo isabet = d.GetType().GetMethod("HitTestNav")!;
             MethodInfo gun = d.GetType().GetMethod("HitTest")!;
-            int I(float x, float y) => (int)isabet.Invoke(d, new object[] { new PointF(x, y) })!;
+            string I(float x, float y) => isabet.Invoke(d, new object[] { new PointF(x, y) })!.ToString()!;
 
             float cumaCmt = (gunAdlari[4].Right + gunAdlari[5].Left) / 2f;
             float cmtPaz = (gunAdlari[5].Right + gunAdlari[6].Left) / 2f;
@@ -125,45 +133,52 @@ internal static class Program
                 Yakin(once.X, cumaCmt) && Yakin(once.X, (cumaOrta + cmtOrta) / 2f), $"{once.X - koken.X:0.#} px");
             Denetle($"ölçek {s}: sonraki ay oku Cumartesi ile Pazar'ın ortasında",
                 Yakin(sonra.X, cmtPaz) && Yakin(sonra.X, (cmtOrta + pazOrta) / 2f), $"{sonra.X - koken.X:0.#} px");
-            Denetle($"ölçek {s}: oklar ay adı satırının ortasında ve aynı hizada",
-                Yakin(once.Y, baslik.Y + (baslik.Height / 2f)) && once.Y == sonra.Y);
-            Denetle($"ölçek {s}: kapsül başlık satırının ve bloğun içinde",
-                kapsul.Top >= baslik.Top && kapsul.Bottom <= baslik.Bottom && blok.Contains(kapsul));
+            Denetle($"ölçek {s}: nokta iki okun ortasında, Cumartesi'nin üstünde",
+                Yakin(nokta.X, (once.X + sonra.X) / 2f) && Yakin(nokta.X, cmtOrta), $"{nokta.X - koken.X:0.#} px");
+            Denetle($"ölçek {s}: oklar ve nokta ay adı satırının ortasında, aynı hizada",
+                Yakin(once.Y, baslik.Y + (baslik.Height / 2f)) && once.Y == sonra.Y && once.Y == nokta.Y);
+            Denetle($"ölçek {s}: tıklama alanı başlık satırının ve bloğun içinde",
+                alan.Top >= baslik.Top && alan.Bottom <= baslik.Bottom && blok.Contains(alan));
 
-            float orta = (once.X + sonra.X) / 2f;
-            float pay = 8f * s;
+            float y = once.Y;
+            float solSinir = (once.X + nokta.X) / 2f;
+            float sagSinir = (nokta.X + sonra.X) / 2f;
             Denetle($"ölçek {s}: isabetler",
-                I(once.X, once.Y) == -1 && I(sonra.X, sonra.Y) == 1
-                && I(orta - 1, once.Y) == -1 && I(orta + 1, once.Y) == 1
-                && I(kapsul.Left - pay + 1, once.Y) == -1 && I(kapsul.Left - pay - 1, once.Y) == 0
-                && I(kapsul.Right + pay - 1, once.Y) == 1 && I(kapsul.Right + pay + 1, once.Y) == 0
-                && I(koken.X + (60 * s), once.Y) == 0
-                && I(once.X, baslik.Bottom + 1) == 0
+                I(once.X, y) == "Previous" && I(nokta.X, y) == "Today" && I(sonra.X, y) == "Next"
+                && I(solSinir - 1, y) == "Previous" && I(solSinir + 1, y) == "Today"
+                && I(sagSinir - 1, y) == "Today" && I(sagSinir + 1, y) == "Next"
+                && I(alan.Left + 1, y) == "Previous" && I(alan.Left - 1, y) == "None"
+                && I(alan.Right - 1, y) == "Next" && I(alan.Right + 1, y) == "None"
+                && I(koken.X + (60 * s), y) == "None"
+                && I(once.X, baslik.Bottom + 1) == "None"
                 && gun.Invoke(d, new object[] { once }) is null);
         }
     }
 
-    /// <summary>Her ayın adı (en uzunu AĞUSTOS, HAZİRAN) kapsülün soluna kadar biter.</summary>
-    private static void AyAdiKapsuleDegmiyor()
+    /// <summary>
+    /// Ay adı 52 px ve düğmelere değmiyor (en uzunları AĞUSTOS, HAZİRAN);
+    /// düğmeler zeminsiz; nokta bu ayda soluk, başka ayda yazı renginde.
+    /// </summary>
+    private static void AyAdiVeDugmeler()
     {
-        Console.WriteLine("Ay adı 52 px ve kapsüle değmiyor");
+        Console.WriteLine("Ay adı 52 px, düğmeler zeminsiz, nokta bu ayda soluk");
         object store = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"))!;
         object ayarlar = Oku(store, "Current")!;
+        object gorunum = Oku(ayarlar, "Appearance")!;
         object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"))!;
         MethodInfo blok = cizici.GetType().GetMethod("RenderCalendarBlock")!;
         object bos = Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!;
 
+        // Başlık satırı y 0-88; önceki ay okunun ucu x ≈ 496'da.
         int enSag = 0;
         string enUzun = "";
         for (int ay = 1; ay <= 12; ay++)
         {
             using var resim = (Bitmap)blok.Invoke(cizici, new object[] { 1f, ayarlar, bos, new DateOnly(2026, ay, 15) })!;
-
-            // Başlık satırı: y 0-88. Kapsül x 468'de başlıyor.
             int sag = 0;
             for (int y = 0; y < 88; y++)
             {
-                for (int x = 0; x < 460; x++)
+                for (int x = 0; x < 480; x++)
                 {
                     if (resim.GetPixel(x, y).A > 40)
                     {
@@ -179,22 +194,71 @@ internal static class Program
             }
         }
 
-        Denetle("en uzun ay adı kapsülden en az 100 px önce bitiyor", enSag < 368, $"en sağ yazı pikseli {enSag} (ay {enUzun}), kapsül 468'de");
+        Denetle("en uzun ay adı oklardan en az 100 px önce bitiyor", enSag < 396, $"en sağ yazı pikseli {enSag} (ay {enUzun}), ok ~496'da");
+
+        // Düğmeleri doğrudan çizicinin kendisiyle, istenen ay için çiz.
+        Type duzenTipi = Tip("Kalender.Calendar.CalendarLayout");
+        object tema = Tip("Kalender.Rendering.Theme").GetMethod("From")!.Invoke(null, new[] { gorunum })!;
+        object ressam = Activator.CreateInstance(Tip("Kalender.Rendering.CalendarPainter"))!;
+        MethodInfo boya = ressam.GetType().GetMethod("Paint")!;
+        var bugun = new DateOnly(2026, 9, 30);
+
+        Bitmap Ciz(DateOnly ay, out object duzen)
+        {
+            duzen = duzenTipi.GetMethod("Create")!.Invoke(null, new object[] { ay, 1f, PointF.Empty })!;
+            var resim = new Bitmap(700, 704, PixelFormat.Format32bppArgb);
+            using Graphics g = Graphics.FromImage(resim);
+            g.Clear(Color.Transparent);
+            boya.Invoke(ressam, new[] { g, duzen, tema, gorunum, bos, bugun });
+            return resim;
+        }
+
+        static bool Ayni(Color a, Color b) => Math.Abs(a.R - b.R) <= 3 && Math.Abs(a.G - b.G) <= 3 && Math.Abs(a.B - b.B) <= 3 && a.A > 240;
+
+        var yazi = (Color)Oku(tema, "Text")!;
+        var soluk = (Color)Oku(tema, "Muted")!;
+
+        using (Bitmap eylulResmi = Ciz(new DateOnly(2026, 9, 1), out object eylulDuzeni))
+        using (Bitmap ekimResmi = Ciz(new DateOnly(2026, 10, 1), out object ekimDuzeni))
+        {
+            var nokta = (PointF)Oku(eylulDuzeni, "TodayNavCenter")!;
+            var once = (PointF)Oku(eylulDuzeni, "PrevNavCenter")!;
+            var sonra = (PointF)Oku(eylulDuzeni, "NextNavCenter")!;
+            Color eylulNokta = eylulResmi.GetPixel((int)nokta.X, (int)nokta.Y);
+            Color ekimNokta = ekimResmi.GetPixel((int)nokta.X, (int)nokta.Y);
+
+            Denetle("nokta bu ayda soluk renkte", Ayni(eylulNokta, soluk), $"{eylulNokta} / soluk {soluk}");
+            Denetle("nokta başka ayda yazı renginde", Ayni(ekimNokta, yazi), $"{ekimNokta} / yazı {yazi}");
+
+            // Okların uçları dolu; ok ile nokta arası ve kapsülün eski yeri boş (zemin yok).
+            Color solUc = eylulResmi.GetPixel((int)Math.Round(once.X - 3.5), (int)once.Y);
+            Color sagUc = eylulResmi.GetPixel((int)Math.Round(sonra.X + 3.5), (int)sonra.Y);
+            bool araBos = eylulResmi.GetPixel((int)((once.X + nokta.X) / 2), (int)once.Y).A == 0
+                && eylulResmi.GetPixel((int)((nokta.X + sonra.X) / 2), (int)once.Y).A == 0
+                && eylulResmi.GetPixel((int)once.X - 20, (int)once.Y).A == 0
+                && eylulResmi.GetPixel((int)sonra.X + 20, (int)once.Y).A == 0;
+            Denetle("oklar yazı renginde, aralarında zemin yok", Ayni(solUc, yazi) && Ayni(sagUc, yazi) && araBos,
+                $"sol uç {solUc}, sağ uç {sagUc}");
+
+            // Oklar küçük: boyanan yükseklikleri 16-22 px.
+            int ust = int.MaxValue, alt = 0;
+            for (int y = 0; y < 88; y++)
+            {
+                for (int x = (int)once.X - 8; x <= (int)once.X + 8; x++)
+                {
+                    if (eylulResmi.GetPixel(x, y).A > 128)
+                    {
+                        ust = Math.Min(ust, y);
+                        alt = Math.Max(alt, y);
+                    }
+                }
+            }
+
+            Denetle("ok yüksekliği 16-22 px (önceki kapsüldeki oklardan küçük)", alt - ust + 1 is >= 16 and <= 22, $"{alt - ust + 1} px");
+        }
 
         // Ay adının yüksekliği: 52 px Segoe UI Bold büyük harfin boyanan yüksekliği ~37 px.
         using var eylul = (Bitmap)blok.Invoke(cizici, new object[] { 1f, ayarlar, bos, new DateOnly(2026, 9, 15) })!;
-        int ust = int.MaxValue, alt = 0;
-        for (int y = 0; y < 88; y++)
-        {
-            for (int x = 20; x < 300; x++)
-            {
-                if (eylul.GetPixel(x, y).A > 128)
-                {
-                    ust = Math.Min(ust, y);
-                    alt = Math.Max(alt, y);
-                }
-            }
-        }
 
         // "EYLÜL"deki Ü noktaları büyük harfin üstüne çıkıyor; E'nin yüksekliğine bakılır.
         int eUst = int.MaxValue, eAlt = 0;
@@ -222,14 +286,19 @@ internal static class Program
         Console.WriteLine("Fare kancası (yapay olaylarla; kanca takılmaz)");
         Type t = Tip("Kalender.Desktop.CalendarMouseHook");
 
-        // Takvim x<1000; önceki ay düğmesi 500-549, sonraki 550-599.
+        // Takvim x<1000; önceki ay düğmesi 500-532, nokta 533-565, sonraki 566-599.
+        // Simgenin altında kalan düğme için karar işlevi zaten "yok" döner (AppHost).
+        Type dugmeTipi = Tip("Kalender.Calendar.NavButton");
         Func<Point, bool> takvimde = p => p.X < 1000;
-        Func<Point, int> dugme = p => p.X is >= 500 and < 550 ? -1 : p.X is >= 550 and < 600 ? 1 : 0;
+        Delegate dugme = Delegate.CreateDelegate(typeof(Func<,>).MakeGenericType(typeof(Point), dugmeTipi),
+            typeof(Program).GetMethod(nameof(DugmeBul), BindingFlags.NonPublic | BindingFlags.Static)!.MakeGenericMethod(dugmeTipi));
         object kanca = Activator.CreateInstance(t, Dispatcher.CurrentDispatcher, takvimde, dugme)!;
 
-        var aylar = new List<int>();
+        _dugmeOlaylari.Clear();
+        var aylar = _dugmeOlaylari;
         var menuler = new List<Point>();
-        t.GetEvent("NavClicked")!.AddEventHandler(kanca, new Action<int>(aylar.Add));
+        t.GetEvent("NavClicked")!.AddEventHandler(kanca, Delegate.CreateDelegate(typeof(Action<>).MakeGenericType(dugmeTipi),
+            typeof(Program).GetMethod(nameof(DugmeKaydet), BindingFlags.NonPublic | BindingFlags.Static)!.MakeGenericMethod(dugmeTipi)));
         t.GetEvent("RightClicked")!.AddEventHandler(kanca, new Action<Point>(menuler.Add));
         MethodInfo fare = t.GetMethod("OnMouse", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
@@ -251,49 +320,64 @@ internal static class Program
 
         const uint LDown = 0x0201, LUp = 0x0202, RDown = 0x0204, RUp = 0x0205;
 
-        bool yut1 = Gonder(LDown, 520) == (IntPtr)1, yut2 = Gonder(LUp, 525) == (IntPtr)1;
+        bool yut1 = Gonder(LDown, 520) == (IntPtr)1;
         Bosalt();
-        Denetle("önceki ay düğmesine tıklama yutuluyor ve -1 veriyor", yut1 && yut2 && aylar.SequenceEqual(new[] { -1 }));
-
-        yut1 = Gonder(LDown, 560) == (IntPtr)1;
-        yut2 = Gonder(LUp, 590) == (IntPtr)1;
+        bool basincaDegisti = aylar.SequenceEqual(new[] { "Previous" });
+        bool yut2 = Gonder(LUp, 520) == (IntPtr)1;
         Bosalt();
-        Denetle("sonraki ay düğmesine tıklama +1 veriyor", yut1 && yut2 && aylar.SequenceEqual(new[] { -1, 1 }));
+        Denetle("önceki ay: tuşa basınca (bırakmadan) ay değişiyor, basış ve bırakış saklanıyor",
+            yut1 && basincaDegisti && yut2 && aylar.SequenceEqual(new[] { "Previous" }), string.Join(",", aylar));
 
-        yut1 = Gonder(LDown, 520) == (IntPtr)1;
+        yut1 = Gonder(LDown, 550) == (IntPtr)1;
+        yut2 = Gonder(LUp, 700) == (IntPtr)1;
+        Bosalt();
+        Denetle("nokta: bu aya dönüş; bırakırken kayılsa da bırakış saklanıyor",
+            yut1 && yut2 && aylar.SequenceEqual(new[] { "Previous", "Today" }), string.Join(",", aylar));
+
+        yut1 = Gonder(LDown, 580) == (IntPtr)1;
         yut2 = Gonder(LUp, 580) == (IntPtr)1;
         Bosalt();
-        Denetle("basılıyken öbür düğmeye kayınca ay değişmiyor, iki yarı da yutuluyor", yut1 && yut2 && aylar.Count == 2);
+        Denetle("sonraki ay", yut1 && yut2 && aylar.SequenceEqual(new[] { "Previous", "Today", "Next" }), string.Join(",", aylar));
 
         yut1 = Gonder(LDown, 520) == (IntPtr)1;
-        yut2 = Gonder(LUp, 1500) == (IntPtr)1;
+        bool ikinci = Gonder(LUp, 520) == (IntPtr)1 && Gonder(LDown, 520) == (IntPtr)1 && Gonder(LUp, 520) == (IntPtr)1;
         Bosalt();
-        Denetle("basılıyken takvimin dışına kayınca ay değişmiyor", yut1 && yut2 && aylar.Count == 2);
+        Denetle("hızlı iki tık iki ay geri götürüyor", yut1 && ikinci && aylar.Count(a => a == "Previous") == 3);
 
         bool gecti1 = Gonder(LDown, 700) != (IntPtr)1, gecti2 = Gonder(LUp, 700) != (IntPtr)1;
         Bosalt();
-        Denetle("takvimde ama düğme dışında sol tık masaüstüne geçiyor", gecti1 && gecti2 && aylar.Count == 2);
+        Denetle("takvimde ama düğme dışında (ya da simgede) sol tık masaüstüne geçiyor", gecti1 && gecti2 && aylar.Count == 5);
 
         gecti1 = Gonder(LDown, 700) != (IntPtr)1;
-        yut2 = Gonder(LUp, 520) != (IntPtr)1;
+        gecti2 = Gonder(LUp, 520) != (IntPtr)1;
         Bosalt();
-        Denetle("düğme dışında basılıp düğmede bırakılan tık da masaüstüne geçiyor", gecti1 && yut2 && aylar.Count == 2);
+        Denetle("düğme dışında basılıp düğmede bırakılan tık da masaüstüne geçiyor", gecti1 && gecti2 && aylar.Count == 5);
 
-        yut1 = Gonder(RDown, 100) == (IntPtr)1;
-        yut2 = Gonder(RUp, 100) == (IntPtr)1;
+        bool yutR1 = Gonder(RDown, 100) == (IntPtr)1, yutR2 = Gonder(RUp, 100) == (IntPtr)1;
         Bosalt();
-        Denetle("takvimde sağ tık eskisi gibi menü açıyor", yut1 && yut2 && menuler.Count == 1 && aylar.Count == 2);
+        Denetle("takvimde sağ tık eskisi gibi menü açıyor", yutR1 && yutR2 && menuler.Count == 1 && aylar.Count == 5);
 
         gecti1 = Gonder(RDown, 1500) != (IntPtr)1;
         gecti2 = Gonder(RUp, 1500) != (IntPtr)1;
         Bosalt();
-        Denetle("takvim dışında sağ tık masaüstüne geçiyor", gecti1 && gecti2 && menuler.Count == 1);
+        Denetle("takvim dışında (ya da simgede) sağ tık masaüstüne geçiyor", gecti1 && gecti2 && menuler.Count == 1);
 
-        yut1 = Gonder(RDown, 520) == (IntPtr)1;
-        yut2 = Gonder(RUp, 520) == (IntPtr)1;
+        yutR1 = Gonder(RDown, 520) == (IntPtr)1;
+        yutR2 = Gonder(RUp, 520) == (IntPtr)1;
         Bosalt();
-        Denetle("ay düğmesine sağ tık menü açıyor, ay değiştirmiyor", yut1 && yut2 && menuler.Count == 2 && aylar.Count == 2);
+        Denetle("ay düğmesine sağ tık menü açıyor, ay değiştirmiyor", yutR1 && yutR2 && menuler.Count == 2 && aylar.Count == 5);
     }
+
+    private static T DugmeBul<T>(Point p) where T : struct, Enum
+        => Enum.Parse<T>(p.X switch
+        {
+            >= 500 and < 533 => "Previous",
+            >= 533 and < 566 => "Today",
+            >= 566 and < 600 => "Next",
+            _ => "None",
+        });
+
+    private static void DugmeKaydet<T>(T dugme) => _dugmeOlaylari.Add(dugme!.ToString()!);
 
     // -------------------------------------------------------- varsayılan yer
 
@@ -448,5 +532,72 @@ internal static class Program
 
         object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"))!;
         Denetle("yedek varsayılan oranlar yeni yere göre", Yakin((double)Oku(yer, "XRatio")!, 0.6934, 0.0001) && Yakin((double)Oku(yer, "YRatio")!, 0.4514, 0.0001));
+    }
+
+    // ---------------------------------------------------- Google ay önbelleği
+
+    /// <summary>
+    /// Kalender: daha önce gösterilen ayların Google verisi bellekte tutuluyor.
+    /// Sağlayıcı ağsız, kimliksiz kurulur (kurucusu çalıştırılmaz); veri sahte.
+    /// Diskteki Google önbelleğine dokunan ClearCache çağrılmaz.
+    /// </summary>
+    private static void GoogleGecmisi()
+    {
+        Console.WriteLine("Google: yakın zamanda gösterilen aylar bellekte");
+        Type? t = Uyg.GetType("Kalender.Google.GoogleCalendarProvider");
+        if (t is null)
+        {
+            Console.WriteLine("   bilgi: Kalender Lite'ta Google yok; atlandı.");
+            return;
+        }
+
+        Type paketTipi = Tip("Kalender.Google.ProviderBundle");
+        Type takvimTipi = Tip("Kalender.Google.ProviderCalendar");
+        object saglayici = RuntimeHelpers.GetUninitializedObject(t);
+        BindingFlags ic = BindingFlags.NonPublic | BindingFlags.Instance;
+        t.GetField("_gecmis", ic)!.SetValue(saglayici, Activator.CreateInstance(typeof(List<>).MakeGenericType(paketTipi)));
+        t.GetField("_veriKilidi", ic)!.SetValue(saglayici, new object());
+        PropertyInfo veri = t.GetProperty("Data")!;
+        var gecmis = (IList)t.GetField("_gecmis", ic)!.GetValue(saglayici)!;
+        MethodInfo getir = t.GetMethod("GecmistenGetir")!;
+        MethodInfo gecmise = t.GetMethod("Gecmise", ic)!;
+
+        object Paket(int ay)
+        {
+            object p = Activator.CreateInstance(paketTipi)!;
+            (DateOnly ilk, DateOnly son) = ((DateOnly, DateOnly))Tip("Kalender.Calendar.CalendarLayout").GetMethod("GridRange")!
+                .Invoke(null, new object[] { new DateOnly(2026, ay, 1) })!;
+            Yaz(p, "RangeFrom", ilk);
+            Yaz(p, "RangeTo", son);
+            ((IList)Oku(p, "Calendars")!).Add(Activator.CreateInstance(takvimTipi));
+            return p;
+        }
+
+        bool Getir(object p) => (bool)getir.Invoke(saglayici, new object[] { (DateOnly)Oku(p, "RangeFrom")!, (DateOnly)Oku(p, "RangeTo")! })!;
+
+        object eylul = Paket(9), ekim = Paket(10), kasim = Paket(11);
+        veri.SetValue(saglayici, eylul);
+
+        Denetle("görülmemiş ay bellekte yok; veri değişmiyor", !Getir(ekim) && ReferenceEquals(veri.GetValue(saglayici), eylul));
+
+        gecmise.Invoke(saglayici, new[] { ekim });
+        Denetle("görülmüş ay bellekten geliyor, önceki ay belleğe geçiyor",
+            Getir(ekim) && ReferenceEquals(veri.GetValue(saglayici), ekim) && gecmis.Contains(eylul) && !gecmis.Contains(ekim));
+
+        Denetle("bu aya dönüş de bellekten", Getir(eylul) && ReferenceEquals(veri.GetValue(saglayici), eylul) && gecmis.Contains(ekim));
+
+        Denetle("gösterilen ay yeniden istenince değişiklik yok", Getir(eylul) && ReferenceEquals(veri.GetValue(saglayici), eylul));
+
+        for (int ay = 1; ay <= 6; ay++)
+        {
+            gecmise.Invoke(saglayici, new[] { Paket(ay) });
+        }
+
+        Denetle("bellekte en çok 3 ay tutuluyor, en eskisi düşüyor", gecmis.Count == 3 && !Getir(ekim) && Getir(kasim) is false);
+
+        object bos = Activator.CreateInstance(paketTipi)!;
+        int once = gecmis.Count;
+        gecmise.Invoke(saglayici, new[] { bos });
+        Denetle("boş veri belleğe alınmıyor", gecmis.Count == once);
     }
 }

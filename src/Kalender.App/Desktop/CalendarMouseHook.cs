@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Threading;
+using Kalender.Calendar;
 using Kalender.Core;
 using Kalender.Interop;
 
@@ -8,13 +9,15 @@ namespace Kalender.Desktop;
 /// <summary>
 /// Takvimin üzerindeki fare tıklamalarını yakalar: sağ tıkta Windows'un
 /// masaüstü menüsü yerine Kalender'in menüsü açılır, ay düğmelerine sol
-/// tıkta önceki ya da sonraki aya geçilir.
+/// tıkta önceki ya da sonraki aya geçilir ya da bu aya dönülür.
 ///
 /// Neden alt düzey kanca gerekiyor? Takvim duvar kağıdının bir parçası olarak
 /// çiziliyor; ortada bizim bir penceremiz yok, dolayısıyla fare olayları hiçbir
 /// zaman bize ulaşmıyor. Tıklamayı biz karşılayacaksak olayı kabuğa varmadan
 /// almamız gerekiyor. Yakalanan tıklama kabuğa hiç gitmez: ay düğmesine basınca
-/// masaüstünde simge seçimi ya da seçim kutusu başlamaz.
+/// masaüstünde simge seçimi ya da seçim kutusu başlamaz. Takvimin üstünde bir
+/// masaüstü simgesi varsa karar verici işlevler (bkz. AppHost) isabet
+/// vermez; tıklama simgeye gider.
 ///
 /// Maliyeti nasıl sıfıra yakın tutuyoruz? Kanca sürekli takılı durmuyor:
 /// <see cref="HoverWatcher"/> zaten 100 ms'de bir imlecin nerede olduğuna
@@ -28,7 +31,7 @@ internal sealed class CalendarMouseHook : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Func<Point, bool> _isOverCalendar;
-    private readonly Func<Point, int> _navAt;
+    private readonly Func<Point, NavButton> _navAt;
 
     // Temsilci alan olarak tutuluyor: yalnız yerel değişkende dursaydı çöp
     // toplayıcı onu toplar ve kanca çağrıldığında süreç çökerdi.
@@ -37,15 +40,15 @@ internal sealed class CalendarMouseHook : IDisposable
     private IntPtr _hook;
     private bool _swallowingUp;
 
-    /// <summary>Sol tuş hangi ay düğmesinin üzerinde basıldı (-1, +1; 0 hiçbiri).</summary>
-    private int _pressedNav;
+    /// <summary>Ay düğmesine basıldı ve iş görüldü; bırakma da kabuktan saklanmalı.</summary>
+    private bool _swallowingLeftUp;
 
     private bool _disposed;
 
     /// <param name="dispatcher">Olayların iletileceği arayüz iş parçacığı.</param>
     /// <param name="isOverCalendar">Nokta masaüstünde takvim bloğunun üzerinde mi?</param>
-    /// <param name="navAt">Nokta masaüstünde hangi ay düğmesinin üzerinde (-1, +1; 0 hiçbiri)?</param>
-    public CalendarMouseHook(Dispatcher dispatcher, Func<Point, bool> isOverCalendar, Func<Point, int> navAt)
+    /// <param name="navAt">Nokta masaüstünde hangi ay düğmesinin üzerinde?</param>
+    public CalendarMouseHook(Dispatcher dispatcher, Func<Point, bool> isOverCalendar, Func<Point, NavButton> navAt)
     {
         _dispatcher = dispatcher;
         _isOverCalendar = isOverCalendar;
@@ -56,8 +59,8 @@ internal sealed class CalendarMouseHook : IDisposable
     /// <summary>Takvimin üzerinde sağ tıklandı (ekran koordinatı).</summary>
     public event Action<Point>? RightClicked;
 
-    /// <summary>Ay düğmelerinden birine tıklandı: -1 önceki ay, +1 sonraki ay.</summary>
-    public event Action<int>? NavClicked;
+    /// <summary>Ay düğmelerinden birine basıldı.</summary>
+    public event Action<NavButton>? NavClicked;
 
     public bool IsArmed => _hook != IntPtr.Zero;
 
@@ -89,7 +92,7 @@ internal sealed class CalendarMouseHook : IDisposable
         NativeMethods.UnhookWindowsHookEx(_hook);
         _hook = IntPtr.Zero;
         _swallowingUp = false;
-        _pressedNav = 0;
+        _swallowingLeftUp = false;
     }
 
     private IntPtr OnMouse(int nCode, IntPtr wParam, IntPtr lParam)
@@ -149,33 +152,33 @@ internal sealed class CalendarMouseHook : IDisposable
     }
 
     /// <summary>
-    /// Ay düğmesine sol tıklama. Düğme sıradan bir düğme gibi davranır: basılan
-    /// düğmenin üzerinde bırakılırsa ay değişir, basılıyken dışarı kayılırsa
-    /// vazgeçilmiş sayılır. İki yarı da kabuktan saklanır; masaüstüne yarım bir
-    /// olay çifti gitmez.
+    /// Ay düğmesine sol tıklama. Ay, tuş bırakılınca değil basılınca değişir:
+    /// basış ile bırakış arası (~0,1 sn) beklenmez, geçiş hızlı görünür. Basış
+    /// da bırakış da kabuktan saklanır. Ay çizilirken kanca sökülüyse bırakış
+    /// kabuğa gider; önceki basışı görmemiş masaüstü için bu zararsızdır.
     /// </summary>
     private IntPtr OnLeftButton(uint message, Point point, int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (message == NativeMethods.WM_LBUTTONDOWN)
         {
-            _pressedNav = _navAt(point);
-            return _pressedNav != 0 ? new IntPtr(1) : NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            NavButton dugme = _navAt(point);
+            _swallowingLeftUp = dugme != NavButton.None;
+            if (!_swallowingLeftUp)
+            {
+                return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            }
+
+            // Yeni ayın çizimi kancanın içinde yapılamaz; arayüz iş parçacığına bırakılır.
+            _dispatcher.BeginInvoke(() => NavClicked?.Invoke(dugme));
+            return new IntPtr(1);
         }
 
-        if (_pressedNav == 0)
+        if (!_swallowingLeftUp)
         {
             return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
         }
 
-        int yon = _pressedNav;
-        _pressedNav = 0;
-
-        if (_navAt(point) == yon)
-        {
-            // Yeni ayın çizimi kancanın içinde yapılamaz; arayüz iş parçacığına bırakılır.
-            _dispatcher.BeginInvoke(() => NavClicked?.Invoke(yon));
-        }
-
+        _swallowingLeftUp = false;
         return new IntPtr(1);
     }
 

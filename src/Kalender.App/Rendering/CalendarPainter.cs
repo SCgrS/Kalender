@@ -19,15 +19,12 @@ internal sealed class CalendarPainter : IDisposable
     private const float MonthFontSize = 52f;
     private const float MonthLetterSpacing = 6f;
 
-    // Ay düğmelerinin okları (ölçek 1.0 iken): uçtan kuyruğa yarım yükseklik,
-    // yatay derinlik ve çizgi kalınlığı. Kalınlık, yazıların kalınlığına yakın.
-    private const float NavArrowHalfHeight = 10f;
-    private const float NavArrowDepth = 9.5f;
-    private const float NavArrowStroke = 4f;
-    private const float NavDividerStroke = 2f;
-
-    /// <summary>Kapsülün ortasındaki ayırıcı çizginin saydamlığı (0-255).</summary>
-    private const int NavDividerAlpha = 70;
+    // Ay düğmeleri (ölçek 1.0 iken): okun yarım yüksekliği, yatay derinliği ve
+    // çizgi kalınlığı; aradaki noktanın çapı. Zemin yok, yalnız ok ve nokta.
+    private const float NavArrowHalfHeight = 8.5f;
+    private const float NavArrowDepth = 8f;
+    private const float NavArrowStroke = 3.5f;
+    private const float NavDotDiameter = 8f;
 
     // Gün adı harfleri, rakamlardan birkaç punto büyük duruyor; şartname böyle istiyor.
     private const float WeekdayFontSize = 43f;
@@ -88,36 +85,22 @@ internal sealed class CalendarPainter : IDisposable
         float scale = layout.Scale;
 
         DrawMonthTitle(g, layout, theme, scale);
-        DrawNavButtons(g, layout, theme, scale);
+        DrawNavButtons(g, layout, theme, today, scale);
         DrawWeekdayHeader(g, layout, theme, appearance, scale);
         DrawDays(g, layout, theme, appearance, data, today, scale);
     }
 
     /// <summary>
-    /// Ay adının hizasındaki önceki/sonraki ay düğmeleri: tek bir kapsülün
-    /// içinde iki ok, ortada ince bir ayırıcı. Kapsül bugünün dairesiyle aynı
-    /// renkte; kullanıcı daireye renk verdiyse düğmeler de ona uyar.
+    /// Ay adının hizasındaki düğmeler: önceki ay oku, bu aya dönüş noktası,
+    /// sonraki ay oku. Zeminleri yok; oklar yazı renginde. Nokta başka bir ay
+    /// gösterilirken yazı renginde, içinde bulunulan ayda soluk durur: basınca
+    /// gidilecek bir yer olmadığını söyler.
     ///
     /// Takvim duvar kağıdına işlendiği için düğmelerin üzerine gelme ya da
     /// basılma hâli çizilmez; tıklama sonucu ayın değişmesi yeterli geri bildirim.
     /// </summary>
-    private static void DrawNavButtons(Graphics g, CalendarLayout layout, Theme theme, float scale)
+    private static void DrawNavButtons(Graphics g, CalendarLayout layout, Theme theme, DateOnly today, float scale)
     {
-        RectangleF kapsul = layout.NavBounds;
-
-        using (GraphicsPath yol = Capsule(kapsul))
-        using (var dolgu = new SolidBrush(theme.TodayCircle))
-        {
-            g.FillPath(dolgu, yol);
-        }
-
-        float orta = (layout.PrevNavCenter.X + layout.NextNavCenter.X) / 2f;
-        float bosluk = kapsul.Height / 4f;
-        using (var ayirici = new Pen(ColorTools.WithAlpha(theme.Text, NavDividerAlpha), NavDividerStroke * scale))
-        {
-            g.DrawLine(ayirici, orta, kapsul.Top + bosluk, orta, kapsul.Bottom - bosluk);
-        }
-
         using var kalem = new Pen(theme.Text, NavArrowStroke * scale)
         {
             StartCap = LineCap.Round,
@@ -127,6 +110,11 @@ internal sealed class CalendarPainter : IDisposable
 
         DrawChevron(g, kalem, layout.PrevNavCenter, -1, scale);
         DrawChevron(g, kalem, layout.NextNavCenter, 1, scale);
+
+        bool buAy = layout.MonthStart.Year == today.Year && layout.MonthStart.Month == today.Month;
+        float cap = NavDotDiameter * scale;
+        using var nokta = new SolidBrush(buAy ? theme.Muted : theme.Text);
+        g.FillEllipse(nokta, layout.TodayNavCenter.X - (cap / 2f), layout.TodayNavCenter.Y - (cap / 2f), cap, cap);
     }
 
     /// <summary>Ortası verilen noktada, <paramref name="yon"/> yönüne bakan ok (-1 sol, 1 sağ).</summary>
@@ -145,17 +133,6 @@ internal sealed class CalendarPainter : IDisposable
             new PointF(uc, merkez.Y),
             new PointF(kuyruk, merkez.Y + yarimYukseklik),
         });
-    }
-
-    /// <summary>Uçları tam yarım daire olan yuvarlatılmış dikdörtgen.</summary>
-    private static GraphicsPath Capsule(RectangleF r)
-    {
-        float d = Math.Min(r.Width, r.Height);
-        var yol = new GraphicsPath();
-        yol.AddArc(r.X, r.Y, d, d, 90, 180);
-        yol.AddArc(r.Right - d, r.Y, d, d, 270, 180);
-        yol.CloseFigure();
-        return yol;
     }
 
     private void DrawMonthTitle(Graphics g, CalendarLayout layout, Theme theme, float scale)

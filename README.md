@@ -16,8 +16,8 @@ görevleri küçük bir kutuda listelenir. Google hesabına yalnızca okuma izni
 - Pazar günleri, isteğe bağlı olarak cumartesiler ve Türkiye resmi tatilleri kırmızı gösterilir.
 - Gün rakamının altında, o güne düşen etkinlik ve görevler için renkli noktacıklar çıkar.
 - Bir günün üzerinde beklediğinizde o günün tatili, etkinlikleri ve görevleri listelenir.
-- Ay adının hizasındaki **‹ ›** düğmeleriyle önceki ya da sonraki aya geçilir; takvime 30 saniye
-  dokunulmazsa içinde bulunulan aya döner.
+- Ay adının hizasındaki **‹ • ›** düğmeleriyle önceki ya da sonraki aya geçilir, nokta bu aya
+  döndürür; takvime 30 saniye dokunulmazsa kendiliğinden bu aya döner.
 - Takvimin üzerine sağ tıklayınca güne gitme, ay değiştirme ve yeni kayıt açma menüsü çıkar.
 - Zemin düz renk, uygulamayla gelen dört fotoğraftan biri ya da kendi fotoğrafınız olabilir;
   konum, boyut ve fotoğraf her monitör için ayrı ayarlanır.
@@ -191,11 +191,19 @@ opaklığı** ile %40'a kadar indirebilirsiniz; yazılar her değerde tam opak k
 
 ## Ay düğmeleri
 
-Ay adının hizasında, sağda bir kapsülün içinde iki ok durur: **‹** Cuma ile Cumartesi'nin,
-**›** Cumartesi ile Pazar'ın tam üstündedir. Tıklayınca takvim bir ay geri ya da ileri gider;
-yeni ayın etkinlikleri Google'dan alınır. Düğmeye tıklamak masaüstüne geçmez (simge seçimi ya da
-seçim kutusu başlamaz). Kapsül bugünün dairesiyle aynı renktedir; takvim duvar kağıdının parçası
-olduğu için üzerine gelince değişmez, tıklayınca ay değişir.
+Ay adının hizasında, sağda üç düğme durur: **‹** Cuma ile Cumartesi'nin, **›** Cumartesi ile
+Pazar'ın tam üstünde, aralarındaki **•** nokta Cumartesi'nin üstündedir. Oklar takvimi bir ay
+geri ya da ileri götürür, nokta içinde bulunduğunuz aya döndürür (bu aydayken soluk durur). Ay,
+fare tuşuna basınca hemen değişir. Düğmeye tıklamak masaüstüne geçmez (simge seçimi ya da seçim
+kutusu başlamaz); takvim duvar kağıdının parçası olduğu için düğmeler üzerine gelince değişmez.
+
+Yeni ayın etkinlikleri Google'dan alınır. Son gösterilen birkaç ayın verisi bellekte tutulur:
+o aylara (ve 30 saniye sonra bu aya) dönünce noktacıklar beklemeden görünür, ardından yalnız
+değişenler Google'dan tazelenir. Google'dan yine yalnızca görünen ay istenir.
+
+Takvimin üstüne bir masaüstü simgesi (klasör, kısayol) koyarsanız tıklama simgeye gider:
+simgenin altında kalan düğme çalışmaz, simgeye sağ tıklayınca simgenin kendi menüsü açılır,
+simgenin altındaki günün kutusu açılmaz.
 
 Başka bir aya gittiğinizde takvime **30 saniye dokunulmazsa kendiliğinden bu aya döner**. Ay
 düğmesine ya da sağ tık menüsüne tıklamak ve fareyi takvimin üzerinde gezdirmek (örneğin gün

@@ -29,6 +29,21 @@ internal sealed class DayCell
     public bool IsSaturday => Date.DayOfWeek == DayOfWeek.Saturday;
 }
 
+/// <summary>Ay adının hizasındaki düğmeler.</summary>
+internal enum NavButton
+{
+    None = 0,
+
+    /// <summary>Önceki ay (sol ok).</summary>
+    Previous,
+
+    /// <summary>İçinde bulunulan aya dönüş (ortadaki nokta).</summary>
+    Today,
+
+    /// <summary>Sonraki ay (sağ ok).</summary>
+    Next,
+}
+
 /// <summary>
 /// Takvimin geometrisi. Hem çizim hem de fare konumundan gün bulma
 /// (hit-test) aynı nesneyi kullanır; böylece ikisi asla ayrışmaz. Sağ tık
@@ -48,17 +63,15 @@ internal sealed class CalendarLayout
     /// <summary>Başlık + gün adları + 6 hafta = 8 satırlık dikey ritim.</summary>
     private const int TotalRows = 2 + WeekRows;
 
-    /// <summary>Ölçek 1.0 iken ay düğmelerini taşıyan kapsülün yüksekliği (piksel).</summary>
-    private const float BaseNavHeight = 52f;
-
-    /// <summary>Ölçek 1.0 iken kapsülün, okların ortasından dışa taşma payı (piksel).</summary>
-    private const float BaseNavOverhang = 32f;
-
     /// <summary>
-    /// Ölçek 1.0 iken tıklama alanının kapsülden her yana taşma payı (piksel).
-    /// Küçük bir hedefi fareyle tutturmak zor; alan yine de başlık satırında kalır.
+    /// Ölçek 1.0 iken düğmelerin tıklama alanı: okların ortasından dışa taşma
+    /// payı ve ay adı satırının ortasından yukarı/aşağı pay (piksel). Çizilen
+    /// oklar ve nokta küçük; fareyle tutturmak kolay olsun diye alan onlardan
+    /// geniş tutuluyor, yine de başlık satırının içinde kalıyor.
     /// </summary>
-    private const float BaseNavHitPad = 8f;
+    private const float BaseNavHitOverhang = 36f;
+
+    private const float BaseNavHitHalfHeight = 30f;
 
     private CalendarLayout(DateOnly monthStart, float scale, PointF origin,
         IReadOnlyList<DayCell> cells, RectangleF titleBounds, RectangleF[] weekdayCells)
@@ -72,19 +85,21 @@ internal sealed class CalendarLayout
         Bounds = new RectangleF(origin, MeasureSize(scale));
 
         // Ay düğmeleri ay adıyla aynı hizada: önceki ay oku Cuma ile Cumartesi
-        // sütunlarının, sonraki ay oku Cumartesi ile Pazar sütunlarının arasında.
+        // sütunlarının, sonraki ay oku Cumartesi ile Pazar sütunlarının arasında;
+        // bu aya dönüş noktası ikisinin ortasında, Cumartesi'nin üstünde.
         float colW = BaseColumnWidth * scale;
         float y = titleBounds.Y + (titleBounds.Height / 2f);
         PrevNavCenter = new PointF(origin.X + (5 * colW), y);
+        TodayNavCenter = new PointF(origin.X + (5.5f * colW), y);
         NextNavCenter = new PointF(origin.X + (6 * colW), y);
 
-        float overhang = BaseNavOverhang * scale;
-        float height = BaseNavHeight * scale;
+        float overhang = BaseNavHitOverhang * scale;
+        float halfHeight = BaseNavHitHalfHeight * scale;
         NavBounds = new RectangleF(
             PrevNavCenter.X - overhang,
-            y - (height / 2f),
+            y - halfHeight,
             NextNavCenter.X - PrevNavCenter.X + (2f * overhang),
-            height);
+            2f * halfHeight);
     }
 
     public DateOnly MonthStart { get; }
@@ -113,7 +128,10 @@ internal sealed class CalendarLayout
     /// <summary>Sonraki ay okunun ortası: Cumartesi ile Pazar sütunlarının arası, ay adı hizasında.</summary>
     public PointF NextNavCenter { get; }
 
-    /// <summary>İki oku içine alan kapsül (ay düğmeleri).</summary>
+    /// <summary>Bu aya dönüş noktasının ortası: iki okun arası, Cumartesi'nin üstü.</summary>
+    public PointF TodayNavCenter { get; }
+
+    /// <summary>Üç düğmenin birlikte tıklama alanı.</summary>
     public RectangleF NavBounds { get; }
 
     public float ColumnWidth => BaseColumnWidth * Scale;
@@ -207,20 +225,21 @@ internal sealed class CalendarLayout
     }
 
     /// <summary>
-    /// Pencere koordinatındaki nokta ay düğmelerinden birinin üzerinde mi?
-    /// -1 önceki ay, +1 sonraki ay, 0 hiçbiri. Kapsül ortadaki çizgiyle
-    /// ikiye bölünür; tıklama alanı çizilen kapsülden biraz geniştir.
+    /// Pencere koordinatındaki nokta hangi ay düğmesinin üzerinde? Alan üçe
+    /// bölünür: sınırlar okla nokta arasının tam ortasından geçer.
     /// </summary>
-    public int HitTestNav(PointF point)
+    public NavButton HitTestNav(PointF point)
     {
-        float pad = BaseNavHitPad * Scale;
-        RectangleF alan = RectangleF.Inflate(NavBounds, pad, pad);
-        if (!alan.Contains(point))
+        if (!NavBounds.Contains(point))
         {
-            return 0;
+            return NavButton.None;
         }
 
-        float orta = (PrevNavCenter.X + NextNavCenter.X) / 2f;
-        return point.X < orta ? -1 : 1;
+        float solSinir = (PrevNavCenter.X + TodayNavCenter.X) / 2f;
+        float sagSinir = (TodayNavCenter.X + NextNavCenter.X) / 2f;
+
+        return point.X < solSinir ? NavButton.Previous
+            : point.X < sagSinir ? NavButton.Today
+            : NavButton.Next;
     }
 }
