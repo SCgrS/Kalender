@@ -77,14 +77,26 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private bool _layerWarningShown;
 
+    private readonly UpdateService _updates;
+
+    /// <summary>Açık güncelleme hatırlatma penceresi; yoksa null.</summary>
+    private SetupWindow? _updatePrompt;
+
     /// <summary>
     /// Ayarlar uygulanırken doğru: gün verisi yenilenir ama ayrıca çizilmez;
     /// çizimi hemen ardından gelen tam yenileme yapar.
     /// </summary>
     private bool _applying;
 
+    public AppHost()
+    {
+        _updates = new UpdateService(_settings);
+    }
+
     /// <summary>Kullanıcı çıkışı seçtiğinde tetiklenir.</summary>
     public event Action? ExitRequested;
+
+    public UpdateService Updates => _updates;
 
     /// <summary>Ekran listesi değişti; ayarlar penceresi kendini tazelemeli.</summary>
     public event Action? MonitorsChanged;
@@ -300,6 +312,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             Installer.RemoveMarkOfTheWeb(exe);
         }
+
+        _updates.ExitRequested += OnUpdateInstalling;
+        _updates.PromptRequested += OnUpdatePromptRequested;
+        _updates.Start();
 
         if (!_settings.Current.FirstRunDone)
         {
@@ -712,6 +728,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         try
         {
+            // Pencere açılırken güncelleme bilgisi eskiyse tazelensin; bildirim birazdan belirir.
+            _updates.CheckIfStale();
+
             if (_settingsWindow is not null)
             {
                 _settingsWindow.Activate();
@@ -728,6 +747,71 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             Log.Error("Ayarlar penceresi açılamadı.", ex);
             _settingsWindow = null;
         }
+    }
+
+    /// <summary>
+    /// Güncellemeden sonraki ilk açılış. Güncelleme ayarlar penceresinden
+    /// başlatıldıysa pencere yeni sürümle yeniden açılır ve bunu söyler;
+    /// hatırlatma penceresinden başlatıldıysa yalnızca bir bildirim çıkar.
+    /// </summary>
+    /// <param name="quiet">Ayarlar penceresi açılmasın, bildirimle yetinilsin mi?</param>
+    public void ShowUpdated(bool quiet)
+    {
+        _updates.ClearPromptShown();
+
+        string text = $"Kalender {Installer.Version} sürümüne güncellendi.";
+        if (quiet)
+        {
+            _tray?.ShowBalloon("Kalender", text + " Ayarlarınız olduğu gibi duruyor.", warning: false);
+            return;
+        }
+
+        OpenSettings();
+        _settingsWindow?.ShowNotice(text);
+    }
+
+    /// <summary>
+    /// Yeni sürüm bulundu ve haber verme zamanı geldi: kurulum penceresinin
+    /// güncelleme kipini açar. Kurulu olmayan (taşınabilir) kopyada açılmaz;
+    /// kendini kuracağı bir yer yoktur. Pencere klavye odağını almaz: kullanıcı
+    /// o sırada yazı yazıyorsa bir tuş yanlışlıkla güncellemeyi başlatmasın.
+    /// </summary>
+    private void OnUpdatePromptRequested()
+    {
+        try
+        {
+            if (_updatePrompt is not null || !Installer.RunningInstalled)
+            {
+                return;
+            }
+
+            _updatePrompt = new SetupWindow(_updates);
+            _updatePrompt.Closed += (_, _) => _updatePrompt = null;
+            _updatePrompt.Show();
+
+            _updates.MarkPromptShown();
+            Log.Info("Güncelleme penceresi gösterildi.");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Güncelleme penceresi açılamadı.", ex);
+            _updatePrompt = null;
+        }
+    }
+
+    /// <summary>
+    /// Yeni sürümün kurucusu başlatıldı; dosyamızı değiştirebilsin diye
+    /// kapanıyoruz. Takvim duvar kağıdından silinmez: yeni sürüm birkaç saniye
+    /// içinde aynısını çizecek. Kurulum başarısız olursa kurucu bu sürümü geri açar.
+    /// </summary>
+    private void OnUpdateInstalling()
+    {
+        if (_layer is not null)
+        {
+            _layer.KeepWallpaperOnExit = true;
+        }
+
+        ExitRequested?.Invoke();
     }
 
     private IReadOnlyList<PopupMenuItem> BuildMenu()
@@ -850,6 +934,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     public void Dispose()
     {
         _settingsWindow?.Close();
+        _updatePrompt?.Close();
+        _updates.Dispose();
         _viewResetTimer?.Stop();
         _hover?.Dispose();
         _mouseHook?.Dispose();

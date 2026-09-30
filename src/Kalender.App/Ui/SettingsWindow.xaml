@@ -156,6 +156,8 @@
             </GeometryGroup>
 
             <!-- Uyarı kutusundaki ünlem: dolgulu çizgi ve nokta, sarı dairenin üstünde. -->
+            <!-- Güncelleme bildirimindeki indirme oku. -->
+            <PathGeometry x:Key="SimgeIndir" Figures="M 8,1.5 L 8,10.25 M 4.5,6.75 L 8,10.25 L 11.5,6.75 M 2.5,13.75 L 13.5,13.75" />
             <PathGeometry x:Key="SimgeUnlem"
                           Figures="M 7.3,4 L 8.7,4 L 8.45,9.3 L 7.55,9.3 Z
                                    M 7.15,11.5 A 0.85,0.85 0 1 1 8.85,11.5 A 0.85,0.85 0 1 1 7.15,11.5 Z" />
@@ -225,10 +227,33 @@
                     </ListBoxItem>
                 </ListBox>
 
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="10,0,0,0">
-                    <ToggleButton x:Name="ThemeToggle" VerticalAlignment="Center"
-                                  Style="{StaticResource GunesAyAnahtari}"
-                                  Checked="OnThemeToggled" Unchecked="OnThemeToggled" />
+                <StackPanel Grid.Row="2">
+                    <!--
+                      Yeni sürüm bildirimi: yalnızca güncelleme varken görünür,
+                      tıklayınca indirilip kurulur. Yazılar vurgu zemininde
+                      okunsun diye renkleri açıkça veriliyor; genel TextBlock
+                      biçimi yoksa pencerenin yazı rengini basardı.
+                    -->
+                    <Button x:Name="UpdateButton" Style="{StaticResource VurguDugmesi}" Visibility="Collapsed"
+                            HorizontalContentAlignment="Stretch" Padding="12,8" Margin="0,0,0,16"
+                            Click="OnUpdateClick">
+                        <DockPanel>
+                            <Path DockPanel.Dock="Left" Style="{StaticResource Simge}" Data="{StaticResource SimgeIndir}"
+                                  Stroke="{DynamicResource VurguYaziFirca}" Margin="0,0,10,0" />
+                            <StackPanel>
+                                <TextBlock x:Name="UpdateTitle" FontWeight="SemiBold" FontSize="13"
+                                           Foreground="{DynamicResource VurguYaziFirca}" />
+                                <TextBlock x:Name="UpdateDetail" FontSize="12" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource VurguYaziFirca}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Button>
+
+                    <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
+                        <ToggleButton x:Name="ThemeToggle" VerticalAlignment="Center"
+                                      Style="{StaticResource GunesAyAnahtari}"
+                                      Checked="OnThemeToggled" Unchecked="OnThemeToggled" />
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Border>
@@ -832,8 +857,18 @@
                                             Text="Geliştirici: " /><Hyperlink NavigateUri="https://x.com/CgrShn"
                                             RequestNavigate="OnLinkClicked"
                                             AutomationProperties.Name="Geliştirici: x.com/CgrShn">x.com/CgrShn</Hyperlink></TextBlock>
-                                        <TextBlock Style="{StaticResource SatirAciklamasi}" Margin="0,6,0,0"
-                                                   Text="Kalender kendini otomatik güncellemez. Yeni sürüm çıktığında sürümler sayfasından indirebilirsiniz." />
+                                        <TextBlock x:Name="UpdateNote" Style="{StaticResource SatirAciklamasi}" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <CheckBox x:Name="UpdateCheckBox" DockPanel.Dock="Right" Margin="24,0,0,0"
+                                              AutomationProperties.Name="Güncellemeleri denetle"
+                                              Checked="OnUpdateCheckChanged" Unchecked="OnUpdateCheckChanged" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Güncellemeleri denetle" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Açılıştan bir dakika sonra, ardından birkaç saatte bir GitHub'daki sürümler sayfasına bakılır; sürüm numarası dışında hiçbir bilgi gönderilmez. Yeni sürüm varsa bir pencereyle haber verilir; Güncelle'ye basınca indirilip kurulur, ayarlarınız ve Google bağlantınız korunur. Güncellemezseniz haftada bir yeniden hatırlatılır." />
                                     </StackPanel>
                                 </DockPanel>
                                 <Separator />
@@ -859,7 +894,7 @@
                     <Button DockPanel.Dock="Right" Content="Kapat" MinWidth="96" Click="OnClose" IsCancel="True" />
                     <Path DockPanel.Dock="Left" Style="{StaticResource Simge}" Data="{StaticResource SimgeBilgi}"
                           Stroke="{DynamicResource SolukYaziFirca}" Margin="0,0,10,0" />
-                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
+                    <TextBlock x:Name="FooterText" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"
                                Margin="0,0,16,0" Foreground="{DynamicResource SolukYaziFirca}"
                                Text="Değişiklikler anında masaüstüne uygulanır." />
                 </DockPanel>

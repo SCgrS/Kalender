@@ -127,7 +127,8 @@ internal static class Installer
     }
 
     /// <summary>Kurulan sürümü başlatır.</summary>
-    public static void LaunchInstalled()
+    /// <param name="args">Komut satırı anahtarları (boşluksuz, tırnaksız).</param>
+    public static void LaunchInstalled(params string[] args)
     {
         try
         {
@@ -135,6 +136,7 @@ internal static class Installer
             {
                 UseShellExecute = true,
                 WorkingDirectory = AppFolder,
+                Arguments = string.Join(" ", args),
             });
         }
         catch (Exception ex)
@@ -221,6 +223,7 @@ internal static class Installer
             StartupManager.Apply(false, null);
             RemoveShortcut();
             RemoveUninstallEntry();
+            UpdateService.RemoveDownloadFolder();
 
             ScheduleFileRemoval(removeData);
 

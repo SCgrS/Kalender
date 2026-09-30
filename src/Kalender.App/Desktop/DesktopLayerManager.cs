@@ -735,6 +735,13 @@ internal sealed class DesktopLayerManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Kapanışta takvim duvar kağıdında bırakılsın mı? Güncellemede doğru:
+    /// yeni sürüm birkaç saniye içinde aynısını çizecek; arada takvimin silinip
+    /// geri gelmesi göz kırpması gibi görünürdü.
+    /// </summary>
+    public bool KeepWallpaperOnExit { get; set; }
+
     public void Dispose()
     {
         _disposed = true;
@@ -744,7 +751,7 @@ internal sealed class DesktopLayerManager : IDisposable
 
         // Takvimi duvar kağıdından siliyoruz; yoksa yarın da bugünün takvimi
         // ekranda asılı kalır.
-        if (_canvas.HasPainted && _settings.Current.SyncSystemWallpaper)
+        if (!KeepWallpaperOnExit && _canvas.HasPainted && _settings.Current.SyncSystemWallpaper)
         {
             PaintPlainBackground();
         }

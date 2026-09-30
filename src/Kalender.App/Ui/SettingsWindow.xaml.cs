@@ -44,7 +44,6 @@ public partial class SettingsWindow : Window
         (0, "Ayrıntılı"),
     };
 
-    private const string ReleasesUrl = "https://github.com/SCgrS/Kalender/releases";
 
     private readonly IAppearanceHost _host;
     private readonly DispatcherTimer _applyTimer;
@@ -147,6 +146,9 @@ public partial class SettingsWindow : Window
         // ekranı da o eski ölçülerle açılıp takvimi ekran dışına atardı.
         _host.MonitorsChanged += OnMonitorsChanged;
         _host.GoogleStateChanged += OnGoogleStateChanged;
+
+        _host.Updates.Changed += RefreshUpdateUi;
+        RefreshUpdateUi();
     }
 
     /// <summary>
@@ -288,6 +290,7 @@ public partial class SettingsWindow : Window
             UpdateGoogleUi();
 
             StartupBox.IsChecked = S.StartWithWindows;
+            UpdateCheckBox.IsChecked = S.CheckForUpdates;
             UpdateStartupNote();
 
             WallpaperSyncBox.IsChecked = S.SyncSystemWallpaper;
@@ -1368,7 +1371,93 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void OnOpenReleases(object sender, RoutedEventArgs e) => Ac(ReleasesUrl);
+    private void OnOpenReleases(object sender, RoutedEventArgs e) => Ac(UpdateService.ReleasesUrl);
+
+    // ----------------------------------------------------------- güncelleme
+
+    private void OnUpdateCheckChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        // Yalnızca kaydediliyor; duvar kağıdını yeniden çizmeyi gerektiren bir şey yok.
+        S.CheckForUpdates = UpdateCheckBox.IsChecked == true;
+        _host.Settings.Save();
+
+        if (S.CheckForUpdates)
+        {
+            _ = _host.Updates.CheckAsync();
+        }
+
+        RefreshUpdateUi();
+    }
+
+    /// <summary>
+    /// Sol alttaki bildirime tıklandı: yeni sürüm indirilir ve kurulur.
+    /// Kalender kurulu değil de taşınabilir çalışıyorsa kendini kuracağı bir
+    /// yer yoktur; o zaman sürüm sayfası açılır.
+    /// </summary>
+    private async void OnUpdateClick(object sender, RoutedEventArgs e)
+    {
+        UpdateService updates = _host.Updates;
+        if (updates.Available is not UpdateInfo info
+            || updates.State is not (UpdateState.Available or UpdateState.Failed))
+        {
+            return;
+        }
+
+        if (!Installer.RunningInstalled)
+        {
+            Ac(info.PageUrl);
+            return;
+        }
+
+        await updates.InstallAsync();
+    }
+
+    /// <summary>
+    /// Sol alttaki güncelleme bildirimini ve Hakkında kartındaki durumu tazeler.
+    /// Bildirim yalnızca yeni sürüm varken görünür. İndirme sürerken düğme
+    /// soluklaşmasın diye kapatılmıyor; o sıradaki tıklama yok sayılıyor.
+    /// </summary>
+    private void RefreshUpdateUi()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.InvokeAsync(RefreshUpdateUi);
+            return;
+        }
+
+        UpdateService u = _host.Updates;
+        string? yeni = u.Available?.Version.ToString(3);
+
+        UpdateButton.Visibility = yeni is not null && S.CheckForUpdates ? Visibility.Visible : Visibility.Collapsed;
+        UpdateButton.ToolTip = u.State == UpdateState.Failed ? u.Error : null;
+
+        (UpdateTitle.Text, UpdateDetail.Text) = u.State switch
+        {
+            UpdateState.Downloading => ("Güncelleniyor…", $"İndiriliyor · %{u.Progress}"),
+            UpdateState.Installing => ("Kuruluyor…", "Kalender birazdan yeniden açılacak."),
+            UpdateState.Failed => ("Güncelleme yapılamadı", "Yeniden denemek için tıklayın."),
+            _ => ($"Yeni sürüm: {yeni}", "İndirip kurmak için tıklayın."),
+        };
+
+        AutomationProperties.SetName(UpdateButton, $"{UpdateTitle.Text} {UpdateDetail.Text}");
+
+        UpdateNote.Text = true switch
+        {
+            _ when !S.CheckForUpdates => "Güncelleme denetimi kapalı.",
+            _ when yeni is not null => $"Yeni sürüm var: {yeni}. Sol alttaki bildirime tıklayınca indirilip kurulur.",
+            _ when u.LastCheckFailed => "Güncellemeler şu an denetlenemedi; daha sonra yeniden denenecek.",
+            _ when u.LastChecked is DateTime t => $"Güncel. Son denetim: {t:HH:mm}.",
+            _ => "Güncellemeler denetleniyor…",
+        };
+    }
+
+    /// <summary>Alt çubukta bir not gösterir (ör. güncellemenin bittiği).</summary>
+    internal void ShowNotice(string text) => FooterText.Text = text;
 
     /// <summary>Klasörü ya da adresi kullanıcının varsayılan uygulamasında açar.</summary>
     private static void Ac(string target)
@@ -1394,6 +1483,7 @@ public partial class SettingsWindow : Window
     {
         _host.MonitorsChanged -= OnMonitorsChanged;
         _host.GoogleStateChanged -= OnGoogleStateChanged;
+        _host.Updates.Changed -= RefreshUpdateUi;
         _applyTimer.Stop();
 
         // Pencere kapanırken tarayıcıda onay bekleniyorsa bekleyiş bitsin.

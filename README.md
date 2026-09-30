@@ -52,9 +52,21 @@ Kurulum sistem klasörlerine hiçbir şey yazmaz:
 
 ### Güncelleme
 
-Kalender kendini otomatik güncellemez. Yeni sürümün `Kalender-Kurulum.exe` dosyasını indirip
-çalıştırın, açılan pencerede **Güncelle**'ye basın. Çalışan Kalender kendiliğinden kapatılır,
-dosya değiştirilir; ayarlarınız uygulama klasörünün dışında durduğu için korunur.
+1.8.0'dan itibaren Kalender yeni sürümü kendisi bulur ve haber verir. Açılıştan bir dakika sonra,
+ardından birkaç saatte bir yeni sürüm olup olmadığına bakar; varsa kurulum penceresine benzeyen bir
+pencere açılır: **Kalender'in yeni sürümü çıktı**. **Güncelle**'ye basınca kurulum dosyası
+indirilir, SHA-256 özeti ve sürüm bilgisi doğrulanır, Kalender kapanıp yeni sürüm kurulur ve
+kendiliğinden yeniden açılır; takvim bu sırada masaüstünden kalkmaz. **Sonra**'ya basarsanız pencere
+kapanır ve bir hafta sonra yeniden hatırlatılır.
+
+Beklemek istemezseniz ayarlar penceresinin sol altındaki **Yeni sürüm: …** bildirimine tıklayarak
+da güncelleyebilirsiniz. Ayarlarınız, Google bağlantınız ve yerel veri kopyanız uygulama klasörünün
+dışında durduğu için güncellemede korunur. GitHub'a sürüm numarası dışında bir bilgi gitmez. Denetim
+**Ayarlar > Genel > Güncellemeleri denetle** ile kapatılabilir; o zaman pencere de açılmaz.
+
+Elle güncellemek için yeni sürümün `Kalender-Kurulum.exe` dosyasını indirip çalıştırın, açılan
+pencerede **Güncelle**'ye basın. 1.7.0 ve öncesinde bildirim yoktur; bu sürümlerden 1.8.0'a bir kez
+elle geçilir.
 
 ## Google Takvim ve Görevler bağlantısı
 
@@ -153,8 +165,9 @@ anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş s
 - **Genel** — **Windows açılışında Kalender'i başlat**, **Takvimi Windows duvar kağıdına
   işle** (kapatırsanız duvar kağıdınıza dokunulmaz ama takvim de görünmez), **Günlük
   ayrıntısı** (Yalnız hatalar / Bilgi / Ayrıntılı) ve **Günlük klasörünü aç**; **Hakkında**
-  bölümünde sürüm, geliştirici bağlantısı ([x.com/CgrShn](https://x.com/CgrShn)), **Sürümler
-  sayfası** ve **Kalender'i kaldır**.
+  bölümünde sürüm ve güncelleme durumu, geliştirici bağlantısı
+  ([x.com/CgrShn](https://x.com/CgrShn)), **Sürümler sayfası**, **Güncellemeleri denetle** ve
+  **Kalender'i kaldır**.
 
 Sol alttaki **güneş / ay** anahtarı yalnızca ayarlar penceresinin görünümünü değiştirir; ilk
 açılışta Windows'un uygulama teması izlenir.
@@ -249,7 +262,11 @@ Her şey `%LOCALAPPDATA%\Kalender` altındadır; başka hiçbir yere yazılmaz:
 - `duvar-kagitlari\` — hazır fotoğraflardan seçtiğiniz, uygulamanın içinden çıkarılan fotoğraf
   (seçmezseniz klasör oluşmaz).
 
-Ağa yalnızca Google'ın Takvim ve Görevler API'lerine ve tatil ICS adresine çıkılır. Kayıt
+Güncelleme sırasında indirilen kurulum dosyası geçici olarak `%TEMP%\Kalender guncelleme`
+klasöründe durur; sonraki denetimde silinir.
+
+Ağa yalnızca Google'ın Takvim ve Görevler API'lerine, tatil ICS adresine ve yeni sürüm denetimi
+için GitHub'daki sürümler sayfasına çıkılır (sonuncusu kapatılabilir). Kayıt
 defterinde `HKCU\...\Run` (açılışta başlatma), `HKCU\...\Uninstall\Kalender` (uygulamalar
 listesi) ve `HKCU\Control Panel\Desktop\JPEGImportQuality` (yedeklenir, geri alınır) yazılır.
 

@@ -13,6 +13,9 @@ internal interface IAppearanceHost
 {
     SettingsStore Settings { get; }
 
+    /// <summary>Yeni sürüm denetimi ve kurulumu.</summary>
+    Core.UpdateService Updates { get; }
+
     /// <summary>Şu an bağlı monitörler.</summary>
     IReadOnlyList<MonitorTarget> Monitors { get; }
 

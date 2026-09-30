@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -28,6 +30,13 @@ public partial class App : Application
             // Sessiz çalışır: kaldırma aracı kendi penceresini gösterecek.
             Desktop.WallpaperService.Restore();
             Shutdown();
+            return;
+        }
+
+        // Uygulamanın içinden başlatılan güncelleme. Dosyanın adında "Kurulum"
+        // geçtiği için kurulum denetiminden önce bakılmalı.
+        if (TryRunUpdate(e.Args))
+        {
             return;
         }
 
@@ -73,6 +82,12 @@ public partial class App : Application
             _host = new AppHost();
             _host.ExitRequested += Shutdown;
             _host.Start();
+
+            if (e.Args.Any(a => string.Equals(a, UpdateService.UpdatedSwitch, StringComparison.OrdinalIgnoreCase)))
+            {
+                _host.ShowUpdated(
+                    quiet: e.Args.Any(a => string.Equals(a, UpdateService.NoticeSwitch, StringComparison.OrdinalIgnoreCase)));
+            }
         }
         catch (Exception ex)
         {
@@ -83,6 +98,77 @@ public partial class App : Application
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// Uygulamanın içinden başlatılan güncelleme (bkz. <see cref="UpdateService"/>).
+    /// Eski sürüm kapanana kadar bekler, kendini kurar ve yeni sürümü açar.
+    /// Pencere göstermez; bir sorun olursa haber verir ve eski sürümü geri
+    /// açar ki kullanıcı takvimsiz kalmasın.
+    /// </summary>
+    private bool TryRunUpdate(string[] args)
+    {
+        if (!args.Any(a => string.Equals(a, UpdateService.InstallSwitch, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        Log.Level = LogLevel.Info;
+        WaitForCaller(args);
+
+        SetupResult result = Core.Installer.Install();
+        if (result.Success)
+        {
+            // Hatırlatma penceresinden gelindiyse yeni sürüm ayarları açmasın, bildirimle yetinsin.
+            bool quiet = args.Any(a => string.Equals(a, UpdateService.NoticeSwitch, StringComparison.OrdinalIgnoreCase));
+            Core.Installer.LaunchInstalled(quiet
+                ? new[] { UpdateService.UpdatedSwitch, UpdateService.NoticeSwitch }
+                : new[] { UpdateService.UpdatedSwitch });
+        }
+        else
+        {
+            MessageBox.Show(
+                "Kalender güncellenemedi.\n\n" + result.Message,
+                "Kalender",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+
+            if (Core.Installer.IsInstalled)
+            {
+                Core.Installer.LaunchInstalled();
+            }
+        }
+
+        Shutdown();
+        return true;
+    }
+
+    /// <summary>
+    /// Güncellemeyi başlatan eski sürümün kapanmasını bekler; dosyası
+    /// kullanımdayken üzerine yazılamaz. Beklemek yetmezse kurulum yine de
+    /// çalışan sürümü kibarca kapatmayı dener.
+    /// </summary>
+    private static void WaitForCaller(string[] args)
+    {
+        int i = Array.FindIndex(args, a => string.Equals(a, UpdateService.WaitSwitch, StringComparison.OrdinalIgnoreCase));
+        if (i < 0 || i + 1 >= args.Length
+            || !int.TryParse(args[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out int pid))
+        {
+            return;
+        }
+
+        try
+        {
+            using Process caller = Process.GetProcessById(pid);
+            if (!caller.WaitForExit(20_000))
+            {
+                Log.Warn("Eski sürüm 20 saniyede kapanmadı; kurulum yine de deneniyor.");
+            }
+        }
+        catch (ArgumentException)
+        {
+            // Süreç çoktan kapanmış.
         }
     }
 

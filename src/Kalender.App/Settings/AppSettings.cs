@@ -201,6 +201,19 @@ internal sealed class AppSettings
     /// </summary>
     public bool SyncSystemWallpaper { get; set; } = true;
 
+    /// <summary>
+    /// Yeni sürüm GitHub'dan denetlensin mi? Kapatılırsa sürümler sayfasına
+    /// hiç bakılmaz ve güncelleme penceresi açılmaz.
+    /// </summary>
+    public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>
+    /// Güncelleme hatırlatma penceresinin en son gösterildiği an (UTC). Kullanıcı
+    /// güncellemezse pencere bundan bir hafta sonra yeniden açılır; güncelleme
+    /// kurulunca silinir.
+    /// </summary>
+    public DateTime? UpdatePromptShownUtc { get; set; }
+
     /// <summary>Günlük ayrıntı seviyesi: 0 Ayrıntı, 1 Bilgi, 2 Uyarı, 3 Hata, 4 Kapalı.</summary>
     public int LogLevel { get; set; } = 3;
 

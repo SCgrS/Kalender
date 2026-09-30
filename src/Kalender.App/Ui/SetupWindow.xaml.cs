@@ -8,6 +8,9 @@ internal enum SetupMode
 {
     Install,
     Uninstall,
+
+    /// <summary>Çalışan uygulamanın açtığı "yeni sürüm var" penceresi.</summary>
+    Update,
 }
 
 /// <summary>
@@ -20,7 +23,93 @@ internal enum SetupMode
 public partial class SetupWindow : Window
 {
     private readonly SetupMode _mode;
+    private readonly UpdateService? _updates;
     private bool _done;
+
+    /// <summary>
+    /// Güncelleme kipi: çalışan uygulama yeni sürüm bulunca bu pencereyi açar.
+    /// "Güncelle" yeni sürümü indirip kurar, "Sonra" pencereyi kapatır; bir
+    /// hafta sonra yeniden hatırlatılır. Pencere öne gelir ama klavye odağını
+    /// almaz: kendiliğinden açıldığı için kullanıcı o sırada başka bir yere
+    /// yazıyor olabilir, bir tuş yanlışlıkla güncellemeyi başlatmamalı.
+    /// </summary>
+    internal SetupWindow(UpdateService updates)
+    {
+        InitializeComponent();
+
+        _mode = SetupMode.Update;
+        _updates = updates;
+
+        ShowActivated = false;
+        Topmost = true;
+
+        Title = "Kalender güncellemesi";
+        PathBox.Visibility = Visibility.Collapsed;
+
+        _updates.Changed += RefreshUpdate;
+        RefreshUpdate();
+    }
+
+    /// <summary>Güncelleme kipinde yazıları ve düğmeleri güncellemenin o anki durumuna uydurur.</summary>
+    private void RefreshUpdate()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.InvokeAsync(RefreshUpdate);
+            return;
+        }
+
+        UpdateService u = _updates!;
+        if (u.Available is not UpdateInfo info)
+        {
+            // Sonraki bir denetim yeni sürüm göstermiyor (sürüm geri çekilmiş olabilir).
+            if (IsLoaded)
+            {
+                Close();
+            }
+
+            return;
+        }
+
+        string yeni = info.Version.ToString(3);
+
+        switch (u.State)
+        {
+            case UpdateState.Downloading:
+                HeadingText.Text = "Güncelleniyor…";
+                BodyText.Text = $"Kalender {yeni} indiriliyor · %{u.Progress}";
+                NoteText.Text = "İndirme bitince Kalender kapanıp yeni sürümle kendiliğinden açılır.";
+                break;
+
+            case UpdateState.Installing:
+                HeadingText.Text = "Kuruluyor…";
+                BodyText.Text = "Kalender birazdan yeni sürümle yeniden açılacak.";
+                NoteText.Text = string.Empty;
+                break;
+
+            case UpdateState.Failed:
+                HeadingText.Text = "Güncelleme yapılamadı";
+                BodyText.Text = u.Error ?? "Yeni sürüm indirilemedi.";
+                NoteText.Text = "İnternet bağlantınızı denetleyip yeniden deneyebilirsiniz. "
+                    + "Şimdi olmazsa bir hafta sonra yeniden hatırlatılır.";
+                break;
+
+            default:
+                HeadingText.Text = "Kalender'in yeni sürümü çıktı";
+                BodyText.Text = $"Bu bilgisayarda {UpdateService.CurrentVersion.ToString(3)} sürümü kurulu; "
+                    + $"yeni sürüm {yeni}. Güncelle'ye basınca yeni sürüm indirilip kurulur ve Kalender "
+                    + "kendiliğinden yeniden açılır. Ayarlarınıza dokunulmaz.";
+                NoteText.Text = "Şimdi güncellemezseniz bir hafta sonra yeniden hatırlatılır. Ayarlar "
+                    + "penceresinin sol altındaki bildirimden istediğiniz zaman güncelleyebilirsiniz.";
+                break;
+        }
+
+        bool busy = u.State is UpdateState.Downloading or UpdateState.Installing;
+        PrimaryButton.Content = u.State == UpdateState.Failed ? "Yeniden dene" : "Güncelle";
+        PrimaryButton.IsEnabled = !busy;
+        CancelButton.Content = u.State == UpdateState.Failed ? "Kapat" : "Sonra";
+        CancelButton.IsEnabled = !busy;
+    }
 
     internal SetupWindow(SetupMode mode)
     {
@@ -60,8 +149,15 @@ public partial class SetupWindow : Window
         }
     }
 
-    private void OnPrimary(object sender, RoutedEventArgs e)
+    private async void OnPrimary(object sender, RoutedEventArgs e)
     {
+        if (_mode == SetupMode.Update)
+        {
+            // İndirir, doğrular ve kurucuyu başlatır; başarılı olursa uygulama kapanır.
+            await _updates!.InstallAsync(fromPrompt: true);
+            return;
+        }
+
         if (_done)
         {
             Close();
@@ -99,4 +195,14 @@ public partial class SetupWindow : Window
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_updates is not null)
+        {
+            _updates.Changed -= RefreshUpdate;
+        }
+
+        base.OnClosed(e);
+    }
 }
