@@ -1,3 +1,5 @@
+// Yalnızca geliştirme (Debug) derlemesinde var; yayımlanan sürüme girmez.
+#if DEBUG
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
@@ -93,3 +95,4 @@ internal static class PreviewCommand
         return true;
     }
 }
+#endif

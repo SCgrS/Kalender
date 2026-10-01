@@ -46,7 +46,9 @@ public partial class App : Application
             return;
         }
 
-        // Geliştirme aracı: istenen ayı bir PNG'ye çizip çıkar.
+#if DEBUG
+        // Geliştirme aracı: istenen ayı bir PNG'ye çizip çıkar. Yalnızca
+        // geliştirme (Debug) derlemesinde var; yayımlanan sürümde gereksiz.
         if (e.Args.Any(a => string.Equals(a, PreviewCommand.Switch, StringComparison.OrdinalIgnoreCase)))
         {
             Log.Level = LogLevel.Info;
@@ -54,6 +56,7 @@ public partial class App : Application
                 Dispatcher.BeginInvoke(Shutdown), TaskScheduler.Default);
             return;
         }
+#endif
 
         _instance = new SingleInstance();
         if (!_instance.TryAcquire())
