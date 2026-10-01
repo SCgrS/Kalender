@@ -28,7 +28,10 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
   isteklerde `fields` parametresiyle veriyi kırpabiliyoruz (şartnamedeki az veri kuralı) ve
   uygulamaya hiçbir gizli anahtar gömmek zorunda kalmıyoruz. Google'ın kendi kütüphaneleri
   zaten bu listeye girmezdi; mesele boyut ve denetim.
-- **Çizim** için `System.Drawing.Common` kullanılıyor; bu Microsoft'un kendi paketi.
+- **Çizim** için `System.Drawing.Common` kullanılıyor; Microsoft'un kendisi, .NET 10'da çerçevenin
+  parçası olarak geliyor (ayrı paket değil). Uygulama .NET 10 ve WPF üzerinde çalışıyor; çalışma
+  ortamı tek dosya yayının içine gömülü (.NET 8'in desteği 10 Kasım 2026'da bittiği için .NET 10'a
+  geçildi).
 - **Takvimin üstündeki masaüstü simgesini tanıma** (`Desktop/MasaustuSimgeleri`) Windows'un
   erişilebilirlik arayüzüyle (oleacc, MSAA) yapılıyor; ekran okuyucuların da kullandığı yol,
   paket gerekmiyor. Varsayılan yerdeki simge sütunu hesabı (`Desktop/MasaustuSimgeIzgarasi`)

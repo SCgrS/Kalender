@@ -14,11 +14,16 @@ $proje = Join-Path $kok "src\Kalender.App\Kalender.App.csproj"
 $cikti = Join-Path $kok "dagitim"
 $gecici = Join-Path $cikti "_ara"
 
-if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    $dp = "C:\Program Files\dotnet"
-    if (Test-Path (Join-Path $dp "dotnet.exe")) { $env:PATH = "$dp;$env:PATH" }
-    else { throw ".NET SDK bulunamadi. https://dotnet.microsoft.com/download adresinden .NET 8 SDK kurun." }
-}
+# .NET 10 SDK'si olan dotnet'i bul: PATH'teki, kullanici klasorundeki
+# (%USERPROFILE%\.dotnet; yonetici hakki olmadan kurulan) ya da Program Files'taki.
+$adaylar = @()
+$yoldaki = Get-Command dotnet -ErrorAction SilentlyContinue
+if ($yoldaki) { $adaylar += $yoldaki.Source }
+$adaylar += (Join-Path $env:USERPROFILE ".dotnet\dotnet.exe")
+$adaylar += "C:\Program Files\dotnet\dotnet.exe"
+$dotnet = $adaylar | Where-Object { (Test-Path $_) -and ((& $_ --list-sdks) -match '^10\.') } | Select-Object -First 1
+if (-not $dotnet) { throw ".NET 10 SDK bulunamadi. https://dotnet.microsoft.com/download adresinden .NET 10 SDK kurun." }
+Write-Host "dotnet: $dotnet" -ForegroundColor DarkGray
 
 if (Test-Path $cikti) { Remove-Item $cikti -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $gecici | Out-Null
@@ -27,7 +32,7 @@ Write-Host "Yayin hazirlaniyor..." -ForegroundColor Cyan
 
 # Sikistirma bilerek kapali: sikistirilmis tek dosyada kutuphaneler acilista
 # bellege aciliyor, Kalender ~100 MB fazla RAM tutuyordu (ayrinti csproj'da).
-dotnet publish $proje `
+& $dotnet publish $proje `
     -c Release `
     -r win-x64 `
     --self-contained true `

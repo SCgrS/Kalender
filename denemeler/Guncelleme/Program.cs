@@ -446,7 +446,7 @@ internal static class Program
         // ------------------------------------------------------------ doğrulama
         Console.WriteLine("4) İndirilen dosyanın doğrulanması");
 
-        string exe = Path.Combine(DepoKoku(), "src", "Kalender.App", "bin", "Release", "net8.0-windows",
+        string exe = Path.Combine(DepoKoku(), "src", "Kalender.App", "bin", "Release", "net10.0-windows",
             Uyg.GetName().Name + ".exe");
         if (File.Exists(exe))
         {

@@ -2,7 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- .NET 10 (uzun destekli surum, Kasim 2028'e kadar guvenlik yamasi alir).
+         .NET 8'in destegi 10 Kasim 2026'da bitiyor. Uygulama calisma ortamini
+         exe'nin icinde tasidigi icin Windows Update onu yamalamaz; yamalar ancak
+         yeniden derleyip yayimlamakla gelir. System.Drawing.Common .NET 10'da
+         cercevenin icinde geliyor, ayri paket gerekmiyor. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>false</UseWindowsForms>
     <Nullable>enable</Nullable>
@@ -40,10 +45,6 @@
     <DebugType>embedded</DebugType>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
-  </ItemGroup>
 
   <ItemGroup>
     <!-- Tepsi simgesi tek dosya yayinda da bulunabilsin diye gomuluyor. -->

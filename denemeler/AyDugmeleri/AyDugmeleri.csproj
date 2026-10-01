@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>false</UseWindowsForms>
     <Nullable>enable</Nullable>
@@ -11,13 +11,12 @@
     <PlatformTarget>x64</PlatformTarget>
     <!-- Uygulama gibi ekran başına DPI'a duyarlı: sistem ölçüleri ve simge aralığı doğru okunsun. -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <UygDll Condition="'$(UygDll)' == ''">$(MSBuildThisFileDirectory)..\..\src\Kalender.App\bin\Release\net8.0-windows\Kalender.dll</UygDll>
+    <UygDll Condition="'$(UygDll)' == ''">$(MSBuildThisFileDirectory)..\..\src\Kalender.App\bin\Release\net10.0-windows\Kalender.dll</UygDll>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Uygulama">
       <HintPath>$(UygDll)</HintPath>
       <Private>true</Private>
     </Reference>
-    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
   </ItemGroup>
 </Project>
