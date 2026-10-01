@@ -257,7 +257,9 @@ Her şey `%LOCALAPPDATA%\Kalender` altındadır; başka hiçbir yere yazılmaz:
   yetki anahtarı gibi Windows DPAPI ile şifrelidir).
 - `google-token.dat` — Google yetki anahtarı; Windows DPAPI ile **yalnızca sizin kullanıcı
   hesabınızın çözebileceği** biçimde şifrelidir.
-- `cache\google.json` — görünen ayın etkinlik ve görev kopyası; `cache\tatiller.json` — tatiller.
+- `cache\google.json` — görünen ayın etkinlik ve görevlerinin başlık ve tarihleriyle bir kopyası
+  (internet yokken de gösterilebilsin diye); bu kopya bilgisayarınızda durur.
+  `cache\tatiller.json` — tatiller.
 - `zemin\` — duvar kağıdı olarak uygulanan görüntüler; `onceki-duvar-kagidi.json` — Kalender'den
   önceki duvar kağıdınızın yedeği; `logs\` — günlükler.
 - `duvar-kagitlari\` — hazır fotoğraflardan seçtiğiniz, uygulamanın içinden çıkarılan fotoğraf
