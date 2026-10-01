@@ -8,7 +8,11 @@ namespace Kalender.Core;
 /// </summary>
 internal static class Paths
 {
-    public static string RootFolder { get; } = Path.Combine(
+    /// <summary>
+    /// Sınama programları (denemeler) bunu geçici bir klasöre çevirir; böylece
+    /// kurulu uygulamanın ayarlarına, Google yetkisine ve önbelleğine dokunmazlar.
+    /// </summary>
+    public static string RootFolder { get; internal set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Kalender");
 

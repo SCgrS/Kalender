@@ -102,6 +102,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// <summary>Son denemede ağa ulaşılabildi mi? Tepsi durumunu bununla gösteriyoruz.</summary>
     public bool IsOnline { get; private set; } = true;
 
+    /// <summary>
+    /// Son eşitleme başarısız olduysa nedeni; başarılı olunca null. İptal edilen
+    /// eşitleme bunu değiştirmez. Yoklayıcı uzun süren başarısızlığı buna bakarak
+    /// varsayılan günlük düzeyinde de yazar.
+    /// </summary>
+    public string? SonHata { get; private set; }
+
     private static string CachePath => Path.Combine(Paths.CacheFolder, "google.json");
 
     // -------------------------------------------------------------- önbellek
@@ -180,10 +187,76 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             }
 
             _gecmis.Remove(bulunan);
-            Gecmise(Data);
-            Data = bulunan;
+            ProviderBundle giden = Data;
+            Gecmise(giden);
+            Data = TazesiyleBirlestir(bulunan, giden);
             return true;
         }
+    }
+
+    /// <summary>
+    /// Bellekten geri getirilen ayın, giden aydan daha eski olabilecek verisine
+    /// iki ayın ortak günlerinde (ızgaranın baştaki ve sondaki haftaları) daha
+    /// yeni olanın kayıtlarını koyar.
+    ///
+    /// 2026-10-01: Ekim bir gün önce 11:48'de gösterilmişti; Eylül 22:23'te
+    /// tazelenmişti. Gece ay dönünce Ekim'in eski kopyası geri geldi ve
+    /// kullanıcının öğleden sonra griye çektiği 30 Eylül işleri yeniden kırmızı
+    /// çizildi. Ortak günlerde artık hep en son alınan veri gösteriliyor.
+    ///
+    /// Eşitleme zamanları (<see cref="ProviderBundle.LastSyncUtc"/> ve
+    /// <see cref="ProviderBundle.FullSyncUtc"/>) bilerek eskisinde kalıyor:
+    /// bir sonraki eşitleme ayın tamamını o andan beri değişenlere göre tazeler.
+    /// </summary>
+    internal static ProviderBundle TazesiyleBirlestir(ProviderBundle eski, ProviderBundle yeni)
+    {
+        if (yeni.LastSyncUtc is null
+            || (eski.LastSyncUtc is not null && eski.LastSyncUtc >= yeni.LastSyncUtc)
+            || !string.Equals(eski.AccountEmail, yeni.AccountEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            return eski;
+        }
+
+        DateOnly ilk = eski.RangeFrom > yeni.RangeFrom ? eski.RangeFrom : yeni.RangeFrom;
+        DateOnly son = eski.RangeTo < yeni.RangeTo ? eski.RangeTo : yeni.RangeTo;
+        if (ilk > son)
+        {
+            return eski;
+        }
+
+        bool Ortak(ProviderEvent e) => e.EndDate >= ilk && e.StartDate <= son;
+
+        List<ProviderEvent> tazeEtkinlikler = yeni.Events.Where(Ortak).ToList();
+        var tazeAnahtarlar = tazeEtkinlikler.Select(e => e.Id + "@" + e.CalendarId).ToHashSet(StringComparer.Ordinal);
+
+        List<ProviderTask> tazeGorevler = yeni.Tasks.Where(t => t.Due >= ilk && t.Due <= son).ToList();
+
+        return new ProviderBundle
+        {
+            AccountEmail = eski.AccountEmail,
+            RangeFrom = eski.RangeFrom,
+            RangeTo = eski.RangeTo,
+            FullSyncUtc = eski.FullSyncUtc,
+            LastSyncUtc = eski.LastSyncUtc,
+
+            // Takvim renkleri ve etiketler de daha yeni olandan.
+            Calendars = yeni.Calendars,
+            TaskLists = yeni.TaskLists,
+            EventColors = yeni.EventColors,
+            EventLabels = yeni.EventLabels,
+
+            Events = eski.Events
+                .Where(e => !Ortak(e) && !tazeAnahtarlar.Contains(e.Id + "@" + e.CalendarId))
+                .Concat(tazeEtkinlikler)
+                .OrderBy(e => e.StartDate)
+                .ThenBy(e => e.StartTime ?? TimeOnly.MinValue)
+                .ToList(),
+            Tasks = eski.Tasks
+                .Where(t => t.Due < ilk || t.Due > son)
+                .Concat(tazeGorevler)
+                .OrderBy(t => t.Due)
+                .ToList(),
+        };
     }
 
     /// <summary>Yerinden edilen ayın verisini geçmişe ekler; en eskisi düşer. Kilit içinde çağrılır.</summary>
@@ -268,6 +341,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             if (token is null)
             {
                 IsOnline = false;
+                SonHata = "Google erişim anahtarı alınamadı.";
                 return false;
             }
 
@@ -337,6 +411,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             }
 
             IsOnline = true;
+            SonHata = null;
             SaveCache();
 
             _auth.UpdateAccountEmail(bundle.AccountEmail);
@@ -347,13 +422,23 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
             return true;
         }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            return false;
+        }
         catch (OperationCanceledException)
         {
+            // İptal istenmediyse bu HttpClient'ın 30 saniyelik zaman aşımı.
+            IsOnline = false;
+            SonHata = "Google yanıt vermedi (zaman aşımı).";
             return false;
         }
         catch (HttpRequestException ex)
         {
             IsOnline = false;
+            SonHata = ex.StatusCode is null
+                ? "Google'a ulaşılamadı: " + ex.Message
+                : ex.Message;
 
             if (ex.StatusCode is null)
             {
@@ -372,6 +457,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         catch (Exception ex)
         {
             IsOnline = false;
+            SonHata = ex.GetType().Name + ": " + ex.Message;
             Log.Warn("Google eşitlemesi başarısız.", ex);
             return false;
         }
@@ -902,7 +988,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
     }
 
-    private async Task<T?> GetAsync<T>(string url, string token, CancellationToken cancel)
+    private async Task<T?> GetAsync<T>(string url, string token, CancellationToken cancel, bool yenilendi = false)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url)
         {
@@ -923,13 +1009,18 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             Log.Info($"Google'a HTTP/{response.Version} ile bağlanıldı.");
         }
 
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        if (response.StatusCode == HttpStatusCode.Unauthorized && !yenilendi)
         {
-            // Erişim anahtarı eskimiş olabilir; bir kez yenileyip tekrar deneyelim.
+            // Erişim anahtarı eskimiş ya da Google onu süresinden önce geçersiz
+            // saymış olabilir. Reddedilen anahtar bırakılıp yenisiyle bir kez daha
+            // deneniyor. Önceden bellekteki anahtar "süresi dolmadı" diye yine
+            // veriliyordu; her yoklama 401 ile düşüyor, takvim saatlerce eski
+            // veriyle kalıyordu (2026-10-01).
+            _auth.ErisimAnahtariniBirak(token);
             string? fresh = await _auth.GetAccessTokenAsync(cancel).ConfigureAwait(false);
             if (fresh is not null && fresh != token)
             {
-                return await GetAsync<T>(url, fresh, cancel).ConfigureAwait(false);
+                return await GetAsync<T>(url, fresh, cancel, yenilendi: true).ConfigureAwait(false);
             }
         }
 

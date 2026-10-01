@@ -38,6 +38,19 @@ internal sealed class GooglePoller : IDisposable
 
     private bool _disposed;
 
+    /// <summary>
+    /// Bu süre boyunca hiçbir eşitleme tutmazsa günlüğe hata olarak yazılır.
+    /// Tek tek başarısızlıklar uyarı düzeyinde kalıyor ve varsayılan günlük
+    /// düzeyinde (yalnız hatalar) görünmüyor; 2026-10-01'de takvim saatlerce
+    /// eski veriyle kaldığı halde günlükte iz yoktu.
+    /// </summary>
+    internal static TimeSpan HataBildirmeSuresi { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>Kesintisiz başarısızlığın başladığı an; eşitleme tutunca sıfırlanır.</summary>
+    private DateTimeOffset? _ilkHataUtc;
+
+    private bool _hataBildirildi;
+
     public GooglePoller(GoogleCalendarProvider provider, CalendarDataService data, SettingsStore settings)
     {
         _provider = provider;
@@ -61,6 +74,11 @@ internal sealed class GooglePoller : IDisposable
         }
 
         ApplyInterval();
+
+        // Uykudan uyanınca ya da yeniden bağlanınca sayaç baştan: uykudan önceki
+        // son başarısızlık, uyanır uyanmaz ağ hazır olmadan gelen ilk hatayla
+        // birleşip "dakikalardır başarısız" sayılmasın.
+        _ilkHataUtc = null;
 
         if (!_provider.IsConnected)
         {
@@ -139,6 +157,11 @@ internal sealed class GooglePoller : IDisposable
                 _data.Rebuild();
             }
 
+            if (!cts.IsCancellationRequested)
+            {
+                SonucuIzle(_provider.SonHata, DateTimeOffset.UtcNow);
+            }
+
             StatusChanged?.Invoke();
         }
         catch (OperationCanceledException)
@@ -155,6 +178,40 @@ internal sealed class GooglePoller : IDisposable
             cts.Dispose();
         }
     }
+
+    /// <summary>
+    /// Eşitleme <see cref="HataBildirmeSuresi"/> boyunca hiç tutmadıysa bunu bir
+    /// kez hata olarak yazar; yeniden tutunca bunu da yazar ki kesintinin ne
+    /// kadar sürdüğü günlükten okunabilsin.
+    /// </summary>
+    internal void SonucuIzle(string? hata, DateTimeOffset simdi)
+    {
+        if (hata is null)
+        {
+            if (_hataBildirildi && _ilkHataUtc is DateTimeOffset basladi)
+            {
+                Log.Error($"Google eşitlemesi yeniden çalışıyor ({Sure(simdi - basladi)} sürdü).");
+            }
+
+            _ilkHataUtc = null;
+            _hataBildirildi = false;
+            return;
+        }
+
+        _ilkHataUtc ??= simdi;
+
+        if (!_hataBildirildi && simdi - _ilkHataUtc.Value >= HataBildirmeSuresi)
+        {
+            _hataBildirildi = true;
+            Log.Error($"Google eşitlemesi {Sure(simdi - _ilkHataUtc.Value)} boyunca hiç tutmadı; takvim son "
+                + $"alınan veriyle gösteriliyor. Son hata: {hata}");
+        }
+    }
+
+    private static string Sure(TimeSpan sure)
+        => sure.TotalHours >= 1
+            ? $"{(int)sure.TotalHours} sa {sure.Minutes} dk"
+            : $"{Math.Max(1, (int)Math.Round(sure.TotalMinutes))} dk";
 
     public void Dispose()
     {

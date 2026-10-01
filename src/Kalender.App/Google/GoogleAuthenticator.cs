@@ -284,6 +284,28 @@ internal sealed class GoogleAuthenticator : IDisposable
         }
     }
 
+    /// <summary>
+    /// Bellekteki erişim anahtarını bırakır; bir sonraki istek Google'dan yenisini alır.
+    /// Anahtarın süresi alındığı anda saatle hesaplanıyor, ama Google onu bu süreden
+    /// önce geçersiz sayabiliyor: 2026-10-01'de modern bekleme sonrası bellekteki
+    /// anahtar 401 alıyor, uygulama süresi dolmadı diye onu vermeyi sürdürüyordu.
+    /// </summary>
+    /// <param name="reddedilen">
+    /// Verilirse yalnız bu anahtar hâlâ bellekteyse bırakılır; arada başka bir
+    /// istek yenisini almışsa o korunur.
+    /// </param>
+    public void ErisimAnahtariniBirak(string? reddedilen = null)
+    {
+        if (reddedilen is null)
+        {
+            _accessToken = null;
+        }
+        else
+        {
+            Interlocked.CompareExchange(ref _accessToken, null, reddedilen);
+        }
+    }
+
     /// <summary>Yetki kalıcı olarak geçersizse (kullanıcı izni geri aldı) bağlantıyı düşürür.</summary>
     /// <param name="yenilenirken">
     /// Kayıtlı izin yenilenirken mi düştü? Öyleyse kullanıcıya haber verilir.

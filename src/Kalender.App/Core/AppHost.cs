@@ -905,6 +905,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Uykuda geçen sürede ay dönmüş ve liste eskimiş olabilir.
         _ = RefreshHolidaysAsync(force: false);
 
+        // Uykudan önce alınan erişim anahtarına güvenilmiyor: süresi saatle
+        // hesaplanmıştı, Google ise onu uykuda geçersiz saymış olabilir.
+        _googleAuth?.ErisimAnahtariniBirak();
+
         // Uyandıktan sonra tek seferlik yenileme; zamanlayıcı uykuda durmuştu.
         _poller?.Start();
     }
