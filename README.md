@@ -253,7 +253,8 @@ tatil sayılmaz. Listeyi elle yenilemek için tepsi menüsündeki **Şimdi yenil
 
 Her şey `%LOCALAPPDATA%\Kalender` altındadır; başka hiçbir yere yazılmaz:
 
-- `ayarlar.json` — ayarlarınız (Google istemci kimliği ve gizli anahtar dahil).
+- `ayarlar.json` — ayarlarınız (Google istemci kimliği ve gizli anahtar dahil; gizli anahtar,
+  yetki anahtarı gibi Windows DPAPI ile şifrelidir).
 - `google-token.dat` — Google yetki anahtarı; Windows DPAPI ile **yalnızca sizin kullanıcı
   hesabınızın çözebileceği** biçimde şifrelidir.
 - `cache\google.json` — görünen ayın etkinlik ve görev kopyası; `cache\tatiller.json` — tatiller.

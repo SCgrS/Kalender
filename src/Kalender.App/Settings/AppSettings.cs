@@ -142,11 +142,63 @@ internal sealed class GoogleSettings
     /// <summary>Kullanıcının kendi Google Cloud istemci kimliği.</summary>
     public string? ClientId { get; set; }
 
+    private string? _clientSecret;
+    private string? _clientSecretSifreli;
+
     /// <summary>
     /// Kullanıcının kendi istemci parolası. Uygulamaya gömülü değildir;
-    /// Google masaüstü istemcilerinde bunu istediği için saklanır.
+    /// Google masaüstü istemcilerinde bunu istediği için saklanır. Çözülmüş
+    /// hâli yalnızca bellekte durur; ayar dosyasına
+    /// <see cref="ClientSecretSifreli"/> yazılır.
     /// </summary>
-    public string? ClientSecret { get; set; }
+    [JsonIgnore]
+    public string? ClientSecret
+    {
+        get => _clientSecret;
+        set
+        {
+            _clientSecret = value;
+            _clientSecretSifreli = GizliDeger.Sifrele(value);
+        }
+    }
+
+    /// <summary>
+    /// İstemci parolasının Windows DPAPI ile şifrelenmiş hâli (Base64);
+    /// yalnızca bu kullanıcı hesabı bu bilgisayarda çözebilir.
+    /// </summary>
+    public string? ClientSecretSifreli
+    {
+        get => _clientSecretSifreli;
+        set
+        {
+            _clientSecretSifreli = value;
+            _clientSecret = GizliDeger.Coz(value);
+        }
+    }
+
+    /// <summary>
+    /// 1.10'a kadar parola ayar dosyasına "ClientSecret" adıyla düz metin
+    /// yazılıyordu. Bu alan yalnızca o eski kaydı okumak için var: okunan değer
+    /// şifreli alana aktarılır, dosyaya bir daha düz metin yazılmaz
+    /// (bkz. <see cref="SettingsStore.Load"/>).
+    /// </summary>
+    [JsonPropertyName("ClientSecret")]
+    public string? EskiDuzMetinClientSecret
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                ClientSecret = value;
+                DuzMetinOkundu = true;
+            }
+        }
+    }
+
+    /// <summary>Ayar dosyasında eski düz metin parola bulundu; dosya şifreli hâliyle yeniden yazılmalı.</summary>
+    [JsonIgnore]
+    public bool DuzMetinOkundu { get; set; }
 
     /// <summary>Yoklama aralığı (saniye). 30, 60, 300, 900 ya da 86400.</summary>
     public int PollIntervalSeconds { get; set; } = 60;

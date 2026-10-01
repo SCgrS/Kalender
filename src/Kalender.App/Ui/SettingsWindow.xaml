@@ -728,9 +728,10 @@
                                 <Separator />
                                 <StackPanel Style="{StaticResource DikeySatir}">
                                     <TextBlock Style="{StaticResource SatirBasligi}" Text="İstemci gizli anahtarı (Client secret)" />
-                                    <TextBox x:Name="ClientSecretBox" Margin="0,8,0,0" FontFamily="Consolas"
-                                             AutomationProperties.Name="İstemci gizli anahtarı (Client secret)"
-                                             LostFocus="OnGoogleCredentialsChanged" />
+                                    <!-- Ekran paylaşımında görünmesin diye noktalarla gizli. -->
+                                    <PasswordBox x:Name="ClientSecretBox" Margin="0,8,0,0" FontFamily="Consolas"
+                                                 AutomationProperties.Name="İstemci gizli anahtarı (Client secret)"
+                                                 LostFocus="OnGoogleCredentialsChanged" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

@@ -20,7 +20,8 @@ internal sealed record SignInResult(bool Success, string Message);
 /// PKCE kullanılıyor ve yanıt, yalnızca bu bilgisayarda dinlenen bir loopback
 /// adresine (127.0.0.1, rastgele port) dönüyor. Uygulamanın içine hiçbir gizli
 /// anahtar gömülmedi; kimlik bilgisi kullanıcının kendi Google Cloud projesinden
-/// geliyor ve şifreli olarak kendi bilgisayarında duruyor.
+/// geliyor. İstemci gizli anahtarı ve Google yetkisi kullanıcının bilgisayarında
+/// DPAPI ile şifreli duruyor (bkz. <see cref="Settings.GizliDeger"/>, <see cref="TokenStore"/>).
 ///
 /// Dinleme için HttpListener yerine ham TcpListener kullanılıyor: HttpListener
 /// Windows'ta URL ayrımı (URL ACL) istiyor ve bu yönetici hakkı gerektirebiliyor.

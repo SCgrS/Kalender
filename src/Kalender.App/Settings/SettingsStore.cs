@@ -29,6 +29,8 @@ internal sealed class SettingsStore
 
     public void Load()
     {
+        bool duzMetinVardi = false;
+
         lock (_gate)
         {
             try
@@ -40,6 +42,7 @@ internal sealed class SettingsStore
                     if (loaded is not null)
                     {
                         Current = loaded;
+                        duzMetinVardi = loaded.Google.DuzMetinOkundu;
                     }
                 }
             }
@@ -51,6 +54,15 @@ internal sealed class SettingsStore
         }
 
         Log.Level = (LogLevel)Math.Clamp(Current.LogLevel, 0, 4);
+
+        // 1.10'a kadar Google istemci gizli anahtarı düz metin yazılıyordu;
+        // dosya bir kez şifreli hâliyle yeniden yazılır, düz metin kalmaz.
+        if (duzMetinVardi)
+        {
+            Current.Google.DuzMetinOkundu = false;
+            Save();
+            Log.Info("Google istemci gizli anahtarı ayar dosyasında şifreli hâle getirildi.");
+        }
     }
 
     public void Save()

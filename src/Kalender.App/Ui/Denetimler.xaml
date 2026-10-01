@@ -175,6 +175,50 @@
         </Setter>
     </Style>
 
+    <!-- Gizli değerler (Client secret) için; görünümü metin kutusunun aynısı. -->
+    <Style TargetType="PasswordBox">
+        <Setter Property="Foreground" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="Background" Value="{DynamicResource GirdiFirca}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource KenarFirca}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CaretBrush" Value="{DynamicResource YaziFirca}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource VurguFirca}" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Grid>
+                        <Border x:Name="Govde"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" />
+                        <Border x:Name="AltKenar" CornerRadius="4" BorderThickness="0,0,0,1"
+                                BorderBrush="{DynamicResource AnahtarKenarFirca}" />
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      VerticalAlignment="Center" Focusable="False"
+                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource DenetimUstuFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Govde" Property="Background" Value="{DynamicResource GirdiFirca}" />
+                            <Setter TargetName="AltKenar" Property="BorderThickness" Value="0,0,0,2" />
+                            <Setter TargetName="AltKenar" Property="BorderBrush" Value="{DynamicResource VurguFirca}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================ anahtar -->
     <!--
       Bu penceredeki bütün işaret kutuları aç/kapa ayarı olduğu için CheckBox,

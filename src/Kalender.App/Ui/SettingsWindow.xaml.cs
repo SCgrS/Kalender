@@ -278,7 +278,13 @@ public partial class SettingsWindow : Window
             LoadCalendarColors();
 
             ClientIdBox.Text = S.Google.ClientId ?? string.Empty;
-            ClientSecretBox.Text = S.Google.ClientSecret ?? string.Empty;
+            // Yalnızca değer değiştiyse yazılır: PasswordBox, kalıbı uygulanmış ama
+            // henüz yerleşmemişken Password atanınca WPF içinde hata veriyor.
+            string secret = S.Google.ClientSecret ?? string.Empty;
+            if (ClientSecretBox.Password != secret)
+            {
+                ClientSecretBox.Password = secret;
+            }
 
             int intervalIndex = Array.FindIndex(
                 GooglePoller.Intervals, i => i.Seconds == S.Google.PollIntervalSeconds);
@@ -1042,7 +1048,7 @@ public partial class SettingsWindow : Window
         }
 
         string id = ClientIdBox.Text.Trim();
-        string secret = ClientSecretBox.Text.Trim();
+        string secret = ClientSecretBox.Password.Trim();
 
         if (S.Google.ClientId == id && S.Google.ClientSecret == secret)
         {

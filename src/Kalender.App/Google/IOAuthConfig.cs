@@ -17,8 +17,8 @@ internal interface IOAuthConfig
 
     /// <summary>
     /// İstemci parolası. Masaüstü istemcilerinde Google bunu isteyebiliyor.
-    /// Uygulamanın içine gömülmez; kullanıcı kendi projesindekini yapıştırır
-    /// ve şifreli olarak kendi bilgisayarında durur.
+    /// Uygulamanın içine gömülmez; kullanıcı kendi projesindekini yapıştırır.
+    /// Ayar dosyasında DPAPI ile şifreli durur (bkz. <see cref="GizliDeger"/>).
     /// </summary>
     string? ClientSecret { get; }
 
