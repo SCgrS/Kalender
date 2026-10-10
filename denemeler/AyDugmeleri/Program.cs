@@ -519,7 +519,7 @@ internal static class Program
         var hepsi = ((System.Collections.IEnumerable)Tip("Kalender.Settings.ThemePresets").GetProperty("All")!.GetValue(null)!)
             .Cast<object>().ToList();
         string[] adlar = hepsi.Select(p => (string)Oku(p, "Name")!).ToArray();
-        string[] beklenen = { "Siyah", "Kuzgun", "Mürekkep", "Gece Mavisi", "Kömür", "Kum Taşı", "Kum", "Kağıt" };
+        string[] beklenen = { "Siyah", "Kuzgun", "Mürekkep", "Gece Mavisi", "Kömür", "Kum Taşı", "Kum", "Kâğıt" };
         Denetle("sıra: siyah en solda, Kum Taşı Kömür ile Kum arasında", adlar.SequenceEqual(beklenen), string.Join(", ", adlar));
 
         MethodInfo parlaklik = Tip("Kalender.Rendering.ColorTools").GetMethod("RelativeLuminance")!;

@@ -67,7 +67,7 @@ internal static class WallpaperService
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı resim kipi açılamadı: " + ex.Message);
+            Log.Debug("Duvar kâğıdı resim kipi açılamadı: " + ex.Message);
         }
     }
 
@@ -94,7 +94,7 @@ internal static class WallpaperService
             }
             catch (Exception ex)
             {
-                Log.Debug("Ortak duvar kağıdı okunamadı: " + ex.Message);
+                Log.Debug("Ortak duvar kâğıdı okunamadı: " + ex.Message);
             }
 
             uint count = wallpaper.GetMonitorDevicePathCount();
@@ -107,7 +107,7 @@ internal static class WallpaperService
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug($"Monitör duvar kağıdı okunamadı ({id}): {ex.Message}");
+                    Log.Debug($"Monitör duvar kâğıdı okunamadı ({id}): {ex.Message}");
                 }
             }
 
@@ -121,11 +121,11 @@ internal static class WallpaperService
                 JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }),
                 new UTF8Encoding(false));
 
-            Log.Info($"Önceki duvar kağıdı yedeklendi (resim: {backup.WallpaperEnabled}).");
+            Log.Info($"Önceki duvar kâğıdı yedeklendi (resim: {backup.WallpaperEnabled}).");
         }
         catch (Exception ex)
         {
-            Log.Warn("Duvar kağıdı yedeklenemedi.", ex);
+            Log.Warn("Duvar kâğıdı yedeklenemedi.", ex);
         }
     }
 
@@ -193,12 +193,12 @@ internal static class WallpaperService
             // yeniden okusun diye açıkça tazeliyoruz.
             DesktopRefresher.ForceRedraw();
 
-            Log.Info("Önceki duvar kağıdı geri yüklendi.");
+            Log.Info("Önceki duvar kâğıdı geri yüklendi.");
             return true;
         }
         catch (Exception ex)
         {
-            Log.Warn("Duvar kağıdı geri yüklenemedi.", ex);
+            Log.Warn("Duvar kâğıdı geri yüklenemedi.", ex);
             return false;
         }
     }
@@ -241,7 +241,7 @@ internal static class WallpaperService
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı sıkıştırma kalitesi okunamadı: " + ex.Message);
+            Log.Debug("Duvar kâğıdı sıkıştırma kalitesi okunamadı: " + ex.Message);
             return null;
         }
     }
@@ -272,7 +272,7 @@ internal static class WallpaperService
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı sıkıştırma kalitesi geri yüklenemedi: " + ex.Message);
+            Log.Debug("Duvar kâğıdı sıkıştırma kalitesi geri yüklenemedi: " + ex.Message);
         }
     }
 }

@@ -178,7 +178,7 @@ internal static class Installer
 
             link.TargetPath = InstalledExe;
             link.WorkingDirectory = AppFolder;
-            link.Description = "Masaüstü duvar kağıdına işlenmiş aylık takvim";
+            link.Description = "Masaüstü duvar kâğıdına işlenmiş aylık takvim";
             link.IconLocation = InstalledExe + ",0";
             link.Save();
         }

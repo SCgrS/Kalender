@@ -49,7 +49,7 @@ içine gömülür; seçilince `%LOCALAPPDATA%\Kalender\duvar-kagitlari` klasör�
 | `yildizli-karli-daglar.jpg` | Yıldızlı gökte karlı dağlar | Patrick Carr | https://unsplash.com/photos/pAoo1Rs1Yy8 |
 | `gece-ovasi.jpg` | Gece ovası | Artur Adilkhanian | https://unsplash.com/photos/P-kcxScUBhU |
 
-Lisans: [Unsplash Lisansı](https://unsplash.com/license). Ücretsizdir, ticari kullanım dahil;
+Lisans: [Unsplash Lisansı](https://unsplash.com/license). Ücretsizdir, ticari kullanım dâhil;
 fotoğrafçıdan izin almak ya da ad vermek gerekmez (yine de burada anılıyor). Fotoğraflar
 değiştirilmeden satılamaz ve Unsplash'e benzer ya da rakip bir hizmet kurmak için derlenemez.
 

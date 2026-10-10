@@ -138,7 +138,7 @@ public partial class SetupWindow : Window
         {
             Title = "Kalender kaldırma";
             HeadingText.Text = "Kalender kaldırılacak";
-            BodyText.Text = "Kalender'den önceki duvar kağıdınız geri yüklenecek, Başlat menüsü "
+            BodyText.Text = "Kalender'den önceki duvar kâğıdınız geri yüklenecek, Başlat menüsü "
                 + "kısayolu ve açılışta başlatma kaydı silinecek.";
 
             NoteText.Text = "Ayarlarınızı saklarsanız Kalender'i sonra yeniden kurduğunuzda "

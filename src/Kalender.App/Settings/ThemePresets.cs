@@ -28,7 +28,7 @@ internal static class ThemePresets
         // karşıtlığın altına düşürüyordu; bu tonda 3,1:1.
         new ThemePreset("kum-tasi", "Kum Taşı", "#C8BBA8"),
         new ThemePreset("kum", "Kum", "#D9CFC1"),
-        new ThemePreset("kagit", "Kağıt", "#F2F0EC"),
+        new ThemePreset("kagit", "Kâğıt", "#F2F0EC"),
     };
 
     public static ThemePreset? ById(string? id)

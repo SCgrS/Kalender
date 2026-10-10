@@ -67,7 +67,7 @@ internal static class DesktopRefresher
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı yeniden çizdirilemedi: " + ex.Message);
+            Log.Debug("Duvar kâğıdı yeniden çizdirilemedi: " + ex.Message);
         }
     }
 }

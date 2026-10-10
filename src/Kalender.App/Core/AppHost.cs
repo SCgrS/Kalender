@@ -832,7 +832,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             PopupMenuItem.Separator,
             new PopupMenuItem(MenuToggleCalendar, hidden ? "Takvimi göster" : "Takvimi gizle"),
             new PopupMenuItem(MenuRedraw, "Takvimi yeniden çiz"),
-            new PopupMenuItem(MenuRestoreWallpaper, "Eski duvar kağıdıma dön"),
+            new PopupMenuItem(MenuRestoreWallpaper, "Eski duvar kâğıdıma dön"),
             PopupMenuItem.Separator,
             new PopupMenuItem(MenuExit, "Çıkış"),
         };
@@ -883,8 +883,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _tray?.ShowBalloon(
             "Kalender",
             ok
-                ? "Eski duvar kağıdınız geri yüklendi. Takvim artık masaüstüne çizilmeyecek."
-                : "Yedeklenmiş bir duvar kağıdı bulunamadı. Takvim yine de artık masaüstüne çizilmeyecek.",
+                ? "Eski duvar kâğıdınız geri yüklendi. Takvim artık masaüstüne çizilmeyecek."
+                : "Yedeklenmiş bir duvar kâğıdı bulunamadı. Takvim yine de artık masaüstüne çizilmeyecek.",
             warning: !ok);
     }
 
@@ -934,11 +934,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
 
         _layerWarningShown = true;
-        Log.Warn("Takvim duvar kağıdına yazılamadı.");
+        Log.Warn("Takvim duvar kâğıdına yazılamadı.");
 
         _tray?.ShowBalloon(
             "Kalender",
-            "Takvim duvar kağıdına yazılamadı. Windows duvar kağıdı ayarı bir ilke (policy) ile kilitlenmiş olabilir.",
+            "Takvim duvar kâğıdına yazılamadı. Windows duvar kâğıdı ayarı bir ilke (policy) ile kilitlenmiş olabilir.",
             warning: true);
     }
 

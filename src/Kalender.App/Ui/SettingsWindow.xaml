@@ -279,7 +279,7 @@
                                 <StackPanel Margin="16,14,16,14">
                                     <TextBlock Style="{StaticResource SatirBasligi}" Text="Hazır renkler" />
                                     <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                               Text="Takvimin üzerine çizildiği arka plan. Seçtiğiniz zemin aynı zamanda Windows duvar kağıdına da yazılır; böylece Kalender açılana kadar ekran farklı görünmez." />
+                                               Text="Takvimin üzerine çizildiği arka plan. Seçtiğiniz zemin aynı zamanda Windows duvar kâğıdına da yazılır; böylece Kalender açılana kadar ekran farklı görünmez." />
                                     <WrapPanel x:Name="PresetPanel" Margin="-2,12,0,-8"
                                                KeyboardNavigation.TabNavigation="Once"
                                                KeyboardNavigation.DirectionalNavigation="Cycle" />
@@ -363,7 +363,7 @@
                     <StackPanel Style="{StaticResource SayfaIcerigi}">
                         <TextBlock Style="{StaticResource IlkGrupBasligi}" Text="Takvim renkleri" />
                         <TextBlock Style="{StaticResource GrupAciklamasi}"
-                                   Text="Hepsi otomatik başlar: renkler zemine ve yazı rengine göre kendiliğinden hesaplanır. Bir renk seçtiğinizde o satır elle seçilmiş olur; Otomatik'i yeniden açınca hesaplanan renge döner. Gün altındaki noktacıklar buraya dahil değil; onların rengi Google Takvim'deki takvim ve etkinlik renginden gelir." />
+                                   Text="Hepsi otomatik başlar: renkler zemine ve yazı rengine göre kendiliğinden hesaplanır. Bir renk seçtiğinizde o satır elle seçilmiş olur; Otomatik'i yeniden açınca hesaplanan renge döner. Gün altındaki noktacıklar buraya dâhil değil; onların rengi Google Takvim'deki takvim ve etkinlik renginden gelir." />
                         <Border Style="{StaticResource Kart}">
                             <StackPanel>
                                 <!-- Renk düğmesi ve anahtar tek panelde, görünüş sırasıyla: sekme soldan sağa gider. -->
@@ -503,7 +503,7 @@
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Style="{StaticResource SatirBasligi}" Text="Kutunun opaklığı" />
                                     <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                               Text="Fareyi masaüstünde bir günün üzerinde beklettiğinizde açılan kutu. Değeri küçülttükçe kutunun zemini saydamlaşır ve altındaki duvar kağıdı görünür; yazılar her değerde tam opak kalır." />
+                                               Text="Fareyi masaüstünde bir günün üzerinde beklettiğinizde açılan kutu. Değeri küçülttükçe kutunun zemini saydamlaşır ve altındaki duvar kâğıdı görünür; yazılar her değerde tam opak kalır." />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -799,13 +799,13 @@
                                 <Separator />
                                 <DockPanel Style="{StaticResource Satir}">
                                     <CheckBox x:Name="WallpaperSyncBox" DockPanel.Dock="Right" Margin="24,0,0,0"
-                                              AutomationProperties.Name="Takvimi Windows duvar kağıdına işle"
+                                              AutomationProperties.Name="Takvimi Windows duvar kâğıdına işle"
                                               Checked="OnWallpaperSyncChanged" Unchecked="OnWallpaperSyncChanged" />
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SatirBasligi}"
-                                                   Text="Takvimi Windows duvar kağıdına işle" />
+                                                   Text="Takvimi Windows duvar kâğıdına işle" />
                                         <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kağıdına yazılır. Kapatırsanız Windows duvar kağıdınıza hiç dokunulmaz, ama takvim de masaüstünde görünmez." />
+                                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kâğıdına yazılır. Kapatırsanız Windows duvar kâğıdınıza hiç dokunulmaz, ama takvim de masaüstünde görünmez." />
                                     </StackPanel>
                                 </DockPanel>
                             </StackPanel>

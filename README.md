@@ -117,7 +117,7 @@ Saatin yanındaki tepsi simgesine tıklayın. Her değişiklik anında masaüst�
 - **Google:** hesap bağlantısı (yukarıda).
 - **Genel:** Windows açılışında başlatma, güncelleme denetimi, Kalender'i kaldırma.
 
-Tepsi simgesine sağ tıklayınca **Şimdi yenile**, **Takvimi gizle**, **Eski duvar kağıdıma dön**
+Tepsi simgesine sağ tıklayınca **Şimdi yenile**, **Takvimi gizle**, **Eski duvar kâğıdıma dön**
 ve **Çıkış** gibi komutlar çıkar.
 
 ## Gün kutusu

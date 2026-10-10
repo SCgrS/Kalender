@@ -125,7 +125,7 @@ internal sealed class WallpaperCanvas
                 {
                     // Kimliği bulamadığımız ekrana yazmak yerine atlıyoruz:
                     // null geçmek bütün ekranlara aynı görüntüyü basardı.
-                    Log.Warn($"Monitörün duvar kağıdı kimliği eşleşmedi, atlandı: {screen.Monitor}");
+                    Log.Warn($"Monitörün duvar kâğıdı kimliği eşleşmedi, atlandı: {screen.Monitor}");
                     continue;
                 }
 
@@ -137,7 +137,7 @@ internal sealed class WallpaperCanvas
                 _sonYazilanlar[screen.Monitor.StableId] = (id, file);
                 written++;
 
-                Log.Debug($"Duvar kağıdı yazıldı: {screen.Monitor} -> {Path.GetFileName(file)}");
+                Log.Debug($"Duvar kâğıdı yazıldı: {screen.Monitor} -> {Path.GetFileName(file)}");
             }
 
             if (written > 0)
@@ -166,7 +166,7 @@ internal sealed class WallpaperCanvas
         }
         catch (Exception ex)
         {
-            Log.Error("Takvim duvar kağıdına yazılamadı.", ex);
+            Log.Error("Takvim duvar kâğıdına yazılamadı.", ex);
             return new CanvasResult(false, 0);
         }
     }
@@ -216,7 +216,7 @@ internal sealed class WallpaperCanvas
         }
         catch (Exception ex)
         {
-            Log.Debug("Ekrandaki duvar kağıdı okunamadı: " + ex.Message);
+            Log.Debug("Ekrandaki duvar kâğıdı okunamadı: " + ex.Message);
             return true;
         }
     }
@@ -490,11 +490,11 @@ internal sealed class WallpaperCanvas
             }
 
             key.SetValue("JPEGImportQuality", 100, RegistryValueKind.DWord);
-            Log.Info("Duvar kağıdı sıkıştırma kalitesi 100'e çekildi (takvim yazısı keskin çıksın diye).");
+            Log.Info("Duvar kâğıdı sıkıştırma kalitesi 100'e çekildi (takvim yazısı keskin çıksın diye).");
         }
         catch (Exception ex)
         {
-            Log.Debug("Duvar kağıdı sıkıştırma kalitesi ayarlanamadı: " + ex.Message);
+            Log.Debug("Duvar kâğıdı sıkıştırma kalitesi ayarlanamadı: " + ex.Message);
         }
     }
 }
