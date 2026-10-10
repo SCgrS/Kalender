@@ -26,7 +26,18 @@ internal static class Masaustu
             return null;
         }
 
-        if (SHDefExtractIconW(dosya, sira, 0, out IntPtr h, out IntPtr k, (uint)boyut) != 0 || h == IntPtr.Zero)
+        // Bazı programların dosyasında büyük boy yok (Firefox): daha küçüğünü dene.
+        IntPtr h = IntPtr.Zero;
+        IntPtr k = IntPtr.Zero;
+        foreach (int b in new[] { boyut, 128, 64, 48 })
+        {
+            if (SHDefExtractIconW(dosya, sira, 0, out h, out k, (uint)b) == 0 && h != IntPtr.Zero)
+            {
+                break;
+            }
+        }
+
+        if (h == IntPtr.Zero)
         {
             return null;
         }
@@ -116,18 +127,27 @@ internal static class Masaustu
         g.DrawString(ad, yazi, Brushes.White, kutu, bicim);
     }
 
-    private static List<Bitmap?> Uygulamalar(int boy) => new()
-    {
-        Simge(@"C:\Windows\explorer.exe", 0, boy),
-        Simge(@"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", 0, boy),
-        Simge(@"C:\Program Files\Google\Chrome\Application\chrome.exe", 0, boy),
-    };
+    private static List<Bitmap?> Uygulamalar(int boy, bool kullanici) => kullanici
+        ? new()
+        {
+            Simge(@"C:\Program Files\Mozilla Firefox\firefox.exe", 0, boy),
+            Simge(@"C:\Program Files\Google\Chrome\Application\chrome.exe", 0, boy),
+        }
+        : new()
+        {
+            Simge(@"C:\Windows\explorer.exe", 0, boy),
+            Simge(@"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", 0, boy),
+            Simge(@"C:\Program Files\Google\Chrome\Application\chrome.exe", 0, boy),
+        };
 
     private static Color Zemin(bool acik) => acik ? Color.FromArgb(238, 243, 243, 243) : Color.FromArgb(238, 32, 32, 32);
 
     private static Color Yazi(bool acik) => acik ? Color.FromArgb(20, 20, 20) : Color.White;
 
-    /// <summary>Tam şerit: ekranın altı boyunca, simgeler ortada, saat sağda.</summary>
+    /// <summary>
+    /// Tam şerit, kullanıcının kendi görev çubuğu gibi: simgeler solda, arama düğmesi yok,
+    /// sabitli uygulamalar Firefox ve Chrome, saat sağda.
+    /// </summary>
     private static void Serit(Graphics g, Size ekran, double s, bool acik, int yukseklik)
     {
         var alan = new RectangleF(0, ekran.Height - yukseklik, ekran.Width, yukseklik);
@@ -142,9 +162,8 @@ internal static class Masaustu
         }
 
         float dugme = (float)(44 * s);
-        float toplam = 5 * dugme;
-        Dugmeler(g, (ekran.Width - toplam) / 2f, alan.Top + ((yukseklik - dugme) / 2f), dugme, s, acik);
-        Tepsi(g, ekran.Width - (float)(12 * s), alan.Top + (yukseklik / 2f), s, acik);
+        Dugmeler(g, (float)(4 * s), alan.Top + ((yukseklik - dugme) / 2f), dugme, s, acik, kullanici: true);
+        Tepsi(g, ekran.Width - (float)(12 * s), alan.Top + (yukseklik / 2f), s, acik, pil: false);
     }
 
     /// <summary>Ortada: yalnız simgeleri ve saati saran, alttan biraz yukarıda yuvarlak köşeli bir şerit.</summary>
@@ -165,12 +184,15 @@ internal static class Masaustu
             g.DrawPath(p, yol);
         }
 
-        Dugmeler(g, alan.Left + ic, alan.Top + ((yukseklik - dugme) / 2f), dugme, s, acik);
-        Tepsi(g, alan.Right - ic - (float)(4 * s), alan.Top + (yukseklik / 2f), s, acik);
+        Dugmeler(g, alan.Left + ic, alan.Top + ((yukseklik - dugme) / 2f), dugme, s, acik, kullanici: false);
+        Tepsi(g, alan.Right - ic - (float)(4 * s), alan.Top + (yukseklik / 2f), s, acik, pil: true);
     }
 
-    /// <summary>Başlat, Ara ve üç uygulama; Dosya Gezgini açık (altında çizgi).</summary>
-    private static void Dugmeler(Graphics g, float x, float y, float dugme, double s, bool acik)
+    /// <summary>
+    /// Başlat, (kullanıcının düzeninde değilse) Ara ve uygulamalar. Açık uygulamanın altında
+    /// çizgi: kullanıcının düzeninde Chrome, öbüründe Dosya Gezgini.
+    /// </summary>
+    private static void Dugmeler(Graphics g, float x, float y, float dugme, double s, bool acik, bool kullanici)
     {
         float simge = (float)(24 * s);
         float ust = y + ((dugme - simge) / 2f);
@@ -188,8 +210,11 @@ internal static class Masaustu
             g.FillRectangle(mavi, bx + kare + bosluk, ust + kare + bosluk, kare, kare);
         }
 
-        // Ara: büyüteç.
         x += dugme;
+
+        // Ara: büyüteç.
+        if (!kullanici)
+        {
         using (var p = new Pen(Yazi(acik), (float)(2 * s)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
         {
             float r = simge * 0.62f;
@@ -199,7 +224,10 @@ internal static class Masaustu
         }
 
         x += dugme;
-        List<Bitmap?> uyg = Uygulamalar(256);
+        }
+
+        List<Bitmap?> uyg = Uygulamalar(256, kullanici);
+        int acikSira = kullanici ? 1 : 0;
         for (int i = 0; i < uyg.Count; i++)
         {
             if (uyg[i] is { } b)
@@ -208,7 +236,7 @@ internal static class Masaustu
                 b.Dispose();
             }
 
-            if (i == 0)
+            if (i == acikSira)
             {
                 using var vurgu = new SolidBrush(acik ? Color.FromArgb(120, 0, 0, 0) : Color.FromArgb(150, 255, 255, 255));
                 float w = (float)(16 * s);
@@ -221,7 +249,7 @@ internal static class Masaustu
     }
 
     /// <summary>Sağ uçtaki ^, ağ, ses, pil ve iki satırlık saat; sağ kenar verilen x.</summary>
-    private static void Tepsi(Graphics g, float sag, float orta, double s, bool acik)
+    private static void Tepsi(Graphics g, float sag, float orta, double s, bool acik, bool pil)
     {
         using var firca = new SolidBrush(Yazi(acik));
         using var saat = new Font("Segoe UI", (float)(9 * s), GraphicsUnit.Point);
@@ -240,7 +268,10 @@ internal static class Masaustu
 
         using var ortaliBicim = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         float x = sag - olcu.Width - (float)(14 * s);
-        foreach (string glif in new[] { "\uE83F", "\uE767", "\uE701", "\uE70E" })
+        string[] glifler = pil
+            ? new[] { "\uE83F", "\uE767", "\uE701", "\uE70E" }
+            : new[] { "\uE767", "\uE701", "\uE70E" };
+        foreach (string glif in glifler)
         {
             float w = (float)(26 * s);
             g.DrawString(glif, ikon, firca, new RectangleF(x - w, orta - w / 2f, w, w), ortaliBicim);

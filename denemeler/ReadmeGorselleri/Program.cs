@@ -104,10 +104,10 @@ internal static class Program
         object anlik = Anlik();
 
         // En üstteki görüntüler: masaüstü simgeleri ve Windows 11 görev çubuğuyla dört zemin.
-        // 3840×2160 ve %200 ölçek: 1920×1080 bir ekranın iki kat keskin hâli.
+        // 3840×2160 ve %150 ölçek: 2560×1440, %100 bir ekranın (kullanıcınınki) bir buçuk kat keskin hâli.
         var masaustleri = new (string Ad, string? Foto, string? Renk, bool Ortada, bool AcikSerit)[]
         {
-            ("masaustu-1.jpg", null, "#1E2A38", false, false),
+            ("masaustu-1.jpg", null, "#141A22", false, false),
             ("masaustu-2.jpg", "sisli-cam-ormani", null, true, false),
             ("masaustu-3.jpg", "sisli-dag-sirtlari", null, false, false),
             ("masaustu-4.jpg", null, "#D9CFC1", true, true),
@@ -116,7 +116,7 @@ internal static class Program
         {
             (Bitmap r, Rectangle blok) = Ciz(new Size(3840, 2160), anlik,
                 m.Foto is null ? null : HazirFotograf(m.Foto), m.Renk, kutu: false);
-            Masaustu.Ciz(r, 2.0, blok, m.Ortada, m.AcikSerit);
+            Masaustu.Ciz(r, 1.5, blok, m.Ortada, m.AcikSerit);
             Kaydet(r, Path.Combine(cikti, m.Ad));
             Console.WriteLine(m.Ad);
         }
