@@ -8,7 +8,9 @@ hiçbir şekilde etkilenmez.
 Fareyle bir günün üzerinde kısa süre beklediğinizde o günün Google Takvim etkinlikleri ile
 görevleri küçük bir kutuda listelenir. Google hesabına yalnızca okuma izniyle bağlanılır.
 
-![Ekran görüntüsü](docs/ekran-goruntusu.png)
+![Kalender: yıldızlı karlı dağlar fotoğrafının üstünde Ekim ayı; günlerin altında etkinlik ve görevlerin renkli noktacıkları](docs/ekran-goruntusu.jpg)
+
+*Görüntülerdeki etkinlik ve görevler örnektir.*
 
 ## Ne yapar
 
@@ -172,6 +174,10 @@ anında masaüstüne uygulanır; kaydetmeniz gerekmez. Pencerenin solunda beş s
 Sol alttaki **güneş / ay** anahtarı yalnızca ayarlar penceresinin görünümünü değiştirir; ilk
 açılışta Windows'un uygulama teması izlenir.
 
+Hazır fotoğraflardan üçü ve düz renk (Kömür):
+
+![Zemin örnekleri: sisli çam ormanı, yıldızlı karlı dağlar, gece ovası ve düz renk](docs/zeminler.jpg)
+
 ## Tepsi menüsü
 
 Saatin yanındaki Kalender simgesine sağ tıklayın; simge görünmüyorsa görev çubuğundaki **^**
@@ -194,6 +200,8 @@ Farenizi bir günün üzerine getirip 0,4 saniye beklerseniz küçük bir kutu a
 resmi tatil, sonra tüm gün süren etkinlikler, sonra saatli etkinlikler (`09:30`), en altta
 saati bilinmeyen görevler (`Tüm gün`); saati bilinen görevler saat sırasında yerini alır.
 Ön ek ve yanındaki yuvarlak kaydın Google'daki rengini taşır; tamamlanmış görevler gri yazılır.
+
+![Gün kutusu: 14 Ekim'in duruşma, toplantı, bilirkişi incelemesi ve iki görevi; gün rakamının altında üç noktacık ve +2](docs/gun-kutusu.png)
 
 Kutu yalnızca imlecin altında masaüstünün kendisi varken, fare tuşu basılı değilken ve tam
 ekran/sunum kipi yokken açılır. Gösterilecek bir şey yoksa hiç açılmaz; hücreden çıkınca
