@@ -7,7 +7,13 @@ hiç etkilenmez.
 Bir günün üzerinde kısa süre beklediğinizde o günün Google Takvim etkinlikleri ve görevleri küçük
 bir kutuda listelenir. Google hesabına yalnızca okuma izniyle bağlanılır.
 
-![Kalender, uygulamayla gelen dört fotoğrafın her birinde: günlerin altında etkinlik ve görevlerin renkli noktacıkları](docs/ekran-goruntusu.jpg)
+![Kalender, koyu düz renk zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
+
+![Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla](docs/masaustu-2.jpg)
+
+![Kalender, sisli dağ sırtları fotoğrafında](docs/masaustu-3.jpg)
+
+![Kalender, açık düz renk zeminde: yazılar koyu, görev çubuğu açık](docs/masaustu-4.jpg)
 
 *Görüntülerdeki etkinlik ve görevler örnektir.*
 

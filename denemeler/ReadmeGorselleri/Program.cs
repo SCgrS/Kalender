@@ -103,21 +103,22 @@ internal static class Program
 
         object anlik = Anlik();
 
-        // En üstteki görüntü: dört hazır fotoğraf, 2×2.
-        var fotolar = new[] { "yildizli-karli-daglar", "sisli-cam-ormani", "sisli-dag-sirtlari", "gece-ovasi" }
-            .Select(id => Ciz(new Size(2560, 1440), anlik, HazirFotograf(id), null, kutu: false)).ToList();
-        using (var izgara = new Bitmap(3200, 1800))
+        // En üstteki görüntüler: masaüstü simgeleri ve Windows 11 görev çubuğuyla dört zemin.
+        // 3840×2160 ve %200 ölçek: 1920×1080 bir ekranın iki kat keskin hâli.
+        var masaustleri = new (string Ad, string? Foto, string? Renk, bool Ortada, bool AcikSerit)[]
         {
-            using (Graphics g = Graphics.FromImage(izgara))
-            {
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                for (int i = 0; i < fotolar.Count; i++)
-                {
-                    g.DrawImage(fotolar[i].Resim, (i % 2) * 1600, (i / 2) * 900, 1600, 900);
-                }
-            }
-
-            Kaydet(izgara, Path.Combine(cikti, "ekran-goruntusu.jpg"));
+            ("masaustu-1.jpg", null, "#1E2A38", false, false),
+            ("masaustu-2.jpg", "sisli-cam-ormani", null, true, false),
+            ("masaustu-3.jpg", "sisli-dag-sirtlari", null, false, false),
+            ("masaustu-4.jpg", null, "#D9CFC1", true, true),
+        };
+        foreach (var m in masaustleri)
+        {
+            (Bitmap r, Rectangle blok) = Ciz(new Size(3840, 2160), anlik,
+                m.Foto is null ? null : HazirFotograf(m.Foto), m.Renk, kutu: false);
+            Masaustu.Ciz(r, 2.0, blok, m.Ortada, m.AcikSerit);
+            Kaydet(r, Path.Combine(cikti, m.Ad));
+            Console.WriteLine(m.Ad);
         }
 
         // Gün kutusu: koyu düz zemin (Kuzgun), takvimin çevresi de görünsün, iki kat piksel.
