@@ -103,20 +103,32 @@ internal static class Program
 
         object anlik = Anlik();
 
-        // Ana görüntü: hazır fotoğraf zemin, gün kutusu açık.
-        string foto = HazirFotograf("sisli-dag-sirtlari");
-        Uret(Path.Combine(cikti, "ekran-goruntusu.jpg"), new Size(2560, 1440), anlik, foto, kutu: true, kirp: false);
-
-        // Düz renk zemin.
-        Uret(Path.Combine(cikti, "duz-renk.png"), new Size(2560, 1440), anlik, null, kutu: false, kirp: false);
-
-        // Yakın çekim: takvim ve gün kutusu, iki kat piksel.
-        Uret(Path.Combine(cikti, "gun-kutusu.png"), new Size(5120, 2880), anlik, null, kutu: true, kirp: true);
-        Uret(Path.Combine(cikti, "gun-kutusu-foto.jpg"), new Size(5120, 2880), anlik, foto, kutu: true, kirp: true);
-
-        foreach (string id in new[] { "sisli-cam-ormani", "yildizli-karli-daglar", "gece-ovasi" })
+        // En üstteki görüntü: dört hazır fotoğraf, 2×2.
+        var fotolar = new[] { "yildizli-karli-daglar", "sisli-cam-ormani", "sisli-dag-sirtlari", "gece-ovasi" }
+            .Select(id => Ciz(new Size(2560, 1440), anlik, HazirFotograf(id), null, kutu: false)).ToList();
+        using (var izgara = new Bitmap(3200, 1800))
         {
-            Uret(Path.Combine(cikti, "foto-" + id + ".jpg"), new Size(2560, 1440), anlik, HazirFotograf(id), kutu: false, kirp: false);
+            using (Graphics g = Graphics.FromImage(izgara))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                for (int i = 0; i < fotolar.Count; i++)
+                {
+                    g.DrawImage(fotolar[i].Resim, (i % 2) * 1600, (i / 2) * 900, 1600, 900);
+                }
+            }
+
+            Kaydet(izgara, Path.Combine(cikti, "ekran-goruntusu.jpg"));
+        }
+
+        // Gün kutusu: koyu düz zemin (Kuzgun), takvimin çevresi de görünsün, iki kat piksel.
+        (Bitmap resim, Rectangle alan) = Ciz(new Size(5120, 2880), anlik, null, "#0B0E13", kutu: true);
+        // Takvim ekranın sağ altında: sağa ve alta ekran kenarına kadar, sola ve yukarı biraz masaüstü.
+        int sag = Math.Min(resim.Width, alan.Right + 600);
+        int alt = Math.Min(resim.Height, alan.Bottom + 300);
+        alan = Rectangle.FromLTRB(Math.Max(0, alan.Left - 600), Math.Max(0, alan.Top - 300), sag, alt);
+        using (Bitmap kirpik = resim.Clone(alan, PixelFormat.Format24bppRgb))
+        {
+            Kaydet(kirpik, Path.Combine(cikti, "gun-kutusu.png"));
         }
 
         Console.WriteLine("Bitti: " + cikti);
@@ -199,7 +211,7 @@ internal static class Program
         return Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataSnapshot"), gunler)!;
     }
 
-    private static void Uret(string yol, Size boyut, object anlik, string? foto, bool kutu, bool kirp)
+    private static (Bitmap Resim, Rectangle Alan) Ciz(Size boyut, object anlik, string? foto, string? renk, bool kutu)
     {
         object store = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"))!;
         object ayarlar = Oku(store, "Current")!;
@@ -208,6 +220,12 @@ internal static class Program
         {
             Yaz(gorunum, "BackgroundMode", Enum.ToObject(Tip("Kalender.Settings.BackgroundMode"), 1));
             Yaz(gorunum, "PhotoPath", foto);
+        }
+
+        if (renk is not null)
+        {
+            Yaz(gorunum, "SolidColor", renk);
+            Yaz(gorunum, "PresetId", null);
         }
 
         object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"))!;
@@ -241,17 +259,7 @@ internal static class Program
             alan = Rectangle.Union(alan, new Rectangle(x, y, k.Width, k.Height));
         }
 
-        Bitmap kayit = resim;
-        if (kirp)
-        {
-            int p = (int)(boyut.Width / 2560.0 * 40);
-            alan.Inflate(p, p);
-            alan.Intersect(new Rectangle(Point.Empty, resim.Size));
-            kayit = resim.Clone(alan, PixelFormat.Format24bppRgb);
-        }
-
-        Kaydet(kayit, yol);
-        Console.WriteLine($"{Path.GetFileName(yol)}: {kayit.Width}x{kayit.Height}");
+        return (resim, alan);
     }
 
     private static void Kaydet(Bitmap b, string yol)
