@@ -29,8 +29,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private const uint MenuPrevMonth = 12;
     private const uint MenuNextMonth = 13;
     private const uint MenuThisMonth = 14;
-    private const uint MenuNewEvent = 15;
-    private const uint MenuNewTask = 16;
 
     /// <summary>
     /// Başka bir aya gidildikten sonra kendiliğinden bu aya dönme süresi.
@@ -331,9 +329,34 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     // ------------------------------------------------------- sağ tık menüsü
 
     /// <summary>
+    /// Takvimin üzerindeki sağ tık menüsünün satırları. İlk satır imlecin
+    /// altındaki günü ("10 Ekim'i takvimde aç"), gün ızgarasının dışındaysa
+    /// (ay adı, gün adları) görünen ayı Google Takvim'de açar.
+    ///
+    /// Yeni etkinlik ve yeni görev satırları kaldırıldı: Google görev ekranı
+    /// için adres sunmuyor, etkinlik taslağı da her seferinde açılmıyordu.
+    /// </summary>
+    internal static List<PopupMenuItem> SagTikMenusu(DateOnly? gun, DateOnly gorunenAy, bool buAyda)
+        => new List<PopupMenuItem>
+        {
+            gun is null
+                ? new PopupMenuItem(MenuGoToDay,
+                    $"{TurkishNames.MonthNameTitle(gorunenAy.Month)} {gorunenAy.Year} ayını takvimde aç")
+                : new PopupMenuItem(MenuGoToDay,
+                    $"{TurkishNames.DayMonthAccusative(gun.Value)} takvimde aç"),
+            PopupMenuItem.Separator,
+            new PopupMenuItem(MenuPrevMonth,
+                "Önceki ay: " + TurkishNames.MonthNameTitle(gorunenAy.AddMonths(-1).Month)),
+            new PopupMenuItem(MenuNextMonth,
+                "Sonraki ay: " + TurkishNames.MonthNameTitle(gorunenAy.AddMonths(1).Month)),
+            new PopupMenuItem(MenuThisMonth, "Bu aya dön", Enabled: !buAyda),
+            PopupMenuItem.Separator,
+            new PopupMenuItem(MenuSettings, "Ayarlar"),
+        };
+
+    /// <summary>
     /// Takvimin üzerinde sağ tıklandı. Menü, imlecin altındaki güne göre
-    /// kurulur; gün ızgarasının dışındaysa (ay adı, gün adları) gün gerektiren
-    /// satırlar görünen ayı hedefler.
+    /// kurulur (<see cref="SagTikMenusu"/>).
     /// </summary>
     private void OnCalendarRightClick(System.Drawing.Point screenPoint)
     {
@@ -361,30 +384,17 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             }
 
             DateOnly? gun = hit.Cell?.Date;
-            bool buAyda = _viewMonth == CurrentMonth;
-
-            var items = new List<PopupMenuItem>
-            {
-                gun is null
-                    ? new PopupMenuItem(MenuGoToDay,
-                        $"{TurkishNames.MonthNameTitle(_viewMonth.Month)} {_viewMonth.Year} ayını Google Takvim'de aç")
-                    : new PopupMenuItem(MenuGoToDay,
-                        $"{TurkishNames.LongDate(gun.Value)} gününe git"),
-                PopupMenuItem.Separator,
-                new PopupMenuItem(MenuPrevMonth,
-                    "Önceki ay: " + TurkishNames.MonthNameTitle(_viewMonth.AddMonths(-1).Month)),
-                new PopupMenuItem(MenuNextMonth,
-                    "Sonraki ay: " + TurkishNames.MonthNameTitle(_viewMonth.AddMonths(1).Month)),
-                new PopupMenuItem(MenuThisMonth, "Bu aya dön", Enabled: !buAyda),
-                PopupMenuItem.Separator,
-                new PopupMenuItem(MenuNewEvent, "Yeni etkinlik…"),
-                new PopupMenuItem(MenuNewTask, "Yeni görev…"),
-                PopupMenuItem.Separator,
-                new PopupMenuItem(MenuSettings, "Ayarlar"),
-            };
+            List<PopupMenuItem> items = SagTikMenusu(gun, _viewMonth, buAyda: _viewMonth == CurrentMonth);
 
             // Menü açılırken gün kutusu ekranda kalmasın.
             _popup?.HidePopup();
+
+            // Menü açıkken bu aya dönüş sayacı işlemesin. Satırlar açılış
+            // anındaki aya göre yazıldı; menü 30 saniyeden uzun açık kalıp
+            // sayaç ayı değiştirirse "Önceki ay: Eylül" başka bir aya gider,
+            // ayın satırı da başka bir ayı açardı. Kapanınca süre baştan başlar.
+            bool sayacCalisiyordu = _viewResetTimer?.IsEnabled == true;
+            _viewResetTimer?.Stop();
 
             uint secim;
             _menuOpen = true;
@@ -395,6 +405,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             finally
             {
                 _menuOpen = false;
+
+                if (sayacCalisiyordu)
+                {
+                    _viewResetTimer?.Start();
+                }
 
                 // Menü açıkken imleç menünün üzerindeydi, yani "takvimden
                 // çıkıldı" sayılıyordu ve kancayı sökmeyi ertelemiştik.
@@ -424,14 +439,6 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
                 case MenuThisMonth:
                     ChangeMonth(GoToCurrentMonth);
-                    break;
-
-                case MenuNewEvent:
-                    Ac(GoogleLinks.NewEvent(gun));
-                    break;
-
-                case MenuNewTask:
-                    Ac(GoogleLinks.NewTask(gun));
                     break;
 
                 case MenuSettings:

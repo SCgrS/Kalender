@@ -131,8 +131,8 @@ satırın rengi Google'daki rengiyle aynıdır, tamamlanmış görevler gri gör
 
 Ay adının sağındaki **‹** bir ay geri, **›** bir ay ileri gider. Aradaki **•** bu aya döner.
 Başka bir aydayken takvime 30 saniye dokunulmazsa takvim kendiliğinden bu aya döner. Takvimin
-üzerine sağ tıklayınca da aylar arasında gezebilir, o günü Google Takvim'de açabilir ya da yeni
-etkinlik ekleyebilirsiniz. Takvimin üstündeki masaüstü simgelerine tıklamak simgeye gider.
+üzerine sağ tıklayınca da aylar arasında gezebilir ya da o günü Google Takvim'de açabilirsiniz.
+Takvimin üstündeki masaüstü simgelerine tıklamak simgeye gider.
 
 ## Resmî tatiller
 
