@@ -251,7 +251,7 @@ public partial class PlacementOverlayWindow : Window
     {
         try
         {
-            using Bitmap bitmap = _renderer.RenderCalendarBlock(TotalScale, _settings, _data, _today);
+            using Bitmap bitmap = _renderer.RenderCalendarBlock(TotalScale, _settings, Result!, _data, _today);
             CalendarImage.Source = WpfImaging.ToBitmapSource(bitmap);
             CalendarImage.Width = bitmap.Width;
             CalendarImage.Height = bitmap.Height;

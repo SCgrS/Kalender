@@ -8,6 +8,14 @@ using System.Text;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using DBitmap = System.Drawing.Bitmap;
+using DBrushes = System.Drawing.Brushes;
+using DColor = System.Drawing.Color;
+using DGraphics = System.Drawing.Graphics;
+using DImage = System.Drawing.Image;
+using DImageFormat = System.Drawing.Imaging.ImageFormat;
+using DPixelFormat = System.Drawing.Imaging.PixelFormat;
+using DSize = System.Drawing.Size;
 using DPoint = System.Drawing.Point;
 using DPointF = System.Drawing.PointF;
 using DRectangle = System.Drawing.Rectangle;
@@ -28,6 +36,10 @@ using DRectangleF = System.Drawing.RectangleF;
 //      ekranın yolu konur; bir ekrandaki hata öbürlerini durdurmaz; dosyası
 //      olmayan fotoğraf denenmez; ekranda duran zemin dosyası silinmez; takvimin
 //      kendi görüntüsü yedeğe yazılmaz; yedek kullanılınca silinir.
+//   7. Ortala kipinde fotoğraf piksel boyutuyla, tam ortada çizilir (fotoğrafın
+//      ve yüzeyin DPI'ı etkilemez); Döşe de piksel boyutuyla.
+//   8. Fotoğrafın EXIF yön etiketi uygulanır (büyük ve küçük sonlu), etiket
+//      kalkar, ön bellekte döndürülmüş hâli durur.
 //  13. Ayar dosyası önce geçici dosyaya yazılıp diske boşaltılır, önceki
 //      hâli ayarlar.json.yedek olur; okunamayan dosya ayarlar.bozuk-<tarih>.json
 //      adıyla kenara alınır (üstüne yazılmaz), yerine yedek okunur; 1.10'dan
@@ -36,6 +48,15 @@ using DRectangleF = System.Drawing.RectangleF;
 //      listesindeki kapalı işaretini kaldırır; açılıştaki eşitleme kaldırmaz.
 //  20. Esc ya da × ile kapatınca istemci kimliği ve gizli anahtar kaydedilir.
 //  25. Yazma yeniden açılınca sıkıştırma kalitesi yeniden denetlenir.
+//  26. Duvar kâğıdına yazımlar durunca, bekleme süresi dolduğunda eski zemin
+//      dosyaları silinir; ekranda duran dosyaya dokunulmaz.
+//  27. Fotoğraf açılamazsa takvim düz zemine göre (yazı rengi otomatik)
+//      çizilir, karartma yapılmaz; günlüğe her dosya için bir kez hata yazılır.
+//  28. Ekrana özel fotoğraf da genel Yerleşim seçimiyle çizilir.
+//  29. Fotoğraf ön belleği birden çok fotoğraf tutar; turda çizilmeyen atılır.
+//  30. Fotoğraf yalnız bazı ekranlardaysa öbürlerinin teması (yerleştirme
+//      ekranında da) düz zemine göre kurulur; ayarlardaki Otomatik anahtarı
+//      fotoğrafsız ekran varken açık kalır.
 //  31. Duvar kâğıdını etkilemeyen ayarlar yalnızca kaydedilir; ayarlar
 //      penceresini kapatmak ancak bekleyen bir değişiklik varsa uygular.
 //  32. Ayarlar penceresi açıkken ayar başka yerden değişince duvar kâğıdı
@@ -311,6 +332,16 @@ internal static class Program
             Bolum(() => Madde20(gecici));
             Bolum(Madde31);
             Bolum(Madde37);
+
+            string fotograflar = Path.Combine(gecici, "fotoğraflar");
+            Directory.CreateDirectory(fotograflar);
+            Bolum(() => Madde7(fotograflar));
+            Bolum(() => Madde8(fotograflar));
+            Bolum(() => Madde27(fotograflar));
+            Bolum(() => Madde28(fotograflar));
+            Bolum(() => Madde29(fotograflar));
+            Bolum(() => Madde30(fotograflar));
+            Bolum(Madde26);
         }
         finally
         {
@@ -1299,6 +1330,564 @@ internal static class Program
         sayac.Start();
         Cagir(pencere, "OnClosed", EventArgs.Empty);
         Denetle("bekleyen değişiklik varken kapanışta bir kez uygulanıyor", kapi.Uygulama == 1 && !sayac.IsEnabled);
+    }
+
+    // ------------------------------------------------ çizim ve fotoğraf (7, 8, 26-30)
+
+    private static readonly DColor Mavi = DColor.FromArgb(30, 60, 200);
+
+    private static readonly DColor Kagit = DColor.FromArgb(0xF2, 0xF0, 0xEC);
+
+    private static bool Yesil(DColor c) => c.G > 180 && c.R < 110 && c.B < 110;
+
+    private static bool MaviMi(DColor c) => c.B > 150 && c.R < 90 && c.G < 110;
+
+    private static bool Siyah(DColor c) => c.R < 20 && c.G < 20 && c.B < 20;
+
+    private static bool Koyu(DColor c) => c.R < 90 && c.G < 90 && c.B < 90;
+
+    private static bool Beyaz(DColor c) => c.R > 235 && c.G > 235 && c.B > 235;
+
+    private static object Kip(string tur, string ad) => Enum.Parse(Tip("Kalender.Settings." + tur), ad);
+
+    private static object Cizici() => Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!;
+
+    private static object Ressam() => Activator.CreateInstance(Tip("Kalender.Rendering.BackgroundPainter"), true)!;
+
+    private static object YeniYerlesim(string? foto = null)
+    {
+        object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
+        Yaz(yer, "PhotoPath", foto);
+        return yer;
+    }
+
+    /// <summary>Fotoğraf kipinde, genel fotoğrafı <paramref name="foto"/> olan ayarlar.</summary>
+    private static object FotografliAyarlar(string? foto, string yerlesim = "Fill", string zemin = "#000000")
+    {
+        object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+        object gorunum = Oku(ayarlar, "Appearance")!;
+        Yaz(gorunum, "BackgroundMode", Kip("BackgroundMode", "Photo"));
+        Yaz(gorunum, "PhotoPath", foto);
+        Yaz(gorunum, "PhotoFit", Kip("PhotoFit", yerlesim));
+        Yaz(gorunum, "SolidColor", zemin);
+        Yaz(gorunum, "PresetId", null);
+        return ayarlar;
+    }
+
+    /// <summary>Yalnız zemin (takvimsiz), yerleştirme ekranının kullandığı yoldan.</summary>
+    private static DBitmap Zemin(object cizici, object ayarlar, object yerlesim, int g = 300, int y = 200)
+        => (DBitmap)cizici.GetType().GetMethod("RenderBackgroundOnly")!.Invoke(cizici, new[] { new DSize(g, y), ayarlar, yerlesim })!;
+
+    /// <summary>Masaüstü katmanının ürettiği tam ekran görüntü ve takvim bloğunun sınırı.</summary>
+    private static (DBitmap Resim, DRectangle Blok) Ciz(object cizici, object ayarlar, object yerlesim, bool takvim = true)
+    {
+        object yuzey = cizici.GetType().GetMethod("Render")!.Invoke(cizici, new[]
+        {
+            new DSize(1280, 800), ayarlar, yerlesim,
+            Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!,
+            new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 1), takvim,
+        })!;
+
+        var resim = (DBitmap)Oku(yuzey, "Image")!;
+        object? duzen = Oku(yuzey, "Layout");
+        return (resim, duzen is null ? DRectangle.Empty : DRectangle.Round((DRectangleF)Oku(duzen, "Bounds")!));
+    }
+
+    private static int Say(DBitmap resim, DRectangle alan, Func<DColor, bool> kosul)
+    {
+        alan.Intersect(new DRectangle(0, 0, resim.Width, resim.Height));
+        int n = 0;
+        for (int y = alan.Top; y < alan.Bottom; y++)
+        {
+            for (int x = alan.Left; x < alan.Right; x++)
+            {
+                if (kosul(resim.GetPixel(x, y)))
+                {
+                    n++;
+                }
+            }
+        }
+
+        return n;
+    }
+
+    /// <summary>
+    /// Deneme fotoğrafı (JPEG): düz renk, sol üst köşesindeki 16 × 16 kare yeşil.
+    /// İstenirse JFIF bölümünün yerine yalnız yön etiketi taşıyan bir EXIF bölümü
+    /// konur; telefonlar etiketi büyük ya da küçük sonlu yazıyor.
+    /// </summary>
+    private static string Fotograf(string klasor, string ad, int g, int y, DColor renk,
+        float dpi = 72, int yon = 0, bool buyukSonlu = false)
+    {
+        using var resim = new DBitmap(g, y, DPixelFormat.Format24bppRgb);
+        using (DGraphics c = DGraphics.FromImage(resim))
+        {
+            c.Clear(renk);
+            c.FillRectangle(DBrushes.Lime, 0, 0, 16, 16);
+        }
+
+        resim.SetResolution(dpi, dpi);
+        using var akis = new MemoryStream();
+        resim.Save(akis, DImageFormat.Jpeg);
+        byte[] jpeg = akis.ToArray();
+
+        if (yon != 0)
+        {
+            var tiff = new List<byte>();
+            void Iki(int d)
+            {
+                tiff.Add((byte)(buyukSonlu ? d >> 8 : d));
+                tiff.Add((byte)(buyukSonlu ? d : d >> 8));
+            }
+
+            void Dort(int d)
+            {
+                Iki(buyukSonlu ? d >> 16 : d & 0xFFFF);
+                Iki(buyukSonlu ? d & 0xFFFF : d >> 16);
+            }
+
+            tiff.AddRange(buyukSonlu ? "MM"u8.ToArray() : "II"u8.ToArray());
+            Iki(42);
+            Dort(8);
+            Iki(1);
+            Iki(0x0112);
+            Iki(3);
+            Dort(1);
+            Iki(yon);
+            Iki(0);
+            Dort(0);
+
+            byte[] govde = [.. "Exif\0\0"u8.ToArray(), .. tiff];
+            int uzunluk = govde.Length + 2;
+            int jfifSonu = 4 + ((jpeg[4] << 8) | jpeg[5]);
+            jpeg = [0xFF, 0xD8, 0xFF, 0xE1, (byte)(uzunluk >> 8), (byte)uzunluk, .. govde, .. jpeg[jfifSonu..]];
+        }
+
+        string yol = Path.Combine(klasor, ad);
+        File.WriteAllBytes(yol, jpeg);
+        return yol;
+    }
+
+    private static bool Birakildi(DImage resim)
+    {
+        try
+        {
+            return resim.Width < 0;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+    }
+
+    // ------------------------------------------------------------------- 7. madde
+
+    private static void Madde7(string klasor)
+    {
+        Console.WriteLine("7) Ortala kipinde fotoğraf piksel boyutuyla, tam ortada çiziliyor");
+        string foto72 = Fotograf(klasor, "ortala-72.jpg", 100, 60, Mavi, dpi: 72);
+        string foto300 = Fotograf(klasor, "ortala-300.jpg", 100, 60, Mavi, dpi: 300);
+        using (var d72 = DImage.FromFile(foto72))
+        using (var d300 = DImage.FromFile(foto300))
+        {
+            Denetle("deneme fotoğrafları 72 ve 300 DPI", Math.Abs(d72.HorizontalResolution - 72) < 0.5
+                && Math.Abs(d300.HorizontalResolution - 300) < 0.5, $"{d72.HorizontalResolution} / {d300.HorizontalResolution}");
+        }
+
+        object cizici = Cizici();
+        foreach ((string foto, string ad) in new[] { (foto72, "72 DPI"), (foto300, "300 DPI") })
+        {
+            // 300 × 200 yüzeyde 100 × 60'lık fotoğraf (100, 70)-(200, 130) arasına düşmeli.
+            using DBitmap resim = Zemin(cizici, FotografliAyarlar(foto, "Center"), YeniYerlesim());
+            Denetle($"{ad}: sol üst köşe (100, 70)'te",
+                Yesil(resim.GetPixel(104, 74)) && Siyah(resim.GetPixel(97, 74)) && Siyah(resim.GetPixel(104, 67)));
+            Denetle($"{ad}: sağ alt köşe (200, 130)'da",
+                MaviMi(resim.GetPixel(196, 126)) && Siyah(resim.GetPixel(203, 126)) && Siyah(resim.GetPixel(196, 133)));
+        }
+
+        // Yüzeyin DPI'ı da etkilemiyor (Windows ölçeği %150 iken 144 olabiliyor); Döşe de piksel boyutuyla.
+        object ressam = Ressam();
+        object gorunum = Oku(FotografliAyarlar(foto72, "Center"), "Appearance")!;
+        object tema = Statik(Tip("Kalender.Rendering.Theme"), "From", gorunum)!;
+        object resim72 = Cagir(ressam, "Fotograf", gorunum, foto72)!;
+        foreach (string kip in new[] { "Center", "Tile" })
+        {
+            using var yuzey = new DBitmap(300, 200, DPixelFormat.Format32bppPArgb);
+            yuzey.SetResolution(144, 144);
+            using (DGraphics g = DGraphics.FromImage(yuzey))
+            {
+                Cagir(ressam, "Paint", g, new DRectangle(0, 0, 300, 200), tema, resim72, Kip("PhotoFit", kip));
+            }
+
+            bool dogru = kip == "Center"
+                ? Yesil(yuzey.GetPixel(104, 74)) && Siyah(yuzey.GetPixel(97, 74))
+                    && MaviMi(yuzey.GetPixel(196, 126)) && Siyah(yuzey.GetPixel(203, 126))
+                : Yesil(yuzey.GetPixel(8, 8)) && Yesil(yuzey.GetPixel(108, 8)) && Yesil(yuzey.GetPixel(208, 68))
+                    && MaviMi(yuzey.GetPixel(50, 30)) && MaviMi(yuzey.GetPixel(150, 90));
+            Denetle($"144 DPI'lık yüzeyde {(kip == "Center" ? "Ortala" : "Döşe")} piksel boyutuyla", dogru);
+        }
+
+        ((IDisposable)ressam).Dispose();
+        ((IDisposable)cizici).Dispose();
+    }
+
+    // ------------------------------------------------------------------- 8. madde
+
+    private static void Madde8(string klasor)
+    {
+        Console.WriteLine("8) Fotoğrafın EXIF yön etiketi uygulanıyor");
+        object ressam = Ressam();
+        object gorunum = Oku(FotografliAyarlar(null), "Appearance")!;
+
+        // Yön, büyük sonlu mu, beklenen boyut ve yeşil karenin yeri (özgün resim 64 × 32, kare sol üstte).
+        var durumlar = new (int Yon, bool Buyuk, int G, int Y, int X, int Yy, string Ad)[]
+        {
+            (0, false, 64, 32, 8, 8, "etiketsiz"),
+            (1, false, 64, 32, 8, 8, "1 (olduğu gibi)"),
+            (2, false, 64, 32, 56, 8, "2 (aynalı)"),
+            (3, false, 64, 32, 56, 24, "3 (baş aşağı)"),
+            (6, false, 32, 64, 24, 8, "6 (dikey, küçük sonlu)"),
+            (6, true, 32, 64, 24, 8, "6 (dikey, büyük sonlu)"),
+            (8, true, 32, 64, 8, 56, "8 (öbür yana dikey)"),
+        };
+
+        foreach (var d in durumlar)
+        {
+            string yol = Fotograf(klasor, $"yon-{d.Yon}-{(d.Buyuk ? "mm" : "ii")}.jpg", 64, 32,
+                DColor.FromArgb(40, 40, 120), yon: d.Yon, buyukSonlu: d.Buyuk);
+
+            bool etiketVardi;
+            using (var ham = DImage.FromFile(yol))
+            {
+                etiketVardi = d.Yon == 0 || (Array.IndexOf(ham.PropertyIdList, 0x0112) >= 0
+                    && BitConverter.ToUInt16(ham.GetPropertyItem(0x0112)!.Value!, 0) == d.Yon);
+            }
+
+            var resim = (DBitmap?)Cagir(ressam, "Fotograf", gorunum, yol);
+            if (resim is null)
+            {
+                Denetle($"yön {d.Ad}: fotoğraf açıldı", false);
+                continue;
+            }
+
+            bool boyut = resim.Width == d.G && resim.Height == d.Y;
+            bool kare = Yesil(resim.GetPixel(d.X, d.Yy)) && (d.X == 8 && d.Yy == 8 || !Yesil(resim.GetPixel(8, 8)));
+            bool etiketKalkti = Array.IndexOf(resim.PropertyIdList, 0x0112) < 0;
+            bool onbellekte = ReferenceEquals(Cagir(ressam, "Fotograf", gorunum, yol), resim);
+            Denetle($"yön {d.Ad}: {d.G} × {d.Y}, yeşil kare ({d.X}, {d.Yy})'de, etiket kalktı, ön bellekte döndürülmüş hâli",
+                etiketVardi && boyut && kare && etiketKalkti && onbellekte,
+                $"{resim.Width} × {resim.Height}" + (d.Yon == 0 ? "" : $", etiket dosyada {(etiketVardi ? "vardı" : "yoktu")}"));
+        }
+
+        ((IDisposable)ressam).Dispose();
+    }
+
+    // ------------------------------------------------------------------ 27. madde
+
+    private static void Madde27(string klasor)
+    {
+        Console.WriteLine("27) Fotoğraf açılamazsa takvim düz zemine göre çiziliyor, günlüğe bir kez yazılıyor");
+        string yok = Path.Combine(klasor, "silinmiş fotoğraf.jpg");
+        string bozuk = Path.Combine(klasor, "bozuk.jpg");
+        File.WriteAllText(bozuk, "bu bir resim değil");
+        object cizici = Cizici();
+        var bildirilenler = (IEnumerable)AlanOku(AlanOku(cizici, "_background"), "_bildirilenler");
+
+        foreach ((string foto, string yazi, string ad) in new[]
+        {
+            (yok, "Auto", "silinmiş fotoğraf, yazı rengi otomatik"),
+            (yok, "Manual", "silinmiş fotoğraf, yazı rengi elle beyaz"),
+            (bozuk, "Manual", "açılamayan dosya"),
+        })
+        {
+            object ayarlar = FotografliAyarlar(foto, zemin: "#F2F0EC");
+            object gorunum = Oku(ayarlar, "Appearance")!;
+            Yaz(gorunum, "TextColorMode", Kip("TextColorMode", yazi));
+            Yaz(gorunum, "TextColor", "#FFFFFF");
+            Yaz(gorunum, "BackdropDim", 60);
+
+            (DBitmap resim, DRectangle blok) = Ciz(cizici, ayarlar, YeniYerlesim());
+            using (resim)
+            {
+                int koyu = Say(resim, blok, Koyu);
+                Denetle($"{ad}: zemin Kâğıt rengi, takvim yazısı koyu, karartma yok",
+                    resim.GetPixel(5, 5) == Kagit && resim.GetPixel(blok.Left - 8, blok.Top + (blok.Height / 2)) == Kagit && koyu > 300,
+                    $"{koyu} koyu piksel");
+            }
+        }
+
+        Ciz(cizici, FotografliAyarlar(yok), YeniYerlesim()).Resim.Dispose();
+        Denetle("açılamayan her fotoğraf bir kez bildiriliyor", bildirilenler.Cast<object>().Count() == 2,
+            string.Join(", ", bildirilenler.Cast<object>()));
+
+        // Uygulamanın klasörü geçici klasöre çevrildiği için günlük de orada.
+        string gunlukKlasoru = (string)Tip("Kalender.Core.Paths").GetProperty("LogFolder", Hepsi)!.GetValue(null)!;
+        string[] satirlar = Directory.Exists(gunlukKlasoru)
+            ? Directory.GetFiles(gunlukKlasoru, "*.log").SelectMany(File.ReadAllLines).ToArray()
+            : Array.Empty<string>();
+        int bulunamadi = satirlar.Count(x => x.Contains("[HATA] Zemin fotoğrafı bulunamadı", StringComparison.Ordinal)
+            && x.Contains("silinmiş fotoğraf.jpg", StringComparison.Ordinal));
+        int acilamadi = satirlar.Count(x => x.Contains("[HATA] Zemin fotoğrafı açılamadı", StringComparison.Ordinal)
+            && x.Contains("bozuk.jpg", StringComparison.Ordinal));
+        Denetle("günlüğe hata düzeyinde, her dosya için bir satır", bulunamadi == 1 && acilamadi == 1,
+            $"bulunamadı {bulunamadi}, açılamadı {acilamadi}");
+
+        // Fotoğraf yeniden açılabilince bildirim sıfırlanıyor: sonraki bir hata yine yazılır.
+        Fotograf(klasor, "silinmiş fotoğraf.jpg", 64, 32, Mavi);
+        Ciz(cizici, FotografliAyarlar(yok), YeniYerlesim(), takvim: false).Resim.Dispose();
+        Denetle("fotoğraf yerine gelince yeniden bildirilebilir", bildirilenler.Cast<object>().Count() == 1);
+        ((IDisposable)cizici).Dispose();
+    }
+
+    // ------------------------------------------------------------------ 28. madde
+
+    private static void Madde28(string klasor)
+    {
+        Console.WriteLine("28) Ekrana özel fotoğrafta genel Yerleşim seçimi uygulanıyor");
+        object yerlesim = YeniYerlesim(Fotograf(klasor, "ekrana-ozel.jpg", 100, 60, Mavi, dpi: 96));
+        Denetle("ekranın kaydındaki yerleşim Kapla", Oku(yerlesim, "PhotoFit")!.Equals(Kip("PhotoFit", "Fill")));
+        object cizici = Cizici();
+        foreach ((string kip, string ad) in new[] { ("Center", "Ortala"), ("Fit", "Sığdır"), ("Tile", "Döşe"), ("Fill", "Kapla") })
+        {
+            using DBitmap resim = Zemin(cizici, FotografliAyarlar(null, kip), yerlesim);
+
+            // 300 × 200 yüzey, 100 × 60 fotoğraf: Ortala'da sol kenar boş; Sığdır'da 300 × 180, üst kenar
+            // boş; Döşe'de yeşil kare her 100 piksel; Kapla'da her yer fotoğraf.
+            bool dogru = kip switch
+            {
+                "Center" => Siyah(resim.GetPixel(20, 100)) && MaviMi(resim.GetPixel(150, 100)),
+                "Fit" => Siyah(resim.GetPixel(150, 3)) && MaviMi(resim.GetPixel(290, 100)),
+                "Tile" => Yesil(resim.GetPixel(108, 8)) && Yesil(resim.GetPixel(208, 68)),
+                _ => MaviMi(resim.GetPixel(150, 3)) && MaviMi(resim.GetPixel(20, 100)) && !Yesil(resim.GetPixel(108, 8)),
+            };
+            Denetle($"genel Yerleşim {ad}: ekrana özel fotoğraf da {ad} ile çiziliyor", dogru);
+        }
+
+        ((IDisposable)cizici).Dispose();
+    }
+
+    // ------------------------------------------------------------------ 29. madde
+
+    private static void Madde29(string klasor)
+    {
+        Console.WriteLine("29) Ekranlarda farklı fotoğraf varken fotoğraflar her çizimde yeniden açılmıyor");
+        string a = Fotograf(klasor, "ekran-a.jpg", 320, 200, Mavi);
+        string b = Fotograf(klasor, "ekran-b.jpg", 320, 200, DColor.FromArgb(32, 32, 32));
+        object cizici = Cizici();
+        Type ciziciTipi = cizici.GetType();
+        var onbellek = (IDictionary)AlanOku(AlanOku(cizici, "_background"), "_onbellek");
+        object ayarlar = FotografliAyarlar(null);
+        object yerA = YeniYerlesim(a);
+        object yerB = YeniYerlesim(b);
+
+        // Masaüstü katmanının bir turu: her ekran çizilir, sonra kullanılmayanlar atılır.
+        void Tur(params object[] yerler)
+        {
+            foreach (object yer in yerler)
+            {
+                Ciz(cizici, ayarlar, yer, takvim: false).Resim.Dispose();
+            }
+
+            Cagir(cizici, "KullanilmayanFotograflariAt");
+        }
+
+        DImage? Resim(string yol)
+        {
+            string? anahtar = onbellek.Keys.Cast<string>()
+                .FirstOrDefault(k => k.StartsWith(Path.GetFullPath(yol) + "|", StringComparison.OrdinalIgnoreCase));
+            return anahtar is null ? null : (DImage)onbellek[anahtar]!;
+        }
+
+        Tur(yerA, yerB);
+        DImage? resimA = Resim(a);
+        DImage? resimB = Resim(b);
+        Tur(yerA, yerB);
+        Tur(yerB, yerA);
+        Denetle("iki ekranın fotoğrafı da ön bellekte; turlar arasında yeniden açılmıyor",
+            onbellek.Count == 2 && resimA is not null && resimB is not null
+            && ReferenceEquals(Resim(a), resimA) && ReferenceEquals(Resim(b), resimB), $"{onbellek.Count} fotoğraf");
+
+        Tur(yerB);
+        Denetle("turda hiçbir ekranın çizmediği fotoğraf atılıyor, öbürü kalıyor",
+            onbellek.Count == 1 && ReferenceEquals(Resim(b), resimB) && resimA is not null && Birakildi(resimA));
+
+        object ressam = Ressam();
+        object gorunum = Oku(ayarlar, "Appearance")!;
+        var ikinciOnbellek = (IDictionary)AlanOku(ressam, "_onbellek");
+        int enCok = 0;
+        for (int i = 0; i < 12; i++)
+        {
+            string kopya = Path.Combine(klasor, $"kopya-{i}.jpg");
+            File.Copy(a, kopya, overwrite: true);
+            Cagir(ressam, "Fotograf", gorunum, kopya);
+            enCok = Math.Max(enCok, ikinciOnbellek.Count);
+        }
+
+        Denetle("atma çağrılmayan çizicide de ön bellek sınırlı (en çok 8)", enCok <= 8, $"en çok {enCok}");
+        ((IDisposable)ressam).Dispose();
+
+        List<Komut> k = Komutlar(Tip("Kalender.Desktop.DesktopLayerManager").GetMethod("RefreshOnce", Hepsi)!);
+        int cizim = Bul(k, x => Cagri(x, ciziciTipi, "Render"));
+        Denetle("masaüstü katmanı bütün ekranları çizdikten sonra kullanılmayanları atıyor",
+            cizim >= 0 && Bul(k, x => Cagri(x, ciziciTipi, "KullanilmayanFotograflariAt"), cizim) > cizim);
+        ((IDisposable)cizici).Dispose();
+    }
+
+    // ------------------------------------------------------------------ 30. madde
+
+    private static void Madde30(string klasor)
+    {
+        Console.WriteLine("30) Fotoğraf yalnız bir ekrandaysa öbür ekranın takvimi düz zemine göre çiziliyor");
+        string koyuFoto = Fotograf(klasor, "koyu.jpg", 320, 200, DColor.FromArgb(32, 32, 32));
+        object ayarlar = FotografliAyarlar(null, zemin: "#F2F0EC");
+        object gorunum = Oku(ayarlar, "Appearance")!;
+        Yaz(gorunum, "TextColor", "#FFFFFF");
+        Yaz(gorunum, "BackdropDim", 60);
+        object fotografli = YeniYerlesim(koyuFoto);
+        object fotografsiz = YeniYerlesim();
+        object cizici = Cizici();
+
+        (DBitmap resim, DRectangle blok) = Ciz(cizici, ayarlar, fotografsiz);
+        using (resim)
+        {
+            int koyu = Say(resim, blok, Koyu);
+            DColor kenar = resim.GetPixel(blok.Left - 8, blok.Top + (blok.Height / 2));
+            Denetle("fotoğrafsız ekranda yazı rengi otomatik (Kâğıt'ta koyu)", koyu > 300, $"{koyu} koyu piksel");
+            Denetle("fotoğrafsız ekranda karartma yok", kenar == Kagit, kenar.ToString());
+        }
+
+        (resim, blok) = Ciz(cizici, ayarlar, fotografli);
+        using (resim)
+        {
+            int beyaz = Say(resim, blok, Beyaz);
+            Denetle("fotoğraflı ekranda yazı seçilen renkte (beyaz)", beyaz > 300, $"{beyaz} beyaz piksel");
+        }
+
+        MethodInfo blokCiz = cizici.GetType().GetMethod("RenderCalendarBlock")!;
+        object bos = Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!;
+        foreach ((object yer, string ad) in new[] { (fotografsiz, "fotoğrafsız"), (fotografli, "fotoğraflı") })
+        {
+            using var tas = (DBitmap)blokCiz.Invoke(cizici, new[] { 0.5f, ayarlar, yer, bos, new DateOnly(2026, 10, 12) })!;
+            var tum = new DRectangle(0, 0, tas.Width, tas.Height);
+            int koyu = Say(tas, tum, c => c.A > 200 && Koyu(c));
+            int beyaz = Say(tas, tum, c => c.A > 200 && Beyaz(c));
+            Denetle($"yerleştirme ekranında da {ad} ekranın renkleri", ad == "fotoğrafsız" ? koyu > 300 && beyaz < 50 : beyaz > 300 && koyu < 50,
+                $"{koyu} koyu, {beyaz} beyaz");
+        }
+
+        // Elle seçilen yazı rengi fotoğrafsız ekranda da geçerli: anahtar kullanıcının elinde.
+        Yaz(gorunum, "TextColorMode", Kip("TextColorMode", "Manual"));
+        (resim, blok) = Ciz(cizici, ayarlar, fotografsiz);
+        using (resim)
+        {
+            Denetle("anahtar kapalıyken fotoğrafsız ekranda da seçilen renk", Say(resim, blok, Beyaz) > 300 && Say(resim, blok, Koyu) < 50);
+        }
+
+        ((IDisposable)cizici).Dispose();
+
+        // Ayarlar penceresi: fotoğrafsız ekran varken Otomatik anahtarı açık kalıyor.
+        object depo = BellekDeposu();
+        object s = Oku(depo, "Current")!;
+        object a = Oku(s, "Appearance")!;
+        Yaz(a, "BackgroundMode", Kip("BackgroundMode", "Photo"));
+        Yaz(a, "SolidColor", "#F2F0EC");
+        var kayitlar = (IDictionary)Oku(s, "Monitors")!;
+        kayitlar[@"\\.\DISPLAY2"] = YeniYerlesim(koyuFoto);
+
+        object pencere = AyarPenceresi(Kapi(depo, Ekran(@"\\.\DISPLAY1", 0, 1280, 800), Ekran(@"\\.\DISPLAY2", 1280, 1280, 800)));
+        var anahtar = new CheckBox();
+        var not = new TextBlock();
+        AlanAta(pencere, "AutoTextColorBox", anahtar);
+        AlanAta(pencere, "AutoTextNote", not);
+        AlanAta(pencere, "DimPanel", new DockPanel());
+
+        Cagir(pencere, "UpdateTextColorControls");
+        Denetle("fotoğraf bir ekrandayken Otomatik anahtarı açık ve kullanılabilir",
+            anahtar.IsEnabled && anahtar.IsChecked == true && not.Text.Contains("fotoğrafsız"), not.Text);
+
+        kayitlar[@"\\.\DISPLAY1"] = YeniYerlesim(koyuFoto);
+        Cagir(pencere, "UpdateTextColorControls");
+        Denetle("bütün ekranlarda fotoğraf varken anahtar kapalı ve kilitli", !anahtar.IsEnabled && anahtar.IsChecked == false);
+
+        kayitlar.Clear();
+        Yaz(a, "PhotoPath", koyuFoto);
+        Cagir(pencere, "UpdateTextColorControls");
+        Denetle("genel fotoğraf varken anahtar kilitli", !anahtar.IsEnabled && anahtar.IsChecked == false);
+
+        Yaz(a, "PhotoPath", null);
+        Yaz(a, "BackgroundMode", Kip("BackgroundMode", "Solid"));
+        Cagir(pencere, "UpdateTextColorControls");
+        Denetle("düz zeminde anahtar açık", anahtar.IsEnabled && anahtar.IsChecked == true);
+    }
+
+    // ------------------------------------------------------------------ 26. madde
+
+    private static void Madde26()
+    {
+        Console.WriteLine("26) Peş peşe yazılan zemin dosyaları yazımlar durunca siliniyor");
+        Type tuval = Tip("Kalender.Desktop.WallpaperCanvas");
+        object canvas = Activator.CreateInstance(tuval, true)!;
+
+        // Uygulamanın klasörü geçici klasöre çevrildi; zemin dosyaları orada.
+        string klasor = (string)Tip("Kalender.Core.Paths").GetProperty("CanvasFolder", Hepsi)!.GetValue(null)!;
+        Directory.CreateDirectory(klasor);
+        DateTime eski = DateTime.UtcNow.AddMinutes(-10);
+        string Dosya(string ad, bool eskiMi)
+        {
+            string yol = Path.Combine(klasor, ad);
+            File.WriteAllText(yol, "deneme");
+            if (eskiMi)
+            {
+                File.SetLastWriteTimeUtc(yol, eski);
+            }
+
+            return yol;
+        }
+
+        string ekranda = Dosya("zemin-aaaaaaaa-20261012-100000-000.bmp", true);
+        string ara1 = Dosya("zemin-aaaaaaaa-20261012-100000-040.bmp", true);
+        string ara2 = Dosya("zemin-bbbbbbbb-20261012-100000-080.bmp", true);
+        string yeni = Dosya("zemin-aaaaaaaa-20261012-100959-000.bmp", false);
+        string baska = Dosya("deniz.jpg", true);
+        ((IDictionary)AlanOku(canvas, "_sonYazilanlar"))["A"] = ("aygıt-A", ekranda);
+
+        Cagir(canvas, "TemizligiPlanla");
+        var zamanlayici = (DispatcherTimer?)tuval.GetField("_temizlikZamanlayicisi", Hepsi)!.GetValue(canvas);
+        Denetle("yazımdan sonra temizlik bekleme süresi dolunca yapılmak üzere planlanıyor",
+            zamanlayici is { IsEnabled: true } && zamanlayici.Interval >= TimeSpan.FromMinutes(2), $"{zamanlayici?.Interval}");
+        if (zamanlayici is null)
+        {
+            return;
+        }
+
+        // Süre beklenmeden: zamanlayıcı kısaltılıp dağıtıcı çalıştırılıyor.
+        zamanlayici.Interval = TimeSpan.FromMilliseconds(20);
+        for (int i = 0; i < 100 && zamanlayici.IsEnabled; i++)
+        {
+            Thread.Sleep(20);
+            Bosalt();
+        }
+
+        Denetle("süre dolunca zamanlayıcı bir kez çalışıp durdu", !zamanlayici.IsEnabled);
+        Denetle("ekranda olmayan eski dosyalar silindi", !File.Exists(ara1) && !File.Exists(ara2));
+        Denetle("ekranda duran ve yeni yazılan dosya silinmedi, zemin olmayana dokunulmadı",
+            File.Exists(ekranda) && File.Exists(yeni) && File.Exists(baska));
+
+        Cagir(canvas, "TemizligiPlanla");
+        Cagir(canvas, "Birak");
+        Denetle("takvim duvar kâğıdından kaldırılınca bekleyen temizlik iptal", !zamanlayici.IsEnabled);
+
+        List<Komut> k = Komutlar(tuval.GetMethod("Apply", Hepsi)!);
+        int temizle = Bul(k, x => Cagri(x, tuval, "CleanUnusedFiles"));
+        Denetle("her yazımdan sonra temizlik yeniden planlanıyor",
+            temizle >= 0 && Bul(k, x => Cagri(x, tuval, "TemizligiPlanla"), temizle) > temizle);
+
+        MethodInfo? tik = tuval.GetNestedTypes(BindingFlags.NonPublic)
+            .SelectMany(t => t.GetMethods(Hepsi | BindingFlags.DeclaredOnly))
+            .FirstOrDefault(m => m.Name.Contains("TemizligiPlanla", StringComparison.Ordinal));
+        Denetle("süre dolunca zamanlayıcı durup temizlik yapılıyor", tik is not null
+            && Bul(Komutlar(tik), x => Cagri(x, typeof(DispatcherTimer), "Stop")) >= 0
+            && Bul(Komutlar(tik), x => Cagri(x, tuval, "CleanUnusedFiles")) >= 0);
     }
 }
 

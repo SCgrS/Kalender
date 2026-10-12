@@ -359,6 +359,10 @@ internal sealed class DesktopLayerManager : IDisposable
             }
         }
 
+        // Ön bellekte yalnız bu turda çizilen fotoğraflar kalır; kullanıcı
+        // fotoğrafı değiştirince eskisi bellekte durmasın.
+        _renderer.KullanilmayanFotograflariAt();
+
         if (placementsAdded)
         {
             _settings.Save();

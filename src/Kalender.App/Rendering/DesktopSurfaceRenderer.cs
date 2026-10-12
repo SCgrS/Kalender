@@ -39,16 +39,21 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         var bitmap = new Bitmap(Math.Max(pixelSize.Width, 1), Math.Max(pixelSize.Height, 1),
             PixelFormat.Format32bppPArgb);
 
-        var theme = Theme.From(settings.Appearance);
         CalendarLayout? layout = null;
 
         using (Graphics g = Graphics.FromImage(bitmap))
         {
             var area = new Rectangle(Point.Empty, bitmap.Size);
 
-            string? photo = placement.PhotoPath ?? settings.Appearance.PhotoPath;
-            PhotoFit fit = placement.PhotoPath is not null ? placement.PhotoFit : settings.Appearance.PhotoFit;
-            _background.Paint(g, area, settings.Appearance, theme, photo, fit);
+            string? photo = FotografYolu(settings, placement);
+            Image? fotograf = _background.Fotograf(settings.Appearance, photo);
+            Theme theme = EkranTemasi(settings.Appearance, photo, fotograf);
+
+            // Ekrana özel fotoğraf da genel "Yerleşim" seçimiyle çizilir; ekran
+            // başına ayrı bir seçim yok. Önceden ekranın kaydındaki değer
+            // kullanılıyordu; onu değiştiren bir denetim hiç olmadığı için
+            // ekrana özel fotoğraf hep Kapla ile çiziliyordu.
+            _background.Paint(g, area, theme, fotograf, settings.Appearance.PhotoFit);
 
             if (drawCalendar)
             {
@@ -58,7 +63,11 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
                 PointF origin = ResolveOrigin(pixelSize, scale, placement);
                 layout = CalendarLayout.Create(viewMonth, scale, origin);
 
-                PaintBackdrop(g, layout, settings.Appearance, scale);
+                if (fotograf is not null)
+                {
+                    PaintBackdrop(g, layout, settings.Appearance, scale);
+                }
+
                 _calendar.Paint(g, layout, theme, settings.Appearance, data, today);
             }
         }
@@ -75,12 +84,11 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         var bitmap = new Bitmap(Math.Max(pixelSize.Width, 1), Math.Max(pixelSize.Height, 1),
             PixelFormat.Format32bppPArgb);
 
-        var theme = Theme.From(settings.Appearance);
-
         using Graphics g = Graphics.FromImage(bitmap);
-        string? photo = placement.PhotoPath ?? settings.Appearance.PhotoPath;
-        PhotoFit fit = placement.PhotoPath is not null ? placement.PhotoFit : settings.Appearance.PhotoFit;
-        _background.Paint(g, new Rectangle(Point.Empty, bitmap.Size), settings.Appearance, theme, photo, fit);
+        string? photo = FotografYolu(settings, placement);
+        Image? fotograf = _background.Fotograf(settings.Appearance, photo);
+        Theme theme = EkranTemasi(settings.Appearance, photo, fotograf);
+        _background.Paint(g, new Rectangle(Point.Empty, bitmap.Size), theme, fotograf, settings.Appearance.PhotoFit);
 
         return bitmap;
     }
@@ -89,7 +97,8 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     /// Yalnızca takvim bloğunu saydam bir yüzeye çizer. Sürükleyerek
     /// yerleştirmede ekranda gezdirilen görüntü budur.
     /// </summary>
-    public Bitmap RenderCalendarBlock(float scale, AppSettings settings,
+    /// <param name="placement">Takvimin yerleştirildiği ekranın ayarı; renkler o ekranın zeminine göre seçilir.</param>
+    public Bitmap RenderCalendarBlock(float scale, AppSettings settings, MonitorPlacement placement,
         CalendarDataSnapshot data, DateOnly today)
     {
         SizeF size = CalendarLayout.MeasureSize(scale);
@@ -98,7 +107,8 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
             Math.Max((int)Math.Ceiling(size.Height), 1),
             PixelFormat.Format32bppPArgb);
 
-        var theme = Theme.From(settings.Appearance);
+        string? photo = FotografYolu(settings, placement);
+        Theme theme = EkranTemasi(settings.Appearance, photo, _background.Fotograf(settings.Appearance, photo));
         var layout = CalendarLayout.Create(today, scale, PointF.Empty);
 
         using Graphics g = Graphics.FromImage(bitmap);
@@ -106,6 +116,27 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         _calendar.Paint(g, layout, theme, settings.Appearance, data, today);
 
         return bitmap;
+    }
+
+    /// <summary>
+    /// Bütün ekranlar çizildikten sonra çağrılır: bu turda hiçbir ekranın
+    /// çizmediği fotoğraflar bellekten atılır.
+    /// </summary>
+    public void KullanilmayanFotograflariAt() => _background.KullanilmayanlariAt();
+
+    /// <summary>Ekranın kendi fotoğrafı, yoksa genel fotoğraf.</summary>
+    private static string? FotografYolu(AppSettings settings, MonitorPlacement placement)
+        => placement.PhotoPath ?? settings.Appearance.PhotoPath;
+
+    /// <summary>
+    /// Ekranın gerçek zeminine göre tema: fotoğraf çiziliyorsa fotoğraf
+    /// kipinin, çizilmiyorsa düz zeminin renkleri. Fotoğraf istendiği hâlde
+    /// açılamadıysa zemin düz renkte kalır; yazı rengi de ona göre hesaplanır.
+    /// </summary>
+    private static Theme EkranTemasi(AppearanceSettings appearance, string? photo, Image? fotograf)
+    {
+        bool istendi = appearance.BackgroundMode == BackgroundMode.Photo && !string.IsNullOrWhiteSpace(photo);
+        return Theme.ZemineGore(appearance, fotograf is not null, otomatikYazi: istendi && fotograf is null);
     }
 
     /// <summary>

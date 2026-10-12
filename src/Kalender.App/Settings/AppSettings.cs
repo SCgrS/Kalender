@@ -66,7 +66,11 @@ internal sealed class MonitorPlacement
     /// <summary>Bu monitör için fotoğraf yolu. Boşsa genel ayar kullanılır.</summary>
     public string? PhotoPath { get; set; }
 
-    /// <summary>Bu monitördeki fotoğrafın yerleşim biçimi.</summary>
+    /// <summary>
+    /// Kullanılmıyor: ekrana özel fotoğraf da genel yerleşimle
+    /// (<see cref="AppearanceSettings.PhotoFit"/>) çizilir; bunu değiştiren bir
+    /// denetim hiç olmadı. Eski ayar dosyalarıyla uyum için duruyor.
+    /// </summary>
     public PhotoFit PhotoFit { get; set; } = PhotoFit.Fill;
 
     /// <summary>Bu monitörde takvim gösterilsin mi (SelectedScreens kipinde kullanılır).</summary>

@@ -167,6 +167,7 @@ internal static class Program
         object gorunum = Oku(ayarlar, "Appearance")!;
         object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"))!;
         MethodInfo blok = cizici.GetType().GetMethod("RenderCalendarBlock")!;
+        object yerlesim = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"))!;
         object bos = Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!;
 
         // Başlık satırı y 0-88; önceki ay okunun ucu x ≈ 496'da.
@@ -174,7 +175,7 @@ internal static class Program
         string enUzun = "";
         for (int ay = 1; ay <= 12; ay++)
         {
-            using var resim = (Bitmap)blok.Invoke(cizici, new object[] { 1f, ayarlar, bos, new DateOnly(2026, ay, 15) })!;
+            using var resim = (Bitmap)blok.Invoke(cizici, new object[] { 1f, ayarlar, yerlesim, bos, new DateOnly(2026, ay, 15) })!;
             int sag = 0;
             for (int y = 0; y < 88; y++)
             {
@@ -258,7 +259,7 @@ internal static class Program
         }
 
         // Ay adının yüksekliği: 52 px Segoe UI Bold büyük harfin boyanan yüksekliği ~37 px.
-        using var eylul = (Bitmap)blok.Invoke(cizici, new object[] { 1f, ayarlar, bos, new DateOnly(2026, 9, 15) })!;
+        using var eylul = (Bitmap)blok.Invoke(cizici, new object[] { 1f, ayarlar, yerlesim, bos, new DateOnly(2026, 9, 15) })!;
 
         // "EYLÜL"deki Ü noktaları büyük harfin üstüne çıkıyor; E'nin yüksekliğine bakılır.
         int eUst = int.MaxValue, eAlt = 0;

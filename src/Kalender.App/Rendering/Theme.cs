@@ -43,11 +43,27 @@ internal sealed class Theme
     /// yazı rengini kullanıcı belirler (şartname gereği).
     /// </summary>
     public static Theme From(AppearanceSettings ayarlar)
+        => ZemineGore(ayarlar, ayarlar.BackgroundMode == BackgroundMode.Photo, otomatikYazi: false);
+
+    /// <summary>
+    /// Bir ekranın gerçek zeminine göre tema üretir. Fotoğraf yalnız bazı
+    /// ekranlara verildiyse öbürleri düz renkle çizilir; onlarda tema da düz
+    /// zemindeki gibi kurulur. Önceden genel ayar fotoğraf kipinde olduğu için
+    /// fotoğrafsız ekranda da yazı fotoğrafın rengiyle (çoğu zaman beyaz)
+    /// çiziliyor, açık zeminde okunmuyordu.
+    /// </summary>
+    /// <param name="fotograf">Bu ekranın zeminine fotoğraf çiziliyor mu.</param>
+    /// <param name="otomatikYazi">
+    /// Yazı rengi ayara bakılmadan zeminden hesaplansın mı. Fotoğraf
+    /// açılamadığında kullanılır: elle seçilen renk fotoğraf içindi, onun
+    /// yerine kalan düz zeminde görünmeyebilir.
+    /// </param>
+    public static Theme ZemineGore(AppearanceSettings ayarlar, bool fotograf, bool otomatikYazi)
     {
         Color background = ColorTools.Parse(ayarlar.SolidColor, Color.FromArgb(0x2E, 0x32, 0x38));
 
-        bool photoMode = ayarlar.BackgroundMode == BackgroundMode.Photo;
-        bool manual = photoMode || ayarlar.TextColorMode == TextColorMode.Manual;
+        bool photoMode = fotograf;
+        bool manual = photoMode || (!otomatikYazi && ayarlar.TextColorMode == TextColorMode.Manual);
 
         Color text;
         bool lightSurface;

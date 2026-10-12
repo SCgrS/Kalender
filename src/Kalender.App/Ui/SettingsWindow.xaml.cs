@@ -748,22 +748,48 @@ public partial class SettingsWindow : Window
 
     /// <summary>
     /// Yazı rengi satırını ve fotoğrafa bağlı denetimleri zemin kipine eşitler.
-    /// Fotoğraf zeminde otomatik kontrast hesabı yapılamaz: anahtar kapalı
-    /// ve kilitli durur, rengi kullanıcı seçer.
+    /// Fotoğraf zeminde otomatik kontrast hesabı yapılamaz: bütün ekranlarda
+    /// fotoğraf varsa anahtar kapalı ve kilitli durur, rengi kullanıcı seçer.
+    /// Fotoğraf yalnız bazı ekranlara verildiyse öbürleri düz renkle çizilir;
+    /// anahtar o ekranlar için açık kalır (önceden kilitleniyordu, fotoğrafsız
+    /// ekrandaki yazı da fotoğrafın rengiyle çiziliyordu).
     /// </summary>
     private void UpdateTextColorControls()
     {
         AppearanceSettings a = S.Appearance;
         bool photoMode = a.BackgroundMode == BackgroundMode.Photo;
+        bool hepsiFotograf = photoMode && !FotografsizEkranVar();
 
-        Silently(() => AutoTextColorBox.IsChecked = !photoMode && a.TextColorMode == TextColorMode.Auto);
-        AutoTextColorBox.IsEnabled = !photoMode;
+        Silently(() => AutoTextColorBox.IsChecked = !hepsiFotograf && a.TextColorMode == TextColorMode.Auto);
+        AutoTextColorBox.IsEnabled = !hepsiFotograf;
 
-        AutoTextNote.Text = photoMode
+        AutoTextNote.Text = hepsiFotograf
             ? "Fotoğraf zeminde otomatik seçim yapılamaz; rengi siz belirlersiniz."
-            : "Otomatikte zemine göre açık ya da koyu seçilir; öteki renkler buna göre hesaplanır.";
+            : photoMode
+                ? "Otomatik yalnız fotoğrafsız ekranlarda geçerlidir; fotoğraflı ekranda rengi siz belirlersiniz."
+                : "Otomatikte zemine göre açık ya da koyu seçilir; öteki renkler buna göre hesaplanır.";
 
         DimPanel.IsEnabled = photoMode;
+    }
+
+    /// <summary>
+    /// Fotoğrafı olmayan, düz renkle çizilen bir ekran var mı? Genel fotoğraf
+    /// yoksa kendi fotoğrafı olmayan her ekran düz renkle çizilir.
+    /// </summary>
+    private bool FotografsizEkranVar()
+    {
+        if (S.Appearance.BackgroundMode != BackgroundMode.Photo)
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(S.Appearance.PhotoPath))
+        {
+            return false;
+        }
+
+        return _host.Monitors.Any(m => !S.Monitors.TryGetValue(m.StableId, out MonitorPlacement? p)
+            || string.IsNullOrWhiteSpace(p.PhotoPath));
     }
 
     private void OnTextColorPicked(Color color)

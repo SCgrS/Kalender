@@ -3,6 +3,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Windows.Threading;
 using Kalender.Core;
 using Kalender.Interop;
 using Microsoft.Win32;
@@ -52,6 +53,15 @@ internal sealed class WallpaperCanvas
     private bool _qualityChecked;
 
     /// <summary>
+    /// Yazımlar durduktan sonra eski görüntüleri silen zamanlayıcı (ilk
+    /// yazımda kurulur). Silme önceden yalnız yazım anında yapılıyordu ve
+    /// yeni dosyalara dokunmuyordu: renk çarkı ya da kaydırıcı sürüklenirken
+    /// saniyede birkaç büyük dosya yazılıyor, sürükleme bitince bunlar bir
+    /// sonraki yazıma (çoğu zaman gece yarısına) dek diskte kalıyordu.
+    /// </summary>
+    private DispatcherTimer? _temizlikZamanlayicisi;
+
+    /// <summary>
     /// Bu süreç duvar kâğıdına yazdı mı (ve o zamandan beri önceki duvar
     /// kâğıdı geri yüklenmedi mi)? Kapanış temizliği ve yazmanın kapatılması
     /// buna bakar.
@@ -81,6 +91,11 @@ internal sealed class WallpaperCanvas
         Forget();
         _sonYazilanlar.Clear();
         HasPainted = false;
+
+        // Ekranda ne durduğunu artık bu sınıf bilmiyor (önceki duvar kâğıdını
+        // kabul etmeyen ekranda görüntümüz kalmış olabilir); dosyaları geri
+        // yükleme ekrana bakarak siliyor. Bekleyen temizlik iptal.
+        _temizlikZamanlayicisi?.Stop();
     }
 
     /// <summary>
@@ -192,6 +207,7 @@ internal sealed class WallpaperCanvas
 
                 HasPainted = true;
                 CleanUnusedFiles();
+                TemizligiPlanla();
             }
 
             return new CanvasResult(true, written);
@@ -325,8 +341,9 @@ internal sealed class WallpaperCanvas
     /// Neden PNG değil: 2560 × 1440 bir ekranda PNG kodlaması ~140 ms, bu yazım
     /// ~10 ms sürüyor; renk seçerken aradaki fark doğrudan gecikme olarak
     /// hissediliyordu. Windows görüntüyü zaten kendi önbelleğine yeniden
-    /// kodladığı için sıkıştırmanın masaüstüne yararı yok. Dosya büyük ama her
-    /// ekran için en fazla iki tane durur. 24 bit, çünkü 32 bitlik BMP'nin
+    /// kodladığı için sıkıştırmanın masaüstüne yararı yok. Dosya büyük; ekranda
+    /// durmayanlar son yazımdan birkaç dakika sonra silinir (bkz.
+    /// <see cref="TemizligiPlanla"/>). 24 bit, çünkü 32 bitlik BMP'nin
     /// dördüncü baytını bazı okuyucular saydamlık sanıyor.
     ///
     /// Görüntü kendi 32 bitlik biçiminde okunup satır satır 24 bite burada
@@ -434,6 +451,33 @@ internal sealed class WallpaperCanvas
         {
             Log.Debug("Eski zemin dosyaları silinemedi: " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Son yazımdan bekleme süresi kadar sonra temizliği bir kez daha yapar;
+    /// her yazımda süre baştan başlar. Peş peşe yazılan dosyalar böylece
+    /// sürükleme bitince birkaç dakika içinde silinir; ekranda duran görüntü
+    /// yine korunur.
+    /// </summary>
+    private void TemizligiPlanla()
+    {
+        if (_temizlikZamanlayicisi is null)
+        {
+            var zamanlayici = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                // Küçük pay: süre dolunca en son yazılan dosya da bekleme süresini aşmış olur.
+                Interval = FileGrace + TimeSpan.FromSeconds(5),
+            };
+            zamanlayici.Tick += (_, _) =>
+            {
+                zamanlayici.Stop();
+                CleanUnusedFiles();
+            };
+            _temizlikZamanlayicisi = zamanlayici;
+        }
+
+        _temizlikZamanlayicisi.Stop();
+        _temizlikZamanlayicisi.Start();
     }
 
     // -------------------------------------------------------------- monitörler
