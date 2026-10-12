@@ -52,7 +52,7 @@ using DRectangleF = System.Drawing.RectangleF;
 //      kapatılınca seçime "hiçbiri" işareti yazılır (boş liste yine "hepsi");
 //      pencere yeniden açılınca anahtarlar kapalı kurulur. (Eşitlemenin bu
 //      işarete uyması GoogleEsitleme sınamasında.)
-//  12.Gün kutusu ölçeği farklı ekranda da hücrenin altında açılır: boyutu
+//  12. Gün kutusu ölçeği farklı ekranda da hücrenin altında açılır: boyutu
 //      hücrenin ekranının ölçeğiyle hesaplanır, ölçek değişiminden sonra yeri
 //      WPF'in taşımasından sonra yeniden konur; kapalı kutu görünür olmaz
 //      (görünmeyen ayrı bir Windows masaüstünde, programın ikinci kopyasında).

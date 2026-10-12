@@ -963,7 +963,7 @@ internal static class Program
             Denetle("yetki dosyası yeniden yazılmadı" + ek, !File.Exists(yetkiDosyasi));
         }
 
-        // Açılış: bağlıyken kopya yükleniyor, bağlı değilken diskte kalmış kopya yüklenmiyor.
+        // Açılış: bağlıyken kopya yükleniyor, bağlı değilken diskte kalmış kopya yüklenmiyor, siliniyor.
         var (_, saglayici3, _) = Bagli();
         bool yazildi = await Esitle(saglayici3);
         Denetle("bağlıyken yerel kopya yazıldı", yazildi && File.Exists(onbellek));
@@ -976,6 +976,7 @@ internal static class Program
         Yaz(yetki5, "_token", null);
         Cagir(saglayici5, "LoadCache");
         Denetle("bağlı değilken diskte kalmış kopya yüklenmiyor", Etkinlikler(saglayici5).Count == 0);
+        Denetle("ve diskten siliniyor", !File.Exists(onbellek));
         Cagir(saglayici3, "ClearCache");
     }
 

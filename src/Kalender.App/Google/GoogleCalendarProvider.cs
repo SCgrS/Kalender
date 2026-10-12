@@ -128,9 +128,12 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     {
         // Bağlantı yokken yerel kopya gösterilmez. Önceki sürümlerde bağlantı
         // kesilirken süren bir eşitleme, silinen kopyayı geri yazabiliyordu;
-        // o kopya yeniden bağlanılana dek her açılışta yükleniyordu.
+        // o kopya yeniden bağlanılana dek her açılışta yükleniyordu. Diskte
+        // kalmışsa burada silinir: yoksa başka bir hesapla bağlanıp ilk eşitleme
+        // tutmadan yeniden açılınca önceki hesabın etkinlikleri yüklenirdi.
         if (!IsConnected)
         {
+            ClearCache();
             return;
         }
 
