@@ -805,7 +805,7 @@
                                         <TextBlock Style="{StaticResource SatirBasligi}"
                                                    Text="Takvimi Windows duvar kâğıdına işle" />
                                         <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kâğıdına yazılır. Kapatırsanız Windows duvar kâğıdınıza hiç dokunulmaz, ama takvim de masaüstünde görünmez." />
+                                                   Text="Takvimin masaüstünde görünmesini bu sağlar: zemin ve takvim tek bir görüntü olarak duvar kâğıdına yazılır. Kapatırsanız önceki duvar kâğıdınız geri gelir, takvim de masaüstünde görünmez." />
                                     </StackPanel>
                                 </DockPanel>
                             </StackPanel>

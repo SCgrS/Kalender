@@ -27,18 +27,23 @@ using DRectangleF = System.Drawing.RectangleF;
 // Kalender'de genel kod incelemesinin (2026-10-12) düzeltmelerinin sınaması
 // (yansımayla). Madde numaraları kalender.md'deki listeden:
 //   3. "Takvimi Windows duvar kâğıdına işle" kapatılınca önceki duvar kâğıdı
-//      geri yüklenir (bir kez); kapanışta takvimsiz zemin ayara değil, ekranda
-//      hâlâ bu sürecin görüntüsü durup durmadığına bakarak yazılır; tepsideki
-//      "Eski duvar kâğıdıma dön" önce yazmayı kapatır.
+//      geri yüklenir (bir kez); açılıştaki ilk çizimde yazma kapalıysa ekranda
+//      kalmış takvime de bakılır (önceki sürümlerden); kapanışta takvimsiz zemin
+//      ayara değil, ekranda hâlâ bu sürecin görüntüsü durup durmadığına bakarak
+//      yazılır; tepsideki "Eski duvar kâğıdıma dön" önce yazmayı kapatır; yedek
+//      yokken ekranda takvim de yoksa geri dönüş başarılı sayılır.
 //   4. Yazma kapalıyken takvimin eski yeri sağ tık, ok ve gün kutusu için
 //      isabet vermez.
 //   5. Kurucu kurulu exe'nin sürümüne bakar: kurulu sürüm daha yeniyse kurmaz
 //      (pencere, kurulum ve güncelleme yolu), aynı sürümde "Yeniden kur" der.
 //      (Bilinmeyen ayar alanlarının korunması Guncelleme sınamasında.)
 //   6. Geri yükleme: yedekte olmayan ekrana ortak yol ya da yedekteki ilk
-//      ekranın yolu konur; bir ekrandaki hata öbürlerini durdurmaz; dosyası
-//      olmayan fotoğraf denenmez; ekranda duran zemin dosyası silinmez; takvimin
-//      kendi görüntüsü yedeğe yazılmaz; yedek kullanılınca silinir.
+//      ekranın yolu konur, kendi fotoğrafı konamayan ekrana da (dosyası olmayan
+//      yol yerine geçmez); bir ekrandaki hata öbürlerini durdurmaz; dosyası
+//      olmayan fotoğraf denenmez; ekranda duran zemin dosyası silinmez (kaldırmada
+//      da); takvimin kendi görüntüsü yedeğe yazılmaz; yedek kullanılınca silinir,
+//      hiçbir ekrana geri konamazsa bekler; takvimsiz zemin yazılırken geri konan
+//      yerleşim (Yay dışında) korunur.
 //   7. Ortala kipinde fotoğraf piksel boyutuyla, tam ortada çizilir (fotoğrafın
 //      ve yüzeyin DPI'ı etkilemez); Döşe de piksel boyutuyla.
 //   8. Fotoğrafın EXIF yön etiketi uygulanır (büyük ve küçük sonlu), etiket
@@ -554,16 +559,33 @@ internal static class Program
         AlanAta(y, "_geriYukleniyor", false);
         yazdi.SetValue(tuval, false);
 
-        // Çizimdeki koşul (derlenmiş koddan): yazma kapalı, bu süreç yazmış,
-        // geri yükleme sürmüyor.
+        // Açılış: hiç yazmamış süreç, yazma kapalı. Gerçek ekran yalnız okunuyor;
+        // uygulamanın klasörü geçici olduğu için oradaki görüntü takvimin zemini
+        // sayılmaz, geri yükleme yapılmamalı.
+        object acilis = Yonetici();
+        AlanAta(acilis, "_monitors", Liste(Ekran(@"\\.\DISPLAY1", 0, 2560, 1440)));
+        string artik3 = Artik("zemin-deneme-3.bmp");
+        Cagir(acilis, "RefreshOnce");
+        Denetle("açılışta ekranda takvimin zemini yoksa geri yükleme yapılmıyor (gerçek ekran yalnız okunuyor)",
+            File.Exists(artik3) && (bool)AlanOku(acilis, "_acilistaBakildi"));
+
+        // Çizimdeki koşul (derlenmiş koddan): yazma kapalı, geri yükleme sürmüyor;
+        // bu süreç yazmış ya da ilk çizimde ekranda takvimin zemini duruyor.
         List<Komut> cizim = Komutlar(yoneticiTipi.GetMethod("RefreshOnce", Hepsi)!);
         int geri = Bul(cizim, x => Cagri(x, yoneticiTipi, "DuvarKagidiniGeriYukle"));
-        List<Komut> once = geri < 0 ? new() : cizim.GetRange(Math.Max(0, geri - 12), Math.Min(12, geri));
+        int bakildi = Bul(cizim, x => AlanKomutu(x, OpCodes.Stfld, "_acilistaBakildi"));
+        List<Komut> once = geri < 0 || bakildi < 0 || bakildi > geri ? new() : cizim.GetRange(bakildi, geri - bakildi);
+        int yazmis = once.FindIndex(x => Cagri(x, tuvalTipi, "get_HasPainted"));
+        int zeminVar = once.FindIndex(x => Cagri(x, servis, "EkrandaZeminVar"));
         Denetle("çizimde geri yükleme yazma kapalıyken ve bu süreç yazmışsa yapılıyor",
             geri >= 0
             && once.Any(x => Cagri(x, ayarTipi, "get_SyncSystemWallpaper"))
-            && once.Any(x => Cagri(x, tuvalTipi, "get_HasPainted"))
+            && yazmis >= 0
             && once.Any(x => AlanKomutu(x, OpCodes.Ldfld, "_geriYukleniyor")));
+        Denetle("açılıştaki ilk çizimde ekranda kalmış takvime de bakılıyor, yalnız bir kez",
+            bakildi > 0 && cizim[bakildi - 1].Kod == OpCodes.Ldc_I4_1
+            && Bul(cizim, x => AlanKomutu(x, OpCodes.Ldfld, "_acilistaBakildi")) is int okuma && okuma >= 0 && okuma < bakildi
+            && zeminVar > yazmis);
 
         // Geri yükleme: yedek geri konur; olmayan ya da geri konamayan ekrana
         // takvimsiz zemin yalnız takvim hâlâ duruyorsa yazılır; sonra bırakılır.
@@ -708,13 +730,21 @@ internal static class Program
             return t;
         }
 
-        bool GeriKoy(SahteDuvarKagidi t, object b) => (bool)Statik(servis, "EkranlariGeriYukle", t, b)!;
+        MethodInfo geriKoyma = servis.GetMethod("EkranlariGeriYukle", Hepsi)!;
+        int konan = -1;
+        bool GeriKoy(SahteDuvarKagidi t, object b)
+        {
+            object?[] a = { t, b, 0 };
+            bool hepsi = (bool)geriKoyma.Invoke(null, a)!;
+            konan = (int)a[2]!;
+            return hepsi;
+        }
 
         s = Takvimli("A", "B", "C");
         bool tam = GeriKoy(s, Yedek(null, ("A", foto1), ("B", foto2)));
         Denetle("yedekteki ekranlar kendi fotoğrafına dönüyor", s.Ekranda["A"] == foto1 && s.Ekranda["B"] == foto2);
         Denetle("yedekten sonra takılan ekrana yedekteki ilk ekranın fotoğrafı konuyor, takvim kalmıyor",
-            s.Ekranda["C"] == foto1 && tam);
+            s.Ekranda["C"] == foto1 && tam && konan == 3);
         Denetle("yerleşim biçimi geri konuyor", s.Konum == 2);
 
         s = Takvimli("A", "B", "C");
@@ -724,14 +754,56 @@ internal static class Program
         s = Takvimli("A", "B", "C");
         s.Reddet.Add(foto1);
         tam = GeriKoy(s, Yedek(null, ("A", foto1), ("B", foto2), ("C", silinmis)));
-        Denetle("bir ekrandaki hata öbür ekranları durdurmuyor", s.Ekranda["B"] == foto2 && !tam);
+        Denetle("bir ekrandaki hata öbür ekranları durdurmuyor", s.Ekranda["B"] == foto2 && !tam && konan == 1);
         Denetle("Windows'un kabul etmediği ekran olduğu gibi kalıyor", s.Ekranda["A"] == bizim);
         Denetle("dosyası silinmiş fotoğraf denenmiyor", s.Ekranda["C"] == bizim && s.Yazilanlar.All(w => w.Yol != silinmis));
 
         s = Takvimli("A");
         tam = GeriKoy(s, Yedek(foto1));
         Denetle("ekran başına kaydı olmayan yedekte ortak yol bütün ekranlara konuyor",
-            tam && s.Yazilanlar.Count == 1 && s.Yazilanlar[0].Aygit is null && s.Yazilanlar[0].Yol == foto1);
+            tam && konan == 1 && s.Yazilanlar.Count == 1 && s.Yazilanlar[0].Aygit is null && s.Yazilanlar[0].Yol == foto1);
+
+        s = Takvimli("A", "B");
+        tam = GeriKoy(s, Yedek(null, ("A", silinmis), ("B", foto2)));
+        Denetle("kendi fotoğrafı silinmiş ekrana öbür ekranın fotoğrafı konuyor, takvimin zemini kalmıyor",
+            tam && konan == 2 && s.Ekranda["A"] == foto2 && s.Ekranda["B"] == foto2);
+        Denetle("dosyası olmayan yol yerine geçmiyor", s.Yazilanlar.All(w => w.Yol != silinmis));
+
+        s = Takvimli("A");
+        s.Reddet.Add(foto2);
+        tam = GeriKoy(s, Yedek(foto1, ("A", foto2)));
+        Denetle("Windows'un kabul etmediği fotoğrafın yerine ortak yol konuyor", tam && s.Ekranda["A"] == foto1);
+
+        s = Takvimli("A", "B");
+        tam = GeriKoy(s, Yedek(null, ("A", silinmis), ("B", silinmis + "2")));
+        Denetle("hiçbir ekran geri konamayınca sayı sıfır, ekranlar olduğu gibi",
+            !tam && konan == 0 && s.Ekranda["A"] == bizim && s.Ekranda["B"] == bizim);
+
+        // ------------------------------------------------ ekranda takvimin zemini
+        s = Sahte("A", "B");
+        s.Ekranda["A"] = foto1;
+        bool? ZeminVar(SahteDuvarKagidi t) => (bool?)Statik(servis, "EkrandaZeminVar", t);
+        Denetle("ekranlarda kullanıcının duvar kâğıdı varken takvimin zemini yok sayılıyor", ZeminVar(s) == false);
+        s.Ekranda["B"] = bizim.ToUpperInvariant();
+        Denetle("bir ekranda takvimin zemini duruyor", ZeminVar(s) == true);
+        s.OkumadaHata = true;
+        Denetle("ekrandakiler okunamazsa bilinmiyor", ZeminVar(s) is null);
+
+        // ------------------------------------------------ takvimsiz zeminde yerleşim
+        Type tuvalTipi = Tip("Kalender.Desktop.WallpaperCanvas");
+        Type konumTipi = Tip("Kalender.Interop.DesktopWallpaperPosition");
+        bool Cek(string konum, bool kaldirirken)
+            => (bool)Statik(tuvalTipi, "DoldurYerlesimineCekilsinMi", Enum.Parse(konumTipi, konum), kaldirirken)!;
+        Denetle("takvim yazılırken yerleşim Doldur'a çekiliyor",
+            new[] { "Center", "Tile", "Stretch", "Fit", "Span" }.All(ad => Cek(ad, false)) && !Cek("Fill", false));
+        Denetle("takvim kaldırılırken geri konan yerleşim korunuyor (Ortala, Döşe, Uzat, Sığdır)",
+            new[] { "Center", "Tile", "Stretch", "Fit", "Fill" }.All(ad => !Cek(ad, true)));
+        Denetle("takvim kaldırılırken Yay Doldur'a çekiliyor (ekran boyutundaki görüntüde fark eden tek yerleşim)",
+            Cek("Span", true));
+        List<Komut> uygula = Komutlar(tuvalTipi.GetMethod("Apply", Hepsi)!);
+        int karar = Bul(uygula, x => Cagri(x, tuvalTipi, "DoldurYerlesimineCekilsinMi"));
+        Denetle("yazımda yerleşim kararı takvimin kaldırılıp kaldırılmadığına bakıyor",
+            karar > 0 && uygula[karar - 1].Kod == OpCodes.Ldarg_2);
 
         // ------------------------------------------------ zemin dosyalarının temizliği
         s = Sahte("A", "B");
@@ -765,20 +837,102 @@ internal static class Program
         Statik(servis, "ZeminDosyalariniSil", klasor, null);
         Denetle("ekranda ne durduğu bilinmiyorsa hiçbir dosya silinmiyor", File.Exists(eski3) && File.Exists(ekranda));
 
+        // ------------------------------------------------ yedeğin kaldırılması ve bekleyen yedek
+        // Uygulamanın klasörü geçici: yedek dosyaları oraya yazılıyor.
+        string yedekDosyasi = (string)yollar.GetProperty("BackupFile")!.GetValue(null)!;
+        string bekleyen = (string)servis.GetProperty("BekleyenYedekDosyasi", Hepsi)!.GetValue(null)!;
+        Denetle("bekleyen yedek uygulamanın klasöründe, ayrı adla",
+            Path.GetDirectoryName(bekleyen) == Path.GetDirectoryName(yedekDosyasi) && bekleyen != yedekDosyasi);
+
+        File.WriteAllText(yedekDosyasi, "{}");
+        Statik(servis, "YedegiKaldir", yedekDosyasi, false);
+        Denetle("hiçbir ekrana geri konamayan yedek silinmiyor, bekliyor", !File.Exists(yedekDosyasi) && File.Exists(bekleyen));
+        Statik(servis, "YedegiKaldir", bekleyen, false);
+        Denetle("bekleyen yedek yine geri konamazsa bekliyor", File.Exists(bekleyen));
+
+        s = Takvimli("A", "B");
+        Statik(servis, "EnsureBackup", s);
+        Denetle("ekranda yalnız takvim varken bekleyen yedek yeniden geçerli oluyor",
+            File.Exists(yedekDosyasi) && !File.Exists(bekleyen) && File.ReadAllText(yedekDosyasi) == "{}");
+
+        Statik(servis, "YedegiKaldir", yedekDosyasi, false);
+        s = Takvimli("A", "B");
+        s.Ekranda["A"] = foto1;
+        Statik(servis, "EnsureBackup", s);
+        object? taze = File.Exists(yedekDosyasi) ? JsonSerializer.Deserialize(File.ReadAllText(yedekDosyasi), yedekTipi) : null;
+        Denetle("ekranda kullanıcının duvar kâğıdı varsa bekleyenin yerine o yedekleniyor",
+            taze is not null && !File.Exists(bekleyen)
+            && ((IDictionary<string, string>)Oku(taze, "PerMonitor")!).TryGetValue("A", out string? tazeYol) && tazeYol == foto1);
+
+        Statik(servis, "YedegiKaldir", yedekDosyasi, true);
+        Denetle("önceki duvar kâğıdı geri gelince yedek siliniyor", !File.Exists(yedekDosyasi) && !File.Exists(bekleyen));
+
         // ------------------------------------------------ geri yükleme bütünü
         MethodInfo geriYukle = servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!;
         List<Komut> k = Komutlar(geriYukle);
         int ekranlar = Bul(k, x => Cagri(x, servis, "EkranlariGeriYukle"));
-        int yedekYolu = Bul(k, x => Cagri(x, yollar, "get_BackupFile"), ekranlar);
-        Denetle("yedek kullanılınca siliniyor (yazma yeniden açılınca taze yedek alınır)",
-            ekranlar >= 0 && yedekYolu > ekranlar && Cagri(k[yedekYolu + 1], typeof(File), "Delete"));
+        int kaldir = Bul(k, x => Cagri(x, servis, "YedegiKaldir"), ekranlar);
+        Denetle("geri yüklemeden sonra yedek kaldırılıyor (yazma yeniden açılınca taze yedek alınır)",
+            ekranlar >= 0 && kaldir > ekranlar);
+        int bekleyenOku = Bul(k, x => Cagri(x, servis, "get_BekleyenYedekDosyasi"));
+        int okuma = Bul(k, x => Cagri(x, typeof(File), "ReadAllText"));
+        Denetle("yedek yoksa bekleyen yedekle geri yükleniyor", bekleyenOku >= 0 && okuma > bekleyenOku);
+        Denetle("yedek yokken ekranda takvimin zemini duruyor mu diye bakılıyor",
+            Bul(k, x => x.Kod == OpCodes.Ldftn && x.Uye?.Name == "ZeminDosyasiMi") is int zeminSor
+            && zeminSor > Bul(k, x => Cagri(x, servis, "ClearCanvasFiles")) && zeminSor < okuma);
         Denetle("zemin temizliği ekrandakileri okuyarak yapılıyor",
             Komutlar(servis.GetMethod("ClearCanvasFiles", Hepsi)!).Any(x => Cagri(x, servis, "EkrandakiDosyalar")));
 
-        // Geçici klasörde yedek yok: gerçek duvar kâğıdına dokunulmadan biter.
-        object?[] cikti = { false };
-        bool yuklendi = (bool)geriYukle.Invoke(null, cikti)!;
-        Denetle("yedek yoksa geri yüklenmedi ve ekranda takvim kalmış olabilir deniyor", !yuklendi && (bool)cikti[0]!);
+        // Geçici klasörde yedek yok: gerçek duvar kâğıdı yalnız okunur. Gerçek
+        // ekrandaki görüntü bu klasörde olmadığı için takvimin zemini sayılmaz.
+        Denetle("yedek dosyaları yok (gerçek duvar kâğıdına yazılamaz)", !File.Exists(yedekDosyasi) && !File.Exists(bekleyen));
+        if (!File.Exists(yedekDosyasi) && !File.Exists(bekleyen))
+        {
+            object?[] cikti = { true };
+            bool yuklendi = (bool)geriYukle.Invoke(null, cikti)!;
+            Denetle("yedek yok ama ekranda takvim de yoksa önceki duvar kâğıdı yerinde sayılıyor (ikinci basışta uyarı yok)",
+                yuklendi && !(bool)cikti[0]!);
+        }
+
+        // ------------------------------------------------ kaldırmada ekrandaki zemin
+        Type kurucu = Tip("Kalender.Core.Installer");
+        PropertyInfo kok = yollar.GetProperty("RootFolder", Hepsi)!;
+        string asilKok = (string)kok.GetValue(null)!;
+        string kaldirmaKoku = Path.Combine(gecici, "kaldırma kökü");
+        try
+        {
+            kok.SetValue(null, kaldirmaKoku);
+            foreach (string alt in new[] { "app", "logs", "zemin" })
+            {
+                Directory.CreateDirectory(Path.Combine(kaldirmaKoku, alt));
+            }
+
+            string ekrandaki = Path.Combine(kaldirmaKoku, "zemin", "zemin-aaaaaaaa-1.bmp");
+            string ayar = Path.Combine(kaldirmaKoku, "ayarlar.json");
+            File.WriteAllText(ekrandaki, "deneme");
+            File.WriteAllText(ayar, "{}");
+
+            var butun = (List<string>)Statik(kurucu, "VeriSilmeHedefleri", false)!;
+            Denetle("ekranda takvimin zemini yoksa kök klasörün tamamı siliniyor",
+                butun.Count == 1 && butun[0] == kaldirmaKoku && File.Exists(ayar));
+
+            var hedefler = (List<string>)Statik(kurucu, "VeriSilmeHedefleri", true)!;
+            Denetle("ekranda takvimin zemini duruyorsa zemin klasörü silinmiyor",
+                hedefler.All(h => !string.Equals(Path.GetFileName(h), "zemin", StringComparison.OrdinalIgnoreCase))
+                && File.Exists(ekrandaki));
+            Denetle("öbür klasörler kapanışta, kökteki dosyalar hemen siliniyor",
+                hedefler.Count == 2 && hedefler.Contains(Path.Combine(kaldirmaKoku, "app"))
+                && hedefler.Contains(Path.Combine(kaldirmaKoku, "logs")) && !File.Exists(ayar));
+        }
+        finally
+        {
+            kok.SetValue(null, asilKok);
+        }
+
+        List<Komut> silme = Komutlar(kurucu.GetMethod("ScheduleFileRemoval", Hepsi)!);
+        int bakis = Bul(silme, x => Cagri(x, servis, "EkrandaZeminVar"));
+        Denetle("kaldırmada \"ayarlarımı da sil\" ekrandaki zemine bakıyor",
+            bakis >= 0 && Bul(silme, x => Cagri(x, kurucu, "VeriSilmeHedefleri"), bakis) > bakis);
     }
 
     // ------------------------------------------------------------------ 25. madde

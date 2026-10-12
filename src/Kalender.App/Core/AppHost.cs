@@ -941,7 +941,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             "Kalender",
             ok
                 ? "Eski duvar kâğıdınız geri yüklendi. Takvim artık masaüstüne çizilmeyecek."
-                : "Yedeklenmiş bir duvar kâğıdı bulunamadı. Takvim yine de artık masaüstüne çizilmeyecek.",
+                : "Eski duvar kâğıdınız geri yüklenemedi. Takvim yine de artık masaüstüne çizilmeyecek.",
             warning: !ok);
     }
 

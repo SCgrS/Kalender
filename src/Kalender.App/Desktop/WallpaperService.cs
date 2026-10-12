@@ -48,12 +48,25 @@ internal sealed class WallpaperBackup
 /// Yedek geri yüklenince silinir. Önceden hiç silinmiyordu: kullanıcı geri
 /// döndükten sonra yeni bir duvar kâğıdı seçip yazmayı yeniden açtığında (ya da
 /// ayarlarını koruyarak yeniden kurduğunda) bu seçim yedeklenmiyor, sonraki geri
-/// dönüş aylar önceki ilk duvar kâğıdını koyuyordu.
+/// dönüş aylar önceki ilk duvar kâğıdını koyuyordu. Hiçbir ekrana geri
+/// konamayan yedek ise silinmez, bekler (bkz. <see cref="BekleyenYedekDosyasi"/>).
 /// </summary>
 internal static class WallpaperService
 {
     private const string DesktopKey = @"Control Panel\Desktop";
     private const string QualityValue = "JPEGImportQuality";
+
+    /// <summary>
+    /// Hiçbir ekrana geri konamayan yedek: fotoğraf o sırada takılı olmayan bir
+    /// diskte ya da ulaşılamayan bir ağ sürücüsünde olabilir. Sonraki geri
+    /// yükleme onu yeniden dener. Yazma yeniden açılınca ekranda kullanıcının bir
+    /// duvar kâğıdı varsa yerine o yedeklenir; ekranda yalnız takvimin görüntüsü
+    /// varsa bu yedek yeniden geçerli olur. Ayrı adla durur, çünkü
+    /// <see cref="EnsureBackup"/> var olan yedeğe dokunmuyor: aynı adla kalsaydı
+    /// fotoğrafı silinmiş bir yedek, kullanıcının sonraki seçimlerinin
+    /// yedeklenmesini hep engellerdi.
+    /// </summary>
+    internal static string BekleyenYedekDosyasi => Path.ChangeExtension(Paths.BackupFile, ".bekliyor.json");
 
     /// <summary>
     /// Duvar kağıdında resim kipini açar.
@@ -89,6 +102,14 @@ internal static class WallpaperService
             WallpaperBackup? backup = YedekHazirla(wallpaper);
             if (backup is null)
             {
+                // Ekranda kullanıcının duvar kâğıdı yok; geri konamamış bir
+                // yedek varsa en iyi bilgi hâlâ o.
+                if (File.Exists(BekleyenYedekDosyasi))
+                {
+                    File.Move(BekleyenYedekDosyasi, Paths.BackupFile);
+                    Log.Info("Geri konamamış duvar kâğıdı yedeği yeniden geçerli.");
+                }
+
                 return;
             }
 
@@ -97,6 +118,7 @@ internal static class WallpaperService
                 Paths.BackupFile,
                 JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }),
                 new UTF8Encoding(false));
+            File.Delete(BekleyenYedekDosyasi);
 
             Log.Info($"Önceki duvar kâğıdı yedeklendi (resim: {backup.WallpaperEnabled}).");
         }
@@ -187,27 +209,42 @@ internal static class WallpaperService
     /// Bir ekran geri yüklenemese de yedek silinir: dosyası silinmiş ya da
     /// Windows'un kabul etmediği bir yolu yeniden denemek işe yaramaz, tutulan
     /// yedek de kullanıcının sonraki seçimlerinin yedeklenmesini engellerdi.
+    /// Hiçbir ekran geri yüklenemediyse yedek silinmez, bekler (bkz.
+    /// <see cref="BekleyenYedekDosyasi"/>): önceden o zaman da siliniyordu;
+    /// fotoğraf takılı olmayan bir diskteyse önceki duvar kâğıdının tek kaydı
+    /// gidiyordu.
     /// </summary>
     /// <param name="eksikKaldi">
-    /// Ekranlarda Kalender'in görüntüsü kalmış olabilir mi? Yedek yoksa, geri
-    /// yükleme yarıda kaldıysa ya da bir ekran geri yüklenemediyse doğru.
+    /// Ekranlarda Kalender'in görüntüsü kalmış olabilir mi? Yedek yoksa ve
+    /// ekranda takvimin görüntüsü duruyorsa, geri yükleme yarıda kaldıysa ya da
+    /// bir ekran geri yüklenemediyse doğru.
     /// </param>
-    /// <returns>Yedek bulunup uygulandıysa true (bir ekran geri yüklenemese de).</returns>
+    /// <returns>
+    /// Önceki duvar kâğıdı ekrandaysa true: yedek uygulandı (bir ekran geri
+    /// yüklenemese de) ya da yedek yok ama ekranlarda takvimin görüntüsü de yok.
+    /// İkincisi, yedek kullanılınca silindiği için tepsiden ikinci kez geri
+    /// dönülünce ya da anahtar kapatıldıktan sonra olur; önceden uyarı veriyordu.
+    /// </returns>
     internal static bool Restore(out bool eksikKaldi)
     {
         eksikKaldi = true;
 
         try
         {
-            if (!File.Exists(Paths.BackupFile))
+            string? yedekDosyasi = File.Exists(Paths.BackupFile) ? Paths.BackupFile
+                : File.Exists(BekleyenYedekDosyasi) ? BekleyenYedekDosyasi
+                : null;
+            if (yedekDosyasi is null)
             {
                 // Yedek yoksa bile bizim ürettiğimiz görüntüler ortada kalmasın.
-                ClearCanvasFiles(null);
-                return false;
+                // Ekranda takvimin görüntüsü yoksa önceki duvar kâğıdı zaten yerinde.
+                HashSet<string>? ekrandakiler = ClearCanvasFiles(null);
+                eksikKaldi = ekrandakiler is null || ekrandakiler.Any(ZeminDosyasiMi);
+                return !eksikKaldi;
             }
 
             var backup = JsonSerializer.Deserialize<WallpaperBackup>(
-                File.ReadAllText(Paths.BackupFile, Encoding.UTF8));
+                File.ReadAllText(yedekDosyasi, Encoding.UTF8));
             if (backup is null)
             {
                 return false;
@@ -222,6 +259,7 @@ internal static class WallpaperService
             bool hadImage = backup.WallpaperEnabled
                 && (!string.IsNullOrWhiteSpace(backup.Wallpaper)
                     || backup.PerMonitor.Values.Any(v => !string.IsNullOrWhiteSpace(v)));
+            bool geriGeldi = true;
 
             if (!hadImage)
             {
@@ -231,7 +269,8 @@ internal static class WallpaperService
             }
             else
             {
-                eksikKaldi = !EkranlariGeriYukle(wallpaper, backup);
+                eksikKaldi = !EkranlariGeriYukle(wallpaper, backup, out int konan);
+                geriGeldi = konan > 0;
 
                 // Resim kipi ancak eski yol geri konduktan sonra açılabiliyor.
                 EnableImages(wallpaper);
@@ -244,19 +283,20 @@ internal static class WallpaperService
             // yeniden okusun diye açıkça tazeliyoruz.
             DesktopRefresher.ForceRedraw();
 
-            try
+            YedegiKaldir(yedekDosyasi, geriGeldi);
+
+            if (!geriGeldi)
             {
-                File.Delete(Paths.BackupFile);
+                Log.Warn("Önceki duvar kâğıdı hiçbir ekrana geri konamadı; yedek bekletiliyor.");
             }
-            catch (Exception ex)
+            else
             {
-                Log.Debug("Duvar kâğıdı yedeği silinemedi: " + ex.Message);
+                Log.Info(eksikKaldi
+                    ? "Önceki duvar kâğıdı geri yüklendi; bir ekran geri yüklenemedi."
+                    : "Önceki duvar kâğıdı geri yüklendi.");
             }
 
-            Log.Info(eksikKaldi
-                ? "Önceki duvar kâğıdı geri yüklendi; bir ekran geri yüklenemedi."
-                : "Önceki duvar kâğıdı geri yüklendi.");
-            return true;
+            return geriGeldi;
         }
         catch (Exception ex)
         {
@@ -266,26 +306,60 @@ internal static class WallpaperService
     }
 
     /// <summary>
+    /// Kullanılan yedeği siler. Hiçbir ekrana geri konamadıysa silmez,
+    /// <see cref="BekleyenYedekDosyasi"/> adıyla bekletir.
+    /// </summary>
+    /// <param name="yedekDosyasi">Geri yüklemede kullanılan yedek dosyası.</param>
+    /// <param name="geriGeldi">Önceki duvar kâğıdı en az bir ekrana geri kondu mu?</param>
+    internal static void YedegiKaldir(string yedekDosyasi, bool geriGeldi)
+    {
+        try
+        {
+            if (geriGeldi)
+            {
+                File.Delete(yedekDosyasi);
+            }
+            else if (!string.Equals(yedekDosyasi, BekleyenYedekDosyasi, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Move(yedekDosyasi, BekleyenYedekDosyasi, overwrite: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Duvar kâğıdı yedeği kaldırılamadı: " + ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Yedekteki duvar kâğıtlarını ekranlara geri koyar.
     ///
     /// Yedekte karşılığı olmayan ekrana (yedekten sonra takılmış ya da aygıt
     /// yolu değişmiş) ortak yol, o da yoksa yedekteki ilk ekranın yolu konur.
     /// Önceden bu ekrana hiç dokunulmuyordu; takvim orada donmuş kalıyordu.
+    /// Ekranın kendi yolu konamazsa (fotoğraf silinmiş, Windows kabul etmiyor)
+    /// da bu yol denenir: ekranda takvimin zemini kalırsa, kaldırmada dosyası
+    /// silindiği için Windows görüntüyü yeniden okuyunca ekran siyaha
+    /// dönebilirdi. Dosyası olmayan yol yerine geçmez.
     /// Her ekran ayrı denenir: bir ekrandaki hata (fotoğraf silinmiş, yedekteki
     /// ekran artık bağlı değil) önceden bütün geri yüklemeyi yarıda bırakıyordu.
     /// </summary>
+    /// <param name="konan">Duvar kâğıdı geri konan ekran sayısı.</param>
     /// <returns>Her ekran geri yüklendiyse true.</returns>
-    internal static bool EkranlariGeriYukle(IDesktopWallpaper wallpaper, WallpaperBackup backup)
+    internal static bool EkranlariGeriYukle(IDesktopWallpaper wallpaper, WallpaperBackup backup, out int konan)
     {
+        konan = 0;
         wallpaper.SetPosition((DesktopWallpaperPosition)backup.Position);
 
         string? ortak = string.IsNullOrWhiteSpace(backup.Wallpaper) ? null : backup.Wallpaper;
         if (backup.PerMonitor.Count == 0)
         {
-            return ortak is not null && EkranaKoy(wallpaper, null, ortak);
+            bool kondu = ortak is not null && EkranaKoy(wallpaper, null, ortak);
+            konan = kondu ? 1 : 0;
+            return kondu;
         }
 
-        string? yerine = ortak ?? backup.PerMonitor.Values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        string? yerine = new[] { ortak }.Concat(backup.PerMonitor.Values)
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v) && File.Exists(Environment.ExpandEnvironmentVariables(v)));
 
         // Yedekteki ekranlar ve yedekte olmayan, şu an bağlı ekranlar.
         var ekranlar = new List<string>(backup.PerMonitor.Keys);
@@ -309,11 +383,19 @@ internal static class WallpaperService
         bool hepsi = true;
         foreach (string id in ekranlar)
         {
-            string? yol = backup.PerMonitor.TryGetValue(id, out string? kendi) && !string.IsNullOrWhiteSpace(kendi)
-                ? kendi
-                : yerine;
+            string? kendi = backup.PerMonitor.TryGetValue(id, out string? k) && !string.IsNullOrWhiteSpace(k) ? k : null;
 
-            if (yol is null || !EkranaKoy(wallpaper, id, yol))
+            // Önce ekranın kendi yolu, konamazsa yerine geçecek yol.
+            bool kondu = (kendi is not null && EkranaKoy(wallpaper, id, kendi))
+                || (yerine is not null
+                    && !string.Equals(yerine, kendi, StringComparison.OrdinalIgnoreCase)
+                    && EkranaKoy(wallpaper, id, yerine));
+
+            if (kondu)
+            {
+                konan++;
+            }
+            else
             {
                 hepsi = false;
             }
@@ -375,16 +457,41 @@ internal static class WallpaperService
     /// (çözünürlük değişimi, Explorer'ın yeniden başlaması) ekran siyaha dönerdi.
     /// </summary>
     /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
-    private static void ClearCanvasFiles(IDesktopWallpaper? wallpaper)
+    /// <returns>Ekranlarda duran dosyalar; okunamazsa null.</returns>
+    private static HashSet<string>? ClearCanvasFiles(IDesktopWallpaper? wallpaper)
     {
         try
         {
             wallpaper ??= (IDesktopWallpaper)new DesktopWallpaperClass();
-            ZeminDosyalariniSil(Paths.CanvasFolder, EkrandakiDosyalar(wallpaper));
+            HashSet<string>? ekrandakiler = EkrandakiDosyalar(wallpaper);
+            ZeminDosyalariniSil(Paths.CanvasFolder, ekrandakiler);
+            return ekrandakiler;
         }
         catch (Exception ex)
         {
             Log.Debug("Zemin klasörü temizlenemedi: " + ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Ekranlardan birinde takvimin zemin görüntüsü duruyor mu? Önceki duvar
+    /// kâğıdı bir ekrana hiçbir yoldan geri konamadıysa ya da yazma önceki bir
+    /// sürümde kapatıldıysa (takvim donmuş kalıyordu) böyle olur.
+    /// </summary>
+    /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
+    /// <returns>Ekrandakiler okunamazsa null.</returns>
+    internal static bool? EkrandaZeminVar(IDesktopWallpaper? wallpaper = null)
+    {
+        try
+        {
+            wallpaper ??= (IDesktopWallpaper)new DesktopWallpaperClass();
+            return EkrandakiDosyalar(wallpaper)?.Any(ZeminDosyasiMi);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Ekrandaki duvar kâğıtları okunamadı: " + ex.Message);
+            return null;
         }
     }
 

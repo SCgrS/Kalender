@@ -107,7 +107,8 @@ internal sealed class WallpaperCanvas
     /// Takvim duvar kâğıdından kaldırılırken (kapanış, geri yükleme) yazılan
     /// takvimsiz zemin mi? Öyleyse önceki duvar kâğıdı yedeklenmez, sıkıştırma
     /// kalitesine dokunulmaz: geri yüklemenin hemen ardından yeni bir yedek
-    /// açılır ya da kalite yeniden 100'e çekilirdi.
+    /// açılır ya da kalite yeniden 100'e çekilirdi. Yerleşim de yalnız "Yay"daysa
+    /// değiştirilir (bkz. <see cref="DoldurYerlesimineCekilsinMi"/>).
     /// </param>
     public CanvasResult Apply(IReadOnlyList<CanvasScreen> screens, bool kaldirirken = false)
     {
@@ -157,7 +158,7 @@ internal sealed class WallpaperCanvas
 
             // Görüntüler ekranın tam piksel ölçüsünde üretiliyor; "Doldur"
             // yerleşimiyle bire bir oturuyorlar. Zaten öyleyse dokunulmuyor.
-            if (wallpaper.GetPosition() != DesktopWallpaperPosition.Fill)
+            if (DoldurYerlesimineCekilsinMi(wallpaper.GetPosition(), kaldirirken))
             {
                 wallpaper.SetPosition(DesktopWallpaperPosition.Fill);
             }
@@ -218,6 +219,17 @@ internal sealed class WallpaperCanvas
             return new CanvasResult(false, 0);
         }
     }
+
+    /// <summary>
+    /// Yazmadan önce yerleşim "Doldur"a çekilsin mi? Takvim kaldırılırken yalnız
+    /// "Yay"dan çekilir: ekran boyutundaki görüntü Doldur, Sığdır, Ortala, Uzat
+    /// ve Döşe'de aynı görünür. Yerleşim bütün ekranlar için ortak; geri yükleme
+    /// az önce kullanıcının yerleşimini (Sığdır, Ortala) geri koymuşken bir
+    /// ekrana takvimsiz zemin yazmak onu önceden Doldur'a çekiyordu, geri
+    /// yüklenen ekranlar yanlış yerleşimle kalıyordu.
+    /// </summary>
+    internal static bool DoldurYerlesimineCekilsinMi(DesktopWallpaperPosition konum, bool kaldirirken)
+        => konum != DesktopWallpaperPosition.Fill && (!kaldirirken || konum == DesktopWallpaperPosition.Span);
 
     /// <summary>
     /// Windows her ekranda gerçekten en son yazdığımız görüntüyü mü gösteriyor?

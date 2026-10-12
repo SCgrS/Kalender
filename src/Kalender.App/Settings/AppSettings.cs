@@ -287,8 +287,9 @@ internal sealed class AppSettings
 
     /// <summary>
     /// Takvim Windows duvar kağıdına işlensin mi? Takvimin masaüstünde
-    /// görünmesinin tek yolu bu olduğu için kapatmak takvimi de kaldırır;
-    /// karşılığında Kalender duvar kağıdınıza hiç dokunmaz.
+    /// görünmesinin tek yolu bu olduğu için kapatmak takvimi de kaldırır:
+    /// tepsideki "Eski duvar kâğıdıma dön" gibi önceki duvar kâğıdı geri gelir;
+    /// kapalı kaldıkça Kalender duvar kâğıdınıza dokunmaz.
     /// </summary>
     public bool SyncSystemWallpaper { get; set; } = true;
 

@@ -354,7 +354,9 @@ internal static class Installer
     {
         try
         {
-            var targets = new List<string> { removeData ? Paths.RootFolder : AppFolder };
+            List<string> targets = removeData
+                ? VeriSilmeHedefleri(WallpaperService.EkrandaZeminVar() == true)
+                : new List<string> { AppFolder };
 
             // Kullanılmayan açılım klasörleri (eski kurucular, güncelleme indirmeleri)
             // hemen silinir; komuta yalnızca silinemeyenler bırakılır. Bu sürecin
@@ -407,6 +409,41 @@ internal static class Installer
         {
             Log.Warn("Dosya silme işi hazırlanamadı.", ex);
         }
+    }
+
+    /// <summary>
+    /// "Ayarlarımı da sil"de silinecek klasörler: Kalender'in kök klasörü.
+    /// Önceki duvar kâğıdı bir ekrana hiçbir yoldan geri konamadıysa o ekran
+    /// takvimin zeminini gösteriyor; zemin klasörü kalır, çünkü dosyası silinince
+    /// Windows görüntüyü yeniden okurken (çözünürlük değişimi, Explorer'ın yeniden
+    /// başlaması) ekran siyaha dönebilirdi. O zaman kökteki dosyalar (ayarlar ve
+    /// öbürleri) hemen silinir, zemin dışındaki klasörler kapanışta.
+    /// </summary>
+    /// <param name="zeminEkranda">Ekranlardan birinde takvimin zemini duruyor mu?</param>
+    internal static List<string> VeriSilmeHedefleri(bool zeminEkranda)
+    {
+        if (!zeminEkranda || !Directory.Exists(Paths.RootFolder))
+        {
+            return new List<string> { Paths.RootFolder };
+        }
+
+        Log.Info("Ekranda takvimin zemini duruyor; zemin klasörü silinmeyecek.");
+        foreach (string dosya in Directory.EnumerateFiles(Paths.RootFolder))
+        {
+            try
+            {
+                File.Delete(dosya);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Dosya silinemedi ({Path.GetFileName(dosya)}).", ex);
+            }
+        }
+
+        string zemin = Path.GetFullPath(Paths.CanvasFolder);
+        return Directory.EnumerateDirectories(Paths.RootFolder)
+            .Where(k => !string.Equals(Path.GetFullPath(k), zemin, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     /// <summary>Klasörü hemen silmeyi dener; kilitliyse (ya da başka hata) false.</summary>

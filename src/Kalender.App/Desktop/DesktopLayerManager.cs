@@ -96,6 +96,12 @@ internal sealed class DesktopLayerManager : IDisposable
     /// <summary>Takvim duvar kâğıdından kaldırılıyor; bu sırada gelen çizim yeniden kaldırmaya kalkmasın.</summary>
     private bool _geriYukleniyor;
 
+    /// <summary>
+    /// İlk çizim yapıldı mı? Açılışta yazma kapalıysa ekranda kalmış takvime
+    /// bir kez bakılır (bkz. <see cref="RefreshOnce"/>).
+    /// </summary>
+    private bool _acilistaBakildi;
+
     /// <summary>Kimliği okunamayan bir ekran yüzünden çizim şu an erteleniyor mu?</summary>
     private bool Beklemede => _kimlikBeklemeBasi is not null && !_aygitAdiylaCiziliyor;
 
@@ -403,8 +409,13 @@ internal sealed class DesktopLayerManager : IDisposable
         // kapatıldı. Yalnız yazmayı bırakmak yetmiyordu: son yazılan takvim
         // duvar kâğıdında, uygulama kapansa da donmuş kalıyordu. Tepsideki "Eski
         // duvar kâğıdıma dön" gibi önceki duvar kâğıdı geri konur; anahtar
-        // yeniden açılınca takvim baştan yazılır.
-        if (!settings.SyncSystemWallpaper && _canvas.HasPainted && !_geriYukleniyor)
+        // yeniden açılınca takvim baştan yazılır. İlk çizimde ekrana da bakılır:
+        // önceki sürümlerde anahtarı kapatan kullanıcının duvar kâğıdında takvim
+        // donmuş kaldı; onu bu süreç yazmadığı için HasPainted görmüyor.
+        bool ilkCizim = !_acilistaBakildi;
+        _acilistaBakildi = true;
+        if (!settings.SyncSystemWallpaper && !_geriYukleniyor
+            && (_canvas.HasPainted || (ilkCizim && WallpaperService.EkrandaZeminVar() == true)))
         {
             DuvarKagidiniGeriYukle();
         }
