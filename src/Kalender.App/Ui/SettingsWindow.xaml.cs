@@ -1406,6 +1406,15 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        // Açılıştaki eşitleme bu işarete bilerek dokunmuyor (Windows'ta verilen karar ezilmesin);
+        // anahtar açık görünse de Kalender başlamaz, bunu kullanıcı burada görsün.
+        if (StartupManager.IsDisabledInWindows())
+        {
+            StartupNote.Text = "Kalender, Windows'un Başlangıç uygulamaları listesinde kapatılmış; açılışta başlamaz. "
+                + "Bu anahtarı kapatıp yeniden açarsanız açılışta yeniden başlar.";
+            return;
+        }
+
         StartupNote.Text = StartupManager.PointsToCurrentExe()
             ? "Şu an çalışan dosya açılışta başlatılacak: " + Environment.ProcessPath
             : "Açılış kaydı başka bir dosyayı gösteriyor. Bu anahtarı kapatıp yeniden açarsanız "

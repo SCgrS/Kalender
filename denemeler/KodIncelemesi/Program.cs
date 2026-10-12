@@ -66,6 +66,7 @@ using DRectangleF = System.Drawing.RectangleF;
 //      sürüm de okuyabilir. Google'ın akışı yerine bu programdaki sahtesi.
 //  19. Ayarlardan açılan "Windows ile başlat", Windows'un başlangıç
 //      listesindeki kapalı işaretini kaldırır; açılıştaki eşitleme kaldırmaz.
+//      İşaret dururken ayarlardaki not Kalender'in açılışta başlamayacağını söyler.
 //  20. Esc ya da × ile kapatınca istemci kimliği ve gizli anahtar kaydedilir.
 //  23. Menü açıkken ay okuna basılınca önce menü kapanır, ay sonra değişir.
 //  24. Tuş basılıyken imleç takvimden çıkarsa fare kancası yuttuğu basışın
@@ -1161,6 +1162,30 @@ internal static class Program
             sm.GetMethod("Apply", Hepsi, new[] { typeof(bool), typeof(string) })!.Invoke(null, new object?[] { false, null });
             Denetle("kaldırmada işaret de siliniyor (Windows'un listesinde artık kalmıyor)",
                 DegerOku(run) is null && DegerOku(onay) is null);
+
+            // Ayarlar penceresinin notu: Windows'ta kapatıldığı görülüyor mu?
+            MethodInfo kapaliMi = sm.GetMethod("IsDisabledInWindows", Hepsi)!;
+            bool KapaliMi() => (bool)kapaliMi.Invoke(null, null)!;
+            bool IlkBaytla(byte ilk)
+            {
+                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(onay))
+                {
+                    k.SetValue("Kalender", new byte[] { ilk, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RegistryValueKind.Binary);
+                }
+
+                return KapaliMi();
+            }
+
+            bool isaretYok = !KapaliMi();
+            Acilis(true);
+            WindowsKapatti();
+            bool kapaliGoruluyor = KapaliMi();
+            Ayarlar(false);
+            Ayarlar(true);
+            Denetle("Windows'ta kapatıldığı okunuyor; ayarlardan kapatıp açınca kalkıyor, işaret yoksa açık sayılıyor",
+                isaretYok && kapaliGoruluyor && !KapaliMi());
+            Denetle("işaretin ilk baytı: 02 ve 06 açık, 03 ve 07 kapalı",
+                !IlkBaytla(2) && !IlkBaytla(6) && IlkBaytla(3) && IlkBaytla(7));
         }
         finally
         {
@@ -1180,6 +1205,10 @@ internal static class Program
         List<Komut> acilis = Komutlar(Tip("Kalender.Core.AppHost").GetMethod("Start", Hepsi)!);
         Denetle("açılıştaki eşitleme işarete dokunmayan yolu çağırıyor",
             Bul(acilis, x => Cagri(x, sm, "Apply")) >= 0 && Bul(acilis, x => Cagri(x, sm, "ApplyByUser")) < 0);
+        List<Komut> notYazisi = Komutlar(Tip("Kalender.Ui.SettingsWindow").GetMethod("UpdateStartupNote", Hepsi)!);
+        Denetle("ayarlardaki not Windows'ta kapatıldığını söylüyor (anahtar açık görünse de)",
+            Bul(notYazisi, x => Cagri(x, sm, "IsDisabledInWindows")) >= 0
+            && Bul(notYazisi, x => Cagri(x, sm, "IsDisabledInWindows")) < Bul(notYazisi, x => Cagri(x, sm, "PointsToCurrentExe")));
     }
 
     // ------------------------------------------------------------------ 13. madde

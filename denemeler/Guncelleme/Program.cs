@@ -18,7 +18,8 @@ using System.Windows.Threading;
 // ve doğrulama hataları, güncelleme penceresinin yazıları ve düğmeleri, eski
 // ayar dosyasının yeni sürümde eksiksiz okunması, daha yeni bir sürümün
 // yazdığı bilinmeyen ayar alanlarının korunması, indirmede toplam süre değil
-// durgunluk sınırı ve hata iletilerinin Türkçe olması.
+// durgunluk sınırı, indirme ortasında kopan bağlantının disk hatası diye
+// bildirilmemesi ve hata iletilerinin Türkçe olması.
 //
 // GitHub yerine bu programın açtığı yerel bir sunucuya sorulur. Kurucu hiç
 // başlatılmaz; kurulu uygulamaya, ayar dosyasına, duvar kağıdına dokunulmaz.
@@ -86,7 +87,7 @@ internal static class Program
     {
         private readonly TcpListener _dinleyici = new(IPAddress.Loopback, 0);
         private readonly Dictionary<string, (int Durum, byte[] Govde)> _yollar = new();
-        private readonly Dictionary<string, (int Parca, TimeSpan Ara, int Dur)> _yavas = new();
+        private readonly Dictionary<string, (int Parca, TimeSpan Ara, int Dur, bool Sifirla)> _yavas = new();
         private readonly Dictionary<string, int> _sayac = new();
 
         public Sunucu()
@@ -110,13 +111,16 @@ internal static class Program
         /// Gövde <paramref name="parca"/> parçada, aralarında <paramref name="ara"/>
         /// bekleyerek gönderilir. <paramref name="dur"/> parçadan sonra hiç veri
         /// gönderilmez, bağlantı açık kalır (asılı kalmış sunucu gibi).
+        /// <paramref name="sifirla"/> verilirse bağlantı o noktada açık bırakılmaz,
+        /// sıfırlanır (Wi-Fi kopması, karşı tarafın bağlantıyı kesmesi gibi).
         /// </summary>
-        public void YavasKoy(string yol, byte[] govde, int parca, TimeSpan ara, int dur = int.MaxValue)
+        public void YavasKoy(string yol, byte[] govde, int parca, TimeSpan ara, int dur = int.MaxValue,
+            bool sifirla = false)
         {
             lock (_yollar)
             {
                 _yollar[yol] = (200, govde);
-                _yavas[yol] = (parca, ara, dur);
+                _yavas[yol] = (parca, ara, dur, sifirla);
             }
         }
 
@@ -170,7 +174,7 @@ internal static class Program
 
                     string yol = baslik.ToString().Split(' ') is { Length: > 1 } p ? p[1] : "/";
                     (int Durum, byte[] Govde) yanit;
-                    (int Parca, TimeSpan Ara, int Dur)? yavas;
+                    (int Parca, TimeSpan Ara, int Dur, bool Sifirla)? yavas;
                     lock (_yollar)
                     {
                         _sayac[yol] = _sayac.GetValueOrDefault(yol) + 1;
@@ -183,7 +187,7 @@ internal static class Program
                         + "Content-Type: application/octet-stream\r\nConnection: close\r\n\r\n");
                     await akis.WriteAsync(ust);
 
-                    if (yavas is not (int parca, TimeSpan ara, int dur))
+                    if (yavas is not (int parca, TimeSpan ara, int dur, bool sifirla))
                     {
                         await akis.WriteAsync(yanit.Govde);
                         return;
@@ -192,6 +196,16 @@ internal static class Program
                     int boy = (yanit.Govde.Length + parca - 1) / parca;
                     for (int i = 0; i < parca; i++)
                     {
+                        if (i >= dur && sifirla)
+                        {
+                            // Bekleme süresi sıfır: soket düzgün kapanmaz, bağlantı sıfırlanır (RST).
+                            // Akışı kapatmak önce düzgün kapatırdı (istemci yalnız gövdenin
+                            // erken bittiğini görürdü); bu yüzden soketin kendisi kapatılır.
+                            istemci.Client.LingerState = new LingerOption(true, 0);
+                            istemci.Client.Close();
+                            return;
+                        }
+
                         if (i >= dur)
                         {
                             // Veri yok, bağlantı açık: istemci kesene dek (en çok 30 sn) bekle.
@@ -651,6 +665,31 @@ internal static class Program
                 Denetle("kesilen indirmenin iletisi Türkçe ve sade",
                     hata.Contains("2 saniye boyunca hiç ilerlemediği için durduruldu")
                     && !hata.Contains("cancel", StringComparison.OrdinalIgnoreCase), hata);
+
+                // Bağlantı indirmenin ortasında sıfırlanıyor (Wi-Fi kopması gibi). .NET
+                // bunu HttpIOException olarak değil, düz IOException olarak verir.
+                // Parçalar arasındaki bekleme, kopmanın başlıklar alındıktan sonra,
+                // gövde okunurken olmasını sağlar (ilerleme sıfırdan büyük).
+                sunucu.YavasKoy("/kopan.exe", govde, parca: 7, ara: TimeSpan.FromMilliseconds(300), dur: 2, sifirla: true);
+                Yaz(h, "Available", SurumBilgisi(new Version(99, 0, 0), sunucu.Adres + "/kopan.exe", govde.Length, sha));
+                await (Task)Cagir(h, "InstallAsync", false)!;
+                hata = (string?)Oku(h, "Error") ?? "";
+                Denetle("indirmenin ortasında sıfırlanan bağlantı disk hatası değil, kopma olarak bildirilir",
+                    Durum(h) == "Failed" && (int)Oku(h, "Progress")! > 0 && hata.Contains("koptu") && !hata.Contains("disk"),
+                    $"%{Oku(h, "Progress")}; {hata}");
+
+                // Gerçek disk hatası yine disk hatası: indirilen dosyanın yerinde aynı adlı bir klasör var.
+                sunucu.Koy("/tam.exe", 200, govde);
+                string engel = Path.Combine((string)DuraganOku(Hizmet, "DownloadFolder")!,
+                    $"{Path.GetFileNameWithoutExtension(AssetAdi)}-{Kisa(new Version(99, 0, 0))}.exe.indiriliyor");
+                File.Delete(engel); // Yarıda kalan indirmenin dosyası.
+                Directory.CreateDirectory(engel);
+                Yaz(h, "Available", SurumBilgisi(new Version(99, 0, 0), sunucu.Adres + "/tam.exe", govde.Length, sha));
+                await (Task)Cagir(h, "InstallAsync", false)!;
+                hata = (string?)Oku(h, "Error") ?? "";
+                Directory.Delete(engel);
+                Denetle("diske yazılamayan indirme disk hatası olarak bildirilir",
+                    Durum(h) == "Failed" && hata == "İndirilen dosya diske yazılamadı.", hata);
                 ((IDisposable)h).Dispose();
             }
             finally

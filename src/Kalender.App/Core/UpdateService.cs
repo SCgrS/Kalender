@@ -314,6 +314,7 @@ internal sealed class UpdateService : IDisposable
         HttpRequestException or HttpIOException =>
             "Yeni sürüm indirilemedi: sunucuya bağlanılamadı ya da bağlantı indirme sırasında koptu.",
         InvalidDataException => ex.Message,
+        // Ağdan okurken kopan bağlantı buraya düşmez: HttpIOException'a çevrilir (bkz. ReadFromNetworkAsync).
         IOException or UnauthorizedAccessException => "İndirilen dosya diske yazılamadı.",
         Win32Exception or InvalidOperationException => "İndirilen kurulum dosyası başlatılamadı.",
         _ => "Yeni sürüm indirilemedi.",
@@ -427,7 +428,7 @@ internal sealed class UpdateService : IDisposable
         {
             byte[] buffer = new byte[1 << 16];
             int n;
-            while ((n = await source.ReadAsync(buffer, cts.Token)) > 0)
+            while ((n = await ReadFromNetworkAsync(source, buffer, cts.Token)) > 0)
             {
                 cts.CancelAfter(DownloadStallTimeout);
                 await dest.WriteAsync(buffer.AsMemory(0, n), cts.Token);
@@ -456,6 +457,25 @@ internal sealed class UpdateService : IDisposable
 
         File.Move(partial, target, overwrite: true);
         return target;
+    }
+
+    /// <summary>
+    /// İndirilen dosyanın bir sonraki parçasını ağdan okur. Bağlantı gövde
+    /// okunurken koparsa (karşı taraf bağlantıyı sıfırladı, Wi-Fi gitti, şifreli
+    /// bağlantı yarıda kaldı) .NET düz bir IOException verir; bu, disk hatasıyla
+    /// karışmasın diye bağlantı hatasına çevrilir. İsteğin kendisindeki hatalar
+    /// (SendAsync) zaten HttpRequestException olarak gelir.
+    /// </summary>
+    private static async ValueTask<int> ReadFromNetworkAsync(Stream source, Memory<byte> buffer, CancellationToken token)
+    {
+        try
+        {
+            return await source.ReadAsync(buffer, token);
+        }
+        catch (IOException ex) when (ex is not HttpIOException)
+        {
+            throw new HttpIOException(HttpRequestError.Unknown, ex.Message, ex);
+        }
     }
 
     /// <summary>İndirilen dosya gerçekten beklenen sürümün Kalender'i mi?</summary>

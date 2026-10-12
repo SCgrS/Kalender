@@ -41,6 +41,26 @@ internal static class StartupManager
         }
     }
 
+    /// <summary>
+    /// Kalender, Windows'un "Başlangıç uygulamaları" listesinde (Görev
+    /// Yöneticisi, Ayarlar) kapatılmış mı? Öyleyse Run kaydı dursa bile
+    /// açılışta başlamaz. Değer ikili: ilk bayt çiftse (02, 06) açık, tekse
+    /// (03, 07) kapalı; ardından kapatıldığı an gelir. Değer yoksa açık sayılır.
+    /// </summary>
+    public static bool IsDisabledInWindows()
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(StartupApprovedKey);
+            return key?.GetValue(ValueName) is byte[] { Length: > 0 } value && (value[0] & 1) != 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Başlangıç uygulamaları onay kaydı okunamadı.", ex);
+            return false;
+        }
+    }
+
     /// <summary>Kayıtlı yol, bu çalıştırılabilir dosyayı gösteriyor mu?</summary>
     public static bool PointsToCurrentExe()
     {
