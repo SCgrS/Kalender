@@ -2206,7 +2206,8 @@ internal static class Program
     }
 
     /// <summary>
-    /// Takvimin fare kancası; takvim x &lt; 1000, önceki ay oku 500-532. Kanca
+    /// Takvimin fare kancası; takvim x &lt; 1000, önceki ay oku 500-532; x = 777'de
+    /// karar uzun sürer (Explorer meşgulken simge sorusu gibi). Kanca
     /// hiç takılmaz, gerçek fareye dokunulmaz: "takılı" görünsün diye tanıtıcısına
     /// sahte bir değer yazılır; kapatılmış sayıldığı için Arm gerçek kanca takmaz.
     /// Olaylar doğrudan işleyiciye verilir (<see cref="Gonder"/>).
@@ -2215,7 +2216,15 @@ internal static class Program
     {
         Type t = Tip("Kalender.Desktop.CalendarMouseHook");
         Type dugmeTipi = Tip("Kalender.Calendar.NavButton");
-        Func<DPoint, bool> takvimde = p => p.X < 1000;
+        Func<DPoint, bool> takvimde = p =>
+        {
+            if (p.X == 777)
+            {
+                Thread.Sleep(350);
+            }
+
+            return p.X < 1000;
+        };
         Delegate dugme = Delegate.CreateDelegate(typeof(Func<,>).MakeGenericType(typeof(DPoint), dugmeTipi),
             typeof(Program).GetMethod(nameof(DugmeBul), Hepsi)!.MakeGenericMethod(dugmeTipi));
         object kanca = Activator.CreateInstance(t, Dispatcher.CurrentDispatcher, takvimde, dugme)!;
@@ -2432,6 +2441,32 @@ internal static class Program
         AlanAta(host, "_hoverInside", false);
         Cagir(host, "KancayiDenetle", simdi - 1000);
         Denetle("imleç takvimin dışındayken kanca her harekette yeniden değerlendiriliyor", !Takili(kanca));
+
+        // Sağ basışın kararı uzun sürdü: Windows basışı kabuğa vermiş, kancayı sökmüş
+        // olabilir. Bırakış beklenmiyor, kanca imleç oynamasa da yenileniyor.
+        const uint RDown = 0x0204, RUp = 0x0205;
+        _menuNoktalari.Clear();
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(host, "_hoverInside", true);
+        bool yutuldu = Gonder(kanca, RDown, 777);
+        bool bekliyor = (bool)Oku(kanca, "BirakisBekleniyor")!;
+        Denetle("uzun süren kararda sağ basış kabuğa gidiyor, bırakışı beklenmiyor", !yutuldu && !bekliyor);
+        Bosalt();
+        Denetle("ardından kanca imleç oynamadan sökülüyor (yeniden takılmak üzere)", !Takili(kanca));
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        bool birakisYutuldu = Gonder(kanca, RUp, 777);
+        Bosalt();
+        Denetle("bırakış da kabuğa gidiyor, Kalender'in menüsü açılmıyor", !birakisYutuldu && _menuNoktalari.Count == 0);
+
+        List<Komut> y = Komutlar(kanca.GetType().GetMethod("Yenile", Hepsi)!);
+        int ySok = Bul(y, x => Cagri(x, kanca.GetType(), "Disarm"));
+        int yTak = Bul(y, x => Cagri(x, kanca.GetType(), "Arm"), ySok);
+        Denetle("yenileme kancayı söküp yeniden takıyor", ySok >= 0 && yTak > ySok);
+
+        bool hizli = Gonder(kanca, RDown, 300) && Gonder(kanca, RUp, 302);
+        Bosalt();
+        Denetle("hızlı kararda sağ tık yine Kalender'in menüsünü açıyor",
+            hizli && _menuNoktalari.SequenceEqual(new[] { new DPoint(300, 10) }) && Takili(kanca));
 
         Denetle("açılışta imleç hareketi KancayiDenetle'ye bağlanıyor",
             Abone(Tip("Kalender.Desktop.HoverWatcher"), "ImlecOynadi") == "KancayiDenetle");

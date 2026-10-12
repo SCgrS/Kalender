@@ -30,9 +30,19 @@ namespace Kalender.Desktop;
 /// Windows, geri çağırması süreyi aşan alt düzey kancayı haber vermeden söker
 /// (Windows 7'den beri). Bunu <see cref="Sokulmus"/> ile anlıyoruz: imleç
 /// oynadığı hâlde kanca hiç çağrılmadıysa kanca yeniden takılır (bkz. AppHost).
+/// Sağ basışın kararı süreye yaklaşınca kanca imleç oynamasa da yenilenir
+/// (<see cref="KararSiniri"/>).
 /// </summary>
 internal sealed class CalendarMouseHook : IDisposable
 {
+    /// <summary>
+    /// Sağ basış kararının süre sınırı (ms). Windows alt düzey kancayı
+    /// LowLevelHooksTimeout kadar bekler (kayıt defterinde yoksa 300 ms); süre
+    /// aşılınca basışı kancayı beklemeden kabuğa verir, kancayı da haber vermeden
+    /// sökebilir. Sınır bu sürenin biraz altında.
+    /// </summary>
+    private const long KararSiniri = 250;
+
     private readonly Dispatcher _dispatcher;
     private readonly Func<Point, bool> _isOverCalendar;
     private readonly Func<Point, NavButton> _navAt;
@@ -140,6 +150,21 @@ internal sealed class CalendarMouseHook : IDisposable
         _swallowingLeftUp = false;
     }
 
+    /// <summary>
+    /// Takılı kancayı söküp yeniden takar; sökülü kancaya dokunmaz (ör. ay
+    /// çizilirken bilerek sökülü). Windows kancayı sökmediyse de zararı yok.
+    /// </summary>
+    private void Yenile()
+    {
+        if (_hook == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Disarm();
+        Arm();
+    }
+
     private IntPtr OnMouse(int nCode, IntPtr wParam, IntPtr lParam)
     {
         _lastCallAt = Environment.TickCount64;
@@ -181,7 +206,21 @@ internal sealed class CalendarMouseHook : IDisposable
             // Basma anında karar veriyoruz; bırakma anında imleç kaymış
             // olsa bile aynı kararı uyguluyoruz ki kabuğa yarım bir
             // olay çifti gitmesin.
-            _swallowingUp = _isOverCalendar(point);
+            bool takvimde = _isOverCalendar(point);
+            if (Environment.TickCount64 - _lastCallAt >= KararSiniri)
+            {
+                // Karar uzun sürdü (ör. Explorer meşgulken simge sorusu).
+                // Windows basışı kabuğa vermiş, kancayı da sökmüş olabilir;
+                // ölü kanca bırakışı hiç görmez, bırakış hep bekleniyor sanılır
+                // ve kanca takvimden çıkınca da sökülmezdi. Basış kabuğa gitmiş
+                // sayılır (bırakış da ona gider), kanca yenilenir. Sol basışta
+                // gerek yok: ay değişirken kanca zaten sökülüp yeniden takılıyor.
+                _swallowingUp = false;
+                _dispatcher.BeginInvoke(() => Yenile());
+                return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
+            }
+
+            _swallowingUp = takvimde;
             _rightDownPoint = point;
             return _swallowingUp ? new IntPtr(1) : NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
         }
