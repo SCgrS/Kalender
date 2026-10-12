@@ -669,7 +669,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             ? "Google bağlı değil"
             : _google?.IsOnline == true
                 ? "Google bağlı"
-                : "Google bağlı (çevrimdışı)";
+                : "Google bağlı (çevrim dışı)";
 
         _tray.UpdateTooltip($"Kalender · {durum}");
     }

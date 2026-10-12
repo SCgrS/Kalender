@@ -1,7 +1,7 @@
 # Üçüncü taraf bileşenler
 
 Bu dosyada, Kalender'in kullandığı üçüncü taraf ve bağımsız geliştirici paketleri listelenir.
-Microsoft'un ve Google'ın kendi resmi kütüphaneleri bu listeye girmez.
+Microsoft'un ve Google'ın kendi resmî kütüphaneleri bu listeye girmez.
 
 README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
 
@@ -20,7 +20,7 @@ README'deki teşekkür/atıf bölümü bu listeden hazırlanacaktır.
   önbelleğe alınıyor, parlaklık üstteki siyah örtünün saydamlığıyla gösteriliyor.
   Hazır bir denetim eklemeye değecek kadar karmaşık değildi.
 - **ICS okuyucu** (`Calendar/Holidays/IcsParser`) elle yazıldı. Tam bir takvim kütüphanesi
-  değil; yalnızca resmi tatil akışındaki tüm gün süren kayıtları okuyacak kadarını yapıyor
+  değil; yalnızca resmî tatil akışındaki tüm gün süren kayıtları okuyacak kadarını yapıyor
   (satır katlaması, kaçış dizileri, DTSTART/DTEND/SUMMARY/DESCRIPTION). İhtiyaç bu kadar dar
   olduğu için paket eklenmedi.
 - **Google bağlantısı** için Google'ın .NET kütüphaneleri yerine doğrudan REST çağrıları ve

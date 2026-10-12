@@ -28,11 +28,20 @@ using DRectangleF = System.Drawing.RectangleF;
 //      ekranın yolu konur; bir ekrandaki hata öbürlerini durdurmaz; dosyası
 //      olmayan fotoğraf denenmez; ekranda duran zemin dosyası silinmez; takvimin
 //      kendi görüntüsü yedeğe yazılmaz; yedek kullanılınca silinir.
+//  13. Ayar dosyası önce geçici dosyaya yazılıp diske boşaltılır, önceki
+//      hâli ayarlar.json.yedek olur; okunamayan dosya ayarlar.bozuk-<tarih>.json
+//      adıyla kenara alınır (üstüne yazılmaz), yerine yedek okunur; 1.10'dan
+//      kalan düz metin gizli anahtar yedekte de kalmaz.
 //  19. Ayarlardan açılan "Windows ile başlat", Windows'un başlangıç
 //      listesindeki kapalı işaretini kaldırır; açılıştaki eşitleme kaldırmaz.
+//  20. Esc ya da × ile kapatınca istemci kimliği ve gizli anahtar kaydedilir.
 //  25. Yazma yeniden açılınca sıkıştırma kalitesi yeniden denetlenir.
+//  31. Duvar kâğıdını etkilemeyen ayarlar yalnızca kaydedilir; ayarlar
+//      penceresini kapatmak ancak bekleyen bir değişiklik varsa uygular.
 //  32. Ayarlar penceresi açıkken ayar başka yerden değişince duvar kâğıdı
 //      anahtarı ona eşitlenir.
+//  37. Ayarlar penceresi ekran satırlarını kurarken ayarlara kayıt açmaz;
+//      kayıt, kullanıcı satırda bir şey değiştirince açılır.
 //
 // Kayıt defterinde yalnızca HKCU altında bu sınamanın açtığı geçici bir anahtara
 // yazılır ve sonunda silinir; gerçek açılış kaydına ve Windows'un başlangıç
@@ -283,6 +292,7 @@ internal static class Program
         string yedekDosyasi = Path.Combine(gercekKok, "onceki-duvar-kagidi.json");
         string? ayarOnce = DosyaOku(ayarDosyasi);
         string? yedekOnce = DosyaOku(yedekDosyasi);
+        string? ayarYedegiOnce = DosyaOku(ayarDosyasi + ".yedek");
 
         string gecici = Path.Combine(Path.GetTempPath(), "Kalender Kod İncelemesi ğüşıöç " + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(gecici);
@@ -297,6 +307,10 @@ internal static class Program
             Bolum(Madde25);
             Bolum(() => Madde5(gecici));
             Bolum(Madde19);
+            Bolum(Madde13);
+            Bolum(() => Madde20(gecici));
+            Bolum(Madde31);
+            Bolum(Madde37);
         }
         finally
         {
@@ -311,8 +325,9 @@ internal static class Program
             }
         }
 
-        Denetle("kurulu Kalender'in ayar dosyasına ve duvar kâğıdı yedeğine dokunulmadı",
-            DosyaOku(ayarDosyasi) == ayarOnce && DosyaOku(yedekDosyasi) == yedekOnce);
+        Denetle("kurulu Kalender'in ayar dosyasına (yedeği dâhil) ve duvar kâğıdı yedeğine dokunulmadı",
+            DosyaOku(ayarDosyasi) == ayarOnce && DosyaOku(ayarDosyasi + ".yedek") == ayarYedegiOnce
+            && DosyaOku(yedekDosyasi) == yedekOnce);
 
         Console.WriteLine();
         Console.WriteLine($"Sonuç: {_gecen} geçti, {_hata} kaldı.");
@@ -944,6 +959,347 @@ internal static class Program
         Denetle("açılıştaki eşitleme işarete dokunmayan yolu çağırıyor",
             Bul(acilis, x => Cagri(x, sm, "Apply")) >= 0 && Bul(acilis, x => Cagri(x, sm, "ApplyByUser")) < 0);
     }
+
+    // ------------------------------------------------------------------ 13. madde
+
+    private static void Madde13()
+    {
+        Console.WriteLine("13) Ayar dosyası: yazım diske boşaltılıyor, okunamayan dosya kenara alınıp yedek okunuyor");
+        PropertyInfo duzey = Tip("Kalender.Core.Log").GetProperty("Level", Hepsi)!;
+        object oncekiDuzey = duzey.GetValue(null)!;
+        string klasor = Path.Combine(Path.GetTempPath(), "Kalender Ayar Dosyası ğüşıöç " + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // Sınamanın bilerek bozduğu dosyalar günlüğe hata olarak yazılmasın (4 = kapalı).
+            duzey.SetValue(null, Enum.ToObject(duzey.PropertyType, 4));
+            Directory.CreateDirectory(Path.Combine(klasor, "dosya"));
+            Madde13Dosya(Path.Combine(klasor, "dosya"));
+            Directory.CreateDirectory(Path.Combine(klasor, "depo"));
+            Madde13Depo(Path.Combine(klasor, "depo"));
+        }
+        finally
+        {
+            duzey.SetValue(null, oncekiDuzey);
+            try
+            {
+                Directory.Delete(klasor, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("   (deneme klasörü silinemedi: " + ex.Message + ")");
+            }
+        }
+    }
+
+    /// <summary>
+    /// SettingsStore'un kendisiyle: uygulamanın klasörü bu bölüm boyunca
+    /// <paramref name="klasor"/>'e çevrilir.
+    /// </summary>
+    private static void Madde13Depo(string klasor)
+    {
+        Type depoTipi = Tip("Kalender.Settings.SettingsStore");
+        PropertyInfo kok = Tip("Kalender.Core.Paths").GetProperty("RootFolder", Hepsi)!;
+        string onceki = (string)kok.GetValue(null)!;
+        kok.SetValue(null, klasor);
+        try
+        {
+            string dosya = Path.Combine(klasor, "ayarlar.json");
+            string yedek = dosya + ".yedek";
+
+            object YeniDepo()
+            {
+                object d = Activator.CreateInstance(depoTipi, nonPublic: true)!;
+                Cagir(d, "Load");
+                return d;
+            }
+
+            object depo = YeniDepo();
+            Yaz(Oku(depo, "Current")!, "LogLevel", 2);
+            Cagir(depo, "Save");
+            Yaz(Oku(depo, "Current")!, "LogLevel", 3);
+            Cagir(depo, "Save");
+            Denetle("uygulamanın kaydında yedek oluşuyor",
+                File.Exists(dosya) && File.Exists(yedek) && Duzey(Oku(YeniDepo(), "Current")) == 3);
+
+            File.WriteAllBytes(dosya, Array.Empty<byte>());
+            object depo2 = YeniDepo();
+            Denetle("açılışta boş ayar dosyası yerine yedek okunuyor", Duzey(Oku(depo2, "Current")) == 2);
+            Cagir(depo2, "Save");
+            Denetle("ardından kaydedince kenara alınan dosya korunuyor, ayarlar yedekteki değerlerle",
+                Bozuklar(klasor).Length == 1 && new FileInfo(Bozuklar(klasor)[0]).Length == 0
+                && Duzey(Oku(YeniDepo(), "Current")) == 2);
+
+            // 1.10'un düz metin yazdığı gizli anahtar: dönüşüm yedekte de düz metin bırakmıyor.
+            const string Sir = "GOCSPX-duz-metin-deneme";
+            File.WriteAllText(dosya, "{ \"LogLevel\": 3, \"Google\": { \"ClientId\": \"deneme\", \"ClientSecret\": \"" + Sir + "\" } }");
+            object google = Oku(Oku(YeniDepo(), "Current")!, "Google")!;
+            string[] sirli = Directory.GetFiles(klasor)
+                .Where(f => File.ReadAllText(f).Contains(Sir, StringComparison.Ordinal)).ToArray();
+            Denetle("düz metin gizli anahtar okundu, dosyaya şifreli yazıldı",
+                (string?)Oku(google, "ClientSecret") == Sir
+                && File.ReadAllText(dosya).Contains("ClientSecretSifreli", StringComparison.Ordinal));
+            Denetle("klasördeki hiçbir dosyada (yedek dâhil) düz metin kalmadı", sirli.Length == 0,
+                string.Join(", ", sirli.Select(Path.GetFileName)));
+            Denetle("düz metinli yedek silindi", !File.Exists(yedek));
+        }
+        finally
+        {
+            kok.SetValue(null, onceki);
+        }
+    }
+
+    // ------------------------------------------------------------------ 20. madde
+
+    private static void Madde20(string gecici)
+    {
+        Console.WriteLine("20) Esc ya da × ile kapatınca istemci kimliği ve gizli anahtar kaydediliyor");
+        PropertyInfo kok = Tip("Kalender.Core.Paths").GetProperty("RootFolder", Hepsi)!;
+        string onceki = (string)kok.GetValue(null)!;
+        string klasor = Path.Combine(gecici, "20 istemci bilgileri");
+        Directory.CreateDirectory(klasor);
+        kok.SetValue(null, klasor);
+        try
+        {
+            string dosya = Path.Combine(klasor, "ayarlar.json");
+            object depo = BellekDeposu();
+            object google = Oku(Oku(depo, "Current")!, "Google")!;
+            SahteAyarKapisi kapi = Kapi(depo);
+
+            // Ayarda değer yok (null), kutular boş: kapanış bir şey yazdırmıyor.
+            Cagir(AyarPenceresi(kapi), "OnClosed", EventArgs.Empty);
+            Denetle("boş kutu ile girilmemiş değer aynı sayılıyor, dosya yazılmadı",
+                !File.Exists(dosya) && Oku(google, "ClientId") is null && Oku(google, "ClientSecret") is null);
+
+            // Kutulara yapıştırıldı, odak çıkmadan Esc'ye basıldı (LostFocus gelmedi).
+            object pencere = AyarPenceresi(kapi);
+            ((TextBox)AlanOku(pencere, "ClientIdBox")).Text = " deneme.apps.googleusercontent.com ";
+            ((PasswordBox)AlanOku(pencere, "ClientSecretBox")).Password = "GOCSPX-deneme";
+            Cagir(pencere, "OnClosed", EventArgs.Empty);
+            string metin = File.Exists(dosya) ? File.ReadAllText(dosya) : string.Empty;
+            Denetle("kapanışta iki değer de ayara yazıldı",
+                (string?)Oku(google, "ClientId") == "deneme.apps.googleusercontent.com"
+                && (string?)Oku(google, "ClientSecret") == "GOCSPX-deneme");
+            Denetle("ve dosyaya kaydedildi (gizli anahtar şifreli)",
+                metin.Contains("deneme.apps.googleusercontent.com", StringComparison.Ordinal)
+                && metin.Contains("ClientSecretSifreli", StringComparison.Ordinal)
+                && !metin.Contains("GOCSPX-deneme", StringComparison.Ordinal));
+            Denetle("duvar kâğıdı yeniden yazılmadı", kapi.Uygulama == 0);
+
+            // Odak çıkınca (LostFocus) da aynı yol: yalnızca kaydediliyor.
+            Type pencereTipi = Tip("Kalender.Ui.SettingsWindow");
+            List<Komut> k = Komutlar(pencereTipi.GetMethod("OnGoogleCredentialsChanged", Hepsi)!);
+            Denetle("odak çıkınca da aynı kayıt yolu, duvar kâğıdı yeniden yazılmıyor",
+                Bul(k, x => Cagri(x, pencereTipi, "SaveGoogleCredentials")) >= 0
+                && Bul(k, x => Cagri(x, Tip("Kalender.Ui.IAppearanceHost"), "ApplyAppearance")) < 0);
+        }
+        finally
+        {
+            kok.SetValue(null, onceki);
+        }
+    }
+
+    // ------------------------------------------------------------------ 13. madde
+
+    /// <summary>Okunan ayarların günlük düzeyi; okunacak bir şey yoksa -1.</summary>
+    private static int Duzey(object? ayarlar) => ayarlar is null ? -1 : (int)Oku(ayarlar, "LogLevel")!;
+
+    /// <summary>Klasördeki "ayarlar.bozuk-…" dosyaları.</summary>
+    private static string[] Bozuklar(string klasor) => Directory.GetFiles(klasor, "ayarlar.bozuk-*.json");
+
+    /// <summary>
+    /// Ayar dosyasının okunması ve yazılması: geçici klasördeki bir dosyayla,
+    /// yalnızca SettingsStore'un dosya yardımcılarıyla.
+    /// </summary>
+    private static void Madde13Dosya(string klasor)
+    {
+        Type depo = Tip("Kalender.Settings.SettingsStore");
+        string dosya = Path.Combine(klasor, "ayarlar.json");
+        string yedek = (string)Statik(depo, "YedekAdi", dosya)!;
+        object? Okunan() => Statik(depo, "DosyadanOku", dosya);
+        void Yazilan(string json) => Statik(depo, "DosyayaYaz", dosya, json);
+        static string Json(int duzey) => "{ \"LogLevel\": " + duzey + ", \"StartWithWindows\": false }";
+        string Adlar() => string.Join(", ", Bozuklar(klasor).Select(Path.GetFileName));
+
+        Denetle("yedeğin adı ayarlar.json.yedek", Path.GetFileName(yedek) == "ayarlar.json.yedek");
+        Denetle("dosya yokken okunacak bir şey yok, klasöre bir şey yazılmıyor",
+            Okunan() is null && Directory.GetFiles(klasor).Length == 0);
+
+        Yazilan(Json(2));
+        Denetle("ilk yazımda dosya yazılıyor, geçici dosya kalmıyor",
+            File.ReadAllText(dosya) == Json(2) && !File.Exists(dosya + ".tmp") && !File.Exists(yedek));
+
+        Yazilan(Json(3));
+        Denetle("sonraki yazımda önceki hâl yedek oluyor",
+            File.ReadAllText(dosya) == Json(3) && File.ReadAllText(yedek) == Json(2));
+
+        Yazilan(Json(4));
+        Denetle("yedek her yazımda bir önceki hâl, geçici dosya kalmıyor",
+            File.ReadAllText(dosya) == Json(4) && File.ReadAllText(yedek) == Json(3) && !File.Exists(dosya + ".tmp"));
+        Denetle("dosya okunuyor", Duzey(Okunan()) == 4);
+
+        // Elektrik kesintisinden kalan boş dosya.
+        File.WriteAllBytes(dosya, Array.Empty<byte>());
+        Denetle("boş dosya yerine yedek okunuyor", Duzey(Okunan()) == 3);
+        string[] bozuk = Bozuklar(klasor);
+        Denetle("boş dosya ayarlar.bozuk-<tarih>.json adıyla kenara alındı",
+            !File.Exists(dosya) && bozuk.Length == 1 && new FileInfo(bozuk[0]).Length == 0, Adlar());
+        Denetle("yedeğe dokunulmadı", File.ReadAllText(yedek) == Json(3));
+
+        Yazilan(Json(2));
+        Denetle("ardından yazılan ayar kenara alınan dosyanın üstüne yazılmıyor, yedek korunuyor",
+            File.ReadAllText(dosya) == Json(2) && File.ReadAllText(yedek) == Json(3)
+            && Bozuklar(klasor).Length == 1 && new FileInfo(Bozuklar(klasor)[0]).Length == 0);
+
+        // İkisi de okunamıyor: yarım içerik ve sıfırlarla dolu yedek.
+        const string Yarim = "{ \"LogLevel\": 2, \"Appear";
+        File.WriteAllText(dosya, Yarim);
+        File.WriteAllBytes(yedek, new byte[64]);
+        Denetle("ikisi de okunamazsa varsayılanlara dönülüyor", Okunan() is null);
+        bozuk = Bozuklar(klasor);
+        Denetle("ikinci bozuk dosya ayrı adla kenara alındı, ilki korunuyor",
+            !File.Exists(dosya) && bozuk.Length == 2 && bozuk.Count(f => new FileInfo(f).Length == 0) == 1
+            && bozuk.Any(f => File.ReadAllText(f) == Yarim), Adlar());
+
+        // Yerine koyma yarıda kaldı: asıl dosya yok, yalnız yedek var.
+        File.WriteAllText(yedek, Json(3));
+        Denetle("asıl dosya yoksa yedek okunuyor", Duzey(Okunan()) == 3 && Bozuklar(klasor).Length == 2);
+
+        // Bu sürümün tanımadığı bir değer (ör. eski sürüme dönülünce) de okunamayan dosya sayılıyor.
+        Yazilan(Json(4));
+        File.WriteAllText(dosya, "{ \"Appearance\": { \"BackgroundMode\": \"Yepyeni\" } }");
+        Denetle("tanınmayan değerde de dosya kenara alınıyor, yedek okunuyor",
+            Duzey(Okunan()) == 3 && !File.Exists(dosya) && Bozuklar(klasor).Length == 3, Adlar());
+
+        // Derlenmiş kodda: geçici dosya diske boşaltılıyor, değiştirmede yedek adı veriliyor.
+        List<Komut> k = Komutlar(depo.GetMethod("DosyayaYaz", Hepsi)!);
+        int bosalt = Bul(k, x => x.Uye is MethodInfo m && m.Name == "Flush"
+            && m.GetParameters() is [{ ParameterType: var p }] && p == typeof(bool));
+        Denetle("geçici dosya diske boşaltılıyor (Flush(true))", bosalt > 0 && k[bosalt - 1].Kod == OpCodes.Ldc_I4_1);
+        int degistir = Bul(k, x => Cagri(x, typeof(File), "Replace"));
+        Denetle("asıl dosya yedek adıyla değiştiriliyor", degistir > 0 && Cagri(k[degistir - 1], depo, "YedekAdi"));
+        Denetle("açılıştaki okuma yeni yoldan", Bul(Komutlar(depo.GetMethod("Load", Hepsi)!), x => Cagri(x, depo, "DosyadanOku")) >= 0);
+    }
+
+    // ------------------------------------------------- ayarlar penceresi (31, 37)
+
+    /// <summary>Ayarları bellekte tutan bir depo; Save çağrılırsa Paths.SettingsFile'a yazar.</summary>
+    private static object BellekDeposu()
+    {
+        object depo = RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Settings.SettingsStore"));
+        AlanAta(depo, "_gate", new object());
+        Yaz(depo, "Current", Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!);
+        return depo;
+    }
+
+    /// <summary>Ayarlar penceresinin uygulamaya açılan kapısının sahtesi.</summary>
+    private static SahteAyarKapisi Kapi(object depo, params object[] ekranlar)
+    {
+        var kapi = (SahteAyarKapisi)DispatchProxy.Create(Tip("Kalender.Ui.IAppearanceHost"), typeof(SahteAyarKapisi));
+        kapi.Ayarlar = depo;
+        kapi.Guncellemeler = RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Core.UpdateService"));
+        kapi.Ekranlar = Liste(ekranlar);
+        return kapi;
+    }
+
+    /// <summary>
+    /// Kurucusu çalıştırılmamış bir ayarlar penceresi: ekranda açılmaz, yalnızca
+    /// sınanan işleyicilerin kullandığı alanlar dolu. Uygulamaya açılan kapısı
+    /// sahte: duvar kâğıdına hiçbir şey yazılmaz, uygulama yalnızca sayılır.
+    /// </summary>
+    private static object AyarPenceresi(SahteAyarKapisi kapi)
+    {
+        Type tip = Tip("Kalender.Ui.SettingsWindow");
+        object pencere = RuntimeHelpers.GetUninitializedObject(tip);
+        typeof(DispatcherObject).GetField("_dispatcher", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(pencere, Dispatcher.CurrentDispatcher);
+        AlanAta(pencere, "_host", kapi);
+        AlanAta(pencere, "_applyTimer", new DispatcherTimer { Interval = TimeSpan.FromHours(1) });
+        AlanAta(pencere, "_rows", Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Ui.MonitorRow")))!);
+        AlanAta(pencere, "MonitorList", new ItemsControl());
+        AlanAta(pencere, "ClientIdBox", new TextBox());
+        AlanAta(pencere, "ClientSecretBox", new PasswordBox());
+        return pencere;
+    }
+
+    // ------------------------------------------------------------------ 37. madde
+
+    private static void Madde37()
+    {
+        Console.WriteLine("37) Ayarlar penceresi ekran satırlarını kurarken ayarlara kayıt açmıyor");
+        object geciciAdli = Ekran(@"\\.\DISPLAY1", 0, 2560, 1440);
+        object bilinen = Ekran(@"\\.\DISPLAY2", 2560, 3440, 1440);
+        Yaz(bilinen, "StableId", @"DENEME\EKRAN-3440");
+        Yaz(bilinen, "KimlikOkunamadi", false);
+
+        object depo = BellekDeposu();
+        var kayitlar = (IDictionary)Oku(Oku(depo, "Current")!, "Monitors")!;
+        object pencere = AyarPenceresi(Kapi(depo, geciciAdli, bilinen));
+        var satirlar = (IList)AlanOku(pencere, "_rows");
+        var sayac = (DispatcherTimer)AlanOku(pencere, "_applyTimer");
+
+        Cagir(pencere, "BuildMonitorRows");
+        Denetle("her ekrana bir satır kuruldu",
+            satirlar.Count == 2 && ReferenceEquals(((ItemsControl)AlanOku(pencere, "MonitorList")).ItemsSource, satirlar));
+        Denetle("satırlar kurulurken ayarlara kayıt açılmadı (geçici ad da yazılmadı)", kayitlar.Count == 0, $"{kayitlar.Count} kayıt");
+
+        object varsayilan = Statik(Tip("Kalender.Settings.PlacementDefaults"), "For", bilinen)!;
+        object satir = satirlar[1]!;
+        object yer = Oku(satir, "Placement")!;
+        Denetle("kaydı olmayan ekranda katmanın hesapladığı varsayılan yer gösteriliyor",
+            (double)Oku(yer, "XRatio")! == (double)Oku(varsayilan, "XRatio")!
+            && (double)Oku(yer, "YRatio")! == (double)Oku(varsayilan, "YRatio")!,
+            $"{Oku(yer, "XRatio")} / {Oku(yer, "YRatio")}");
+
+        Yaz(satir, "Enabled", false);
+        Denetle("satırda değişiklik yapılınca o ekranın kaydı açılıyor",
+            kayitlar.Count == 1 && ReferenceEquals(kayitlar[@"DENEME\EKRAN-3440"], yer));
+        Denetle("değişiklik masaüstüne uygulanmak üzere zamanlandı", sayac.IsEnabled);
+        sayac.Stop();
+
+        Cagir(pencere, "BuildMonitorRows");
+        Denetle("kayıtlı ekranda kaydın kendisi kullanılıyor",
+            ReferenceEquals(Oku(satirlar[1]!, "Placement"), yer) && kayitlar.Count == 1);
+
+        // Derlenmiş kodda: kayıt açan PlacementFor satırlar kurulurken çağrılmıyor;
+        // ekrana fotoğraf seçilince yerleşim ayarlara yazılıyor.
+        Type pencereTipi = Tip("Kalender.Ui.SettingsWindow");
+        Denetle("satırları kuran yöntem PlacementFor çağırmıyor",
+            Bul(Komutlar(pencereTipi.GetMethod("BuildMonitorRows", Hepsi)!),
+                x => Cagri(x, Tip("Kalender.Settings.AppSettings"), "PlacementFor")) < 0);
+        Denetle("ekrana fotoğraf seçilince yerleşim ayarlara yazılıyor",
+            Bul(Komutlar(pencereTipi.GetMethod("OnPickMonitorPhoto", Hepsi)!), x => x.Uye is MethodBase m
+                && m.Name == "set_Item" && m.DeclaringType is { IsGenericType: true } d
+                && d.GetGenericTypeDefinition() == typeof(Dictionary<,>)) >= 0);
+    }
+
+    // ------------------------------------------------------------------ 31. madde
+
+    private static void Madde31()
+    {
+        Console.WriteLine("31) Duvar kâğıdını etkilemeyen ayarlar ve pencereyi kapatmak duvar kâğıdını yeniden yazdırmıyor");
+        Type pencereTipi = Tip("Kalender.Ui.SettingsWindow");
+        Type kapiTipi = Tip("Kalender.Ui.IAppearanceHost");
+        Type depoTipi = Tip("Kalender.Settings.SettingsStore");
+
+        foreach (string ad in new[] { "OnThemeToggled", "OnStartupChanged", "OnLogLevelChanged", "OnPollIntervalChanged", "SaveGoogleCredentials" })
+        {
+            List<Komut> k = Komutlar(pencereTipi.GetMethod(ad, Hepsi)!);
+            Denetle(ad + " yalnızca kaydediyor, duvar kâğıdını yeniden yazdırmıyor",
+                Bul(k, x => Cagri(x, depoTipi, "Save")) >= 0
+                && Bul(k, x => Cagri(x, pencereTipi, "ScheduleApply") || Cagri(x, kapiTipi, "ApplyAppearance")) < 0);
+        }
+
+        // Kapanış: pencere kurulmadan, sahte kapıyla.
+        SahteAyarKapisi kapi = Kapi(BellekDeposu());
+        Cagir(AyarPenceresi(kapi), "OnClosed", EventArgs.Empty);
+        Denetle("bekleyen değişiklik yokken kapatmak duvar kâğıdını yeniden yazdırmıyor", kapi.Uygulama == 0);
+
+        object pencere = AyarPenceresi(kapi);
+        var sayac = (DispatcherTimer)AlanOku(pencere, "_applyTimer");
+        sayac.Start();
+        Cagir(pencere, "OnClosed", EventArgs.Empty);
+        Denetle("bekleyen değişiklik varken kapanışta bir kez uygulanıyor", kapi.Uygulama == 1 && !sayac.IsEnabled);
+    }
 }
 
 /// <summary>
@@ -1034,6 +1390,54 @@ public class SahteDuvarKagidi : DispatchProxy
 
             default:
                 throw new NotSupportedException(yontem.Name);
+        }
+    }
+}
+
+/// <summary>
+/// Ayarlar penceresinin uygulamaya açılan kapısının (IAppearanceHost) sahtesi:
+/// pencere kurulmadan işleyicilerini sınamak için. Duvar kâğıdına hiçbir şey
+/// yazmaz; ApplyAppearance çağrıları yalnızca sayılır.
+/// </summary>
+public class SahteAyarKapisi : DispatchProxy
+{
+    /// <summary>Ayar deposu (SettingsStore).</summary>
+    public object? Ayarlar { get; set; }
+
+    /// <summary>Güncelleme hizmeti (UpdateService); pencere yalnızca olayına abone olur.</summary>
+    public object? Guncellemeler { get; set; }
+
+    /// <summary>Bağlı ekranlar (MonitorTarget listesi).</summary>
+    public object? Ekranlar { get; set; }
+
+    /// <summary>ApplyAppearance kaç kez çağrıldı.</summary>
+    public int Uygulama { get; private set; }
+
+    protected override object? Invoke(MethodInfo? yontem, object?[]? a)
+    {
+        string ad = yontem!.Name;
+        switch (ad)
+        {
+            case "get_Settings":
+                return Ayarlar;
+
+            case "get_Updates":
+                return Guncellemeler;
+
+            case "get_Monitors":
+                return Ekranlar;
+
+            case "ApplyAppearance":
+                Uygulama++;
+                return null;
+
+            default:
+                if (ad.StartsWith("add_", StringComparison.Ordinal) || ad.StartsWith("remove_", StringComparison.Ordinal))
+                {
+                    return null;
+                }
+
+                throw new NotSupportedException(ad);
         }
     }
 }

@@ -225,7 +225,9 @@ public partial class SettingsWindow : Window
 
         ApplyWindowTheme(dark);
         S.DarkSettingsWindow = _darkWindow;
-        ScheduleApply();
+
+        // Yalnızca bu pencerenin görünümü: duvar kâğıdı yeniden yazılmaz, ayar kaydedilir.
+        _host.Settings.Save();
     }
 
     /// <summary>Metin içindeki bağlantıyı varsayılan tarayıcıda açar.</summary>
@@ -520,18 +522,45 @@ public partial class SettingsWindow : Window
     /// <summary>Fotoğrafın ayarlarda görünen adı: hazır fotoğrafın adı ya da dosya adı.</summary>
     private static string PhotoName(string path) => HazirFotograflar.Find(path)?.Name ?? Path.GetFileName(path);
 
+    /// <summary>
+    /// Ekran satırlarını kurar. Kayıtlar yalnızca okunur: kaydı olmayan ekranda
+    /// masaüstü katmanının kullandığı varsayılan yer (sağ alt köşe) gösterilir,
+    /// kayıt ancak kullanıcı o satırda bir şey değiştirince açılır. Önceden her
+    /// satır için sabit oranlı bir kayıt açılıyordu; kimliği o an okunamayan
+    /// ekranın geçici adı (\\.\DISPLAYn) da böylece ayarlara giriyordu.
+    /// </summary>
     private void BuildMonitorRows()
     {
         _rows.Clear();
 
         foreach (MonitorTarget monitor in _host.Monitors)
         {
-            MonitorPlacement placement = S.PlacementFor(monitor.StableId);
-            _rows.Add(new MonitorRow(monitor, placement, ScheduleApply));
+            MonitorPlacement placement = S.Monitors.TryGetValue(monitor.StableId, out MonitorPlacement? kayitli)
+                ? kayitli
+                : PlacementDefaults.For(monitor);
+
+            _rows.Add(new MonitorRow(monitor, placement, () => OnMonitorRowChanged(monitor, placement)));
         }
 
         MonitorList.ItemsSource = null;
         MonitorList.ItemsSource = _rows;
+    }
+
+    /// <summary>
+    /// Satırda "bu ekranda göster" ya da boyut değişti: yerleşim ayarlara
+    /// yazılır (kaydı yoksa açılır) ve masaüstüne uygulanır. Kullanıcının
+    /// kendi değişikliği olduğu için kimliği o an okunamayan ekranda da
+    /// yazılır; yazılmasa değişiklik masaüstüne hiç yansımazdı.
+    /// </summary>
+    private void OnMonitorRowChanged(MonitorTarget monitor, MonitorPlacement placement)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        S.Monitors[monitor.StableId] = placement;
+        ScheduleApply();
     }
 
     /// <summary>
@@ -931,7 +960,7 @@ public partial class SettingsWindow : Window
 
         if (!_connecting)
         {
-            string durum = _host.GoogleOnline ? "bağlı" : "bağlı, şu an çevrimdışı (yerel kopya gösteriliyor)";
+            string durum = _host.GoogleOnline ? "bağlı" : "bağlı, şu an çevrim dışı (yerel kopya gösteriliyor)";
 
             GoogleStatusText.Text =
                 $"{_host.GoogleAccountEmail ?? "Hesap"} · {durum}"
@@ -1054,24 +1083,35 @@ public partial class SettingsWindow : Window
 
     private void OnGoogleCredentialsChanged(object sender, RoutedEventArgs e)
     {
-        if (_loading)
+        if (_loading || !SaveGoogleCredentials())
         {
             return;
         }
 
+        UpdateGoogleUi();
+    }
+
+    /// <summary>
+    /// Kutulardaki istemci kimliğini ve gizli anahtarı ayara yazar. Duvar
+    /// kâğıdını etkilemedikleri için yalnızca kaydedilir. Boş kutu ile hiç
+    /// girilmemiş değer aynı sayılır; boş kutudan çıkmak bir şey yazdırmaz.
+    /// </summary>
+    /// <returns>Ayar değiştiyse true.</returns>
+    private bool SaveGoogleCredentials()
+    {
         string id = ClientIdBox.Text.Trim();
         string secret = ClientSecretBox.Password.Trim();
 
-        if (S.Google.ClientId == id && S.Google.ClientSecret == secret)
+        if ((S.Google.ClientId ?? string.Empty) == id && (S.Google.ClientSecret ?? string.Empty) == secret)
         {
-            return;
+            return false;
         }
 
         S.Google.ClientId = string.IsNullOrEmpty(id) ? null : id;
         S.Google.ClientSecret = string.IsNullOrEmpty(secret) ? null : secret;
 
-        _host.ApplyAppearance();
-        UpdateGoogleUi();
+        _host.Settings.Save();
+        return true;
     }
 
     /// <summary>
@@ -1155,8 +1195,9 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        // Duvar kâğıdını etkilemiyor: yalnızca kaydedilir.
         S.Google.PollIntervalSeconds = GooglePoller.Intervals[PollIntervalCombo.SelectedIndex].Seconds;
-        _host.ApplyAppearance();
+        _host.Settings.Save();
         _host.ApplyPollInterval();
     }
 
@@ -1279,6 +1320,7 @@ public partial class SettingsWindow : Window
         }
 
         row.Placement.PhotoPath = path;
+        S.Monitors[row.Monitor.StableId] = row.Placement;
         S.Appearance.BackgroundMode = BackgroundMode.Photo;
 
         LoadFromSettings();
@@ -1317,8 +1359,9 @@ public partial class SettingsWindow : Window
         S.StartWithWindows = enabled;
         StartupManager.ApplyByUser(enabled);
 
+        // Duvar kâğıdını etkilemiyor: yalnızca kaydedilir.
+        _host.Settings.Save();
         UpdateStartupNote();
-        ScheduleApply();
     }
 
     private void UpdateStartupNote()
@@ -1355,7 +1398,9 @@ public partial class SettingsWindow : Window
 
         S.LogLevel = LogLevels[LogLevelCombo.SelectedIndex].Level;
         Log.Level = (LogLevel)S.LogLevel;
-        ScheduleApply();
+
+        // Duvar kâğıdını etkilemiyor: yalnızca kaydedilir.
+        _host.Settings.Save();
     }
 
     private void OnOpenLogFolder(object sender, RoutedEventArgs e) => Ac(Paths.LogFolder);
@@ -1503,13 +1548,23 @@ public partial class SettingsWindow : Window
         _host.GoogleStateChanged -= OnGoogleStateChanged;
         _host.Settings.Changed -= OnSettingsChanged;
         _host.Updates.Changed -= RefreshUpdateUi;
+
+        bool bekleyen = _applyTimer.IsEnabled;
         _applyTimer.Stop();
 
         // Pencere kapanırken tarayıcıda onay bekleniyorsa bekleyiş bitsin.
         _connectCancel?.Cancel();
 
-        // Bekleyen bir değişiklik varsa kapanmadan önce diske yazılsın.
-        _host.ApplyAppearance();
+        // Esc ya da başlıktaki × ile kapanınca kutudan odak çıkmıyor (LostFocus
+        // gelmiyor); son yazılan istemci kimliği ve gizli anahtar burada kaydedilir.
+        SaveGoogleCredentials();
+
+        // Bekleyen bir değişiklik varsa kapanmadan önce uygulansın. Yoksa duvar
+        // kâğıdı yeniden yazılmaz: öteki ayarlar değiştikleri anda kaydedildi.
+        if (bekleyen)
+        {
+            _host.ApplyAppearance();
+        }
 
         base.OnClosed(e);
     }

@@ -410,7 +410,7 @@
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SatirBasligi}" Text="Tatil ve hafta sonu günleri" />
                                         <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Pazar ve resmi tatiller; ayar açıksa cumartesi de." />
+                                                   Text="Pazar ve resmî tatiller; ayar açıksa cumartesi de." />
                                     </StackPanel>
                                 </DockPanel>
                                 <Separator />
@@ -453,12 +453,12 @@
                             <StackPanel>
                                 <DockPanel Style="{StaticResource Satir}">
                                     <CheckBox x:Name="HolidaysBox" DockPanel.Dock="Right" Margin="24,0,0,0"
-                                              AutomationProperties.Name="Resmi tatilleri kırmızı göster"
+                                              AutomationProperties.Name="Resmî tatilleri kırmızı göster"
                                               Checked="OnHolidaysEnabledChanged" Unchecked="OnHolidaysEnabledChanged" />
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Resmi tatilleri kırmızı göster" />
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Resmî tatilleri kırmızı göster" />
                                         <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Liste, Google'ın Türkiye resmi tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
+                                                   Text="Liste, Google'ın Türkiye resmî tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
                                     </StackPanel>
                                 </DockPanel>
                                 <Border Style="{StaticResource UyariKutusu}" Margin="16,0,16,16">
@@ -469,7 +469,7 @@
                                             <Path Data="{StaticResource SimgeUnlem}" Fill="{DynamicResource YuzeyFirca}" />
                                         </Grid>
                                         <TextBlock TextWrapping="Wrap"
-                                                   Text="Dini bayram tarihleri idari kararla değişebilir; lütfen resmi kaynaklardan teyit ediniz." />
+                                                   Text="Dinî bayram tarihleri idari kararla değişebilir; lütfen resmî kaynaklardan teyit ediniz." />
                                     </DockPanel>
                                 </Border>
                                 <Separator />
@@ -704,7 +704,7 @@
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="6." />
                                             <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Sol menüden Audience &gt; Publish app &gt; Confirm. Yayınlamazsanız uygulama Testing durumunda kalır: kendinizi Test users bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür." />
+                                                       Text="Sol menüden Audience &gt; Publish app &gt; Confirm. Yayımlamazsanız uygulama Testing durumunda kalır: kendinizi Test users bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür." />
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="7." />
