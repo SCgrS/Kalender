@@ -220,10 +220,24 @@ internal sealed class GoogleSettings
     /// <summary>Yoklama aralığı (saniye). 30, 60, 300, 900 ya da 86400.</summary>
     public int PollIntervalSeconds { get; set; } = 60;
 
-    /// <summary>Gösterilecek takvimlerin kimlikleri. Boşsa hepsi gösterilir.</summary>
+    /// <summary>
+    /// Seçim listelerinde "hiçbiri" işareti: kullanıcı bütün anahtarları kapattı.
+    /// Boş liste "hepsi" demek olduğu için ayrı bir işaret gerekiyor; önceden
+    /// bütün anahtarları kapatan kullanıcı yine hepsini görüyordu. Google'da bu
+    /// kimlikte bir takvim ya da görev listesi olmaz, yani hiçbiriyle eşleşmez.
+    /// </summary>
+    public const string HicbiriSecili = "(yok)";
+
+    /// <summary>
+    /// Gösterilecek takvimlerin kimlikleri. Boşsa hepsi, yalnız
+    /// <see cref="HicbiriSecili"/> varsa hiçbiri gösterilir.
+    /// </summary>
     public List<string> SelectedCalendarIds { get; set; } = new();
 
-    /// <summary>Gösterilecek görev listelerinin kimlikleri. Boşsa hepsi gösterilir.</summary>
+    /// <summary>
+    /// Gösterilecek görev listelerinin kimlikleri. Boşsa hepsi, yalnız
+    /// <see cref="HicbiriSecili"/> varsa hiçbiri gösterilir.
+    /// </summary>
     public List<string> SelectedTaskListIds { get; set; } = new();
 
     /// <summary>Görev noktacıklarının rengi (#RRGGBB).</summary>

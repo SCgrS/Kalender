@@ -49,6 +49,13 @@ internal sealed class GoogleAuthenticator : IDisposable
     private StoredToken? _token;
     private string? _accessToken;
     private DateTimeOffset _accessTokenExpiry = DateTimeOffset.MinValue;
+    private int _kusak;
+
+    /// <summary>
+    /// Kayıtlı yetkiyi değiştiren adımları sıraya koyar: bağlantıyı kesmek ile
+    /// arka planda yenilenen anahtarın belleğe ve diske yazılması iç içe geçmesin.
+    /// </summary>
+    private readonly object _kayitKilidi = new();
 
     public GoogleAuthenticator(IOAuthConfig config)
     {
@@ -68,6 +75,16 @@ internal sealed class GoogleAuthenticator : IDisposable
     public bool IsConnected => !string.IsNullOrEmpty(_token?.RefreshToken);
 
     public string? AccountEmail => _token?.AccountEmail;
+
+    /// <summary>
+    /// Bağlantı her kesildiğinde ya da yeniden kurulduğunda artar. Eşitleme
+    /// başında okunur; değişmişse sonuç yazılmaz: bağlantıyı keserken süren bir
+    /// eşitleme, silinen yerel kopyayı geri yazıyordu.
+    /// </summary>
+    public int BaglantiKusagi => Volatile.Read(ref _kusak);
+
+    /// <summary>Onay için tarayıcıyı açar; sınamada tarayıcı açılmasın diye değiştirilebilir.</summary>
+    internal static Action<string> TarayiciAcici { get; set; } = OpenBrowser;
 
     /// <summary>Bağlantı durumu değişti (bağlandı ya da koptu).</summary>
     public event Action? StateChanged;
@@ -90,6 +107,10 @@ internal sealed class GoogleAuthenticator : IDisposable
 
         string clientId = _config.ClientId!;
 
+        // Tarayıcıdan yanıt geldi mi? Geldiyse sonraki iptal, onay süresinin
+        // dolması değil, Google'ın yetki alışverişine geç yanıt vermesidir.
+        bool onayGeldi = false;
+
         try
         {
             string verifier = CreateRandomString(64);
@@ -110,12 +131,13 @@ internal sealed class GoogleAuthenticator : IDisposable
                 + "&access_type=offline"
                 + "&prompt=consent";
 
-            OpenBrowser(url);
+            TarayiciAcici(url);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
             timeout.CancelAfter(ConsentTimeout);
 
             CallbackResult callback = await listener.WaitAsync(timeout.Token).ConfigureAwait(false);
+            onayGeldi = true;
 
             if (!string.IsNullOrEmpty(callback.Error))
             {
@@ -162,16 +184,20 @@ internal sealed class GoogleAuthenticator : IDisposable
                     + "\"Masaüstü uygulaması\" olmalı; öyleyse bağlantıyı kesip yeniden deneyin.");
             }
 
-            _token = new StoredToken
+            lock (_kayitKilidi)
             {
-                RefreshToken = token.RefreshToken,
-                ClientId = clientId,
-                AccountEmail = _token?.AccountEmail,
-            };
+                _token = new StoredToken
+                {
+                    RefreshToken = token.RefreshToken,
+                    ClientId = clientId,
+                    AccountEmail = _token?.AccountEmail,
+                };
 
-            _accessToken = token.AccessToken;
-            _accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, token.ExpiresIn) - 60);
-            _store.Save(_token);
+                _accessToken = token.AccessToken;
+                _accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, token.ExpiresIn) - 60);
+                Interlocked.Increment(ref _kusak);
+                _store.Save(_token);
+            }
 
             Log.Info("Google hesabına bağlanıldı.");
             StateChanged?.Invoke();
@@ -180,9 +206,23 @@ internal sealed class GoogleAuthenticator : IDisposable
         }
         catch (OperationCanceledException)
         {
-            return new SignInResult(false, cancel.IsCancellationRequested
-                ? "Bağlanmaktan vazgeçildi."
-                : "Tarayıcıda onay gelmedi; süre doldu. Yeniden deneyebilirsiniz.");
+            if (cancel.IsCancellationRequested)
+            {
+                return new SignInResult(false, "Bağlanmaktan vazgeçildi.");
+            }
+
+            if (!onayGeldi)
+            {
+                return new SignInResult(false, "Tarayıcıda onay gelmedi; süre doldu. Yeniden deneyebilirsiniz.");
+            }
+
+            // Onay gelmişti, tarayıcıya "Kalender bağlandı" sayfası da gitti;
+            // ama Google anahtarı 30 saniyede vermedi (HttpClient zaman aşımı).
+            // Önceden bu da "onay gelmedi" deniyordu, kullanıcı onayı yanlış
+            // verdiğini sanıyordu.
+            Log.Warn("Google yetki alışverişi zaman aşımına düştü.");
+            return new SignInResult(false,
+                "Google yanıt vermedi (zaman aşımı). İnternet bağlantınızı denetleyip yeniden deneyin.");
         }
         catch (Exception ex)
         {
@@ -193,9 +233,14 @@ internal sealed class GoogleAuthenticator : IDisposable
 
     public void SignOut()
     {
-        _token = null;
-        _accessToken = null;
-        _accessTokenExpiry = DateTimeOffset.MinValue;
+        lock (_kayitKilidi)
+        {
+            _token = null;
+            _accessToken = null;
+            _accessTokenExpiry = DateTimeOffset.MinValue;
+            Interlocked.Increment(ref _kusak);
+        }
+
         _store.Clear();
 
         Log.Info("Google bağlantısı kesildi.");
@@ -204,13 +249,20 @@ internal sealed class GoogleAuthenticator : IDisposable
 
     public void UpdateAccountEmail(string? email)
     {
-        if (_token is null || string.IsNullOrWhiteSpace(email) || _token.AccountEmail == email)
+        // Eşitleme bitince arka planda çağrılıyor; bu arada kesilen bağlantının
+        // yetki dosyası yeniden yazılmasın.
+        lock (_kayitKilidi)
         {
-            return;
+            StoredToken? kayit = _token;
+            if (kayit is null || string.IsNullOrWhiteSpace(email) || kayit.AccountEmail == email)
+            {
+                return;
+            }
+
+            kayit.AccountEmail = email;
+            _store.Save(kayit);
         }
 
-        _token.AccountEmail = email;
-        _store.Save(_token);
         StateChanged?.Invoke();
     }
 
@@ -232,12 +284,13 @@ internal sealed class GoogleAuthenticator : IDisposable
                 return _accessToken;
             }
 
-            if (_token?.RefreshToken is null || !_config.IsReady)
+            StoredToken? kayit = _token;
+            if (kayit?.RefreshToken is null || !_config.IsReady)
             {
                 return null;
             }
 
-            if (_token.ClientId is not null && _token.ClientId != _config.ClientId)
+            if (kayit.ClientId is not null && kayit.ClientId != _config.ClientId)
             {
                 Log.Warn("İstemci kimliği değişmiş; kayıtlı Google yetkisi geçersiz.");
                 SignOut();
@@ -247,7 +300,7 @@ internal sealed class GoogleAuthenticator : IDisposable
             var form = new Dictionary<string, string>
             {
                 ["client_id"] = _config.ClientId!,
-                ["refresh_token"] = _token.RefreshToken,
+                ["refresh_token"] = kayit.RefreshToken,
                 ["grant_type"] = "refresh_token",
             };
 
@@ -263,16 +316,27 @@ internal sealed class GoogleAuthenticator : IDisposable
                 return null;
             }
 
-            _accessToken = token.AccessToken;
-            _accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, token.ExpiresIn) - 60);
-
-            if (!string.IsNullOrEmpty(token.RefreshToken))
+            lock (_kayitKilidi)
             {
-                _token.RefreshToken = token.RefreshToken;
-                _store.Save(_token);
-            }
+                // Yanıt beklenirken bağlantı kesildiyse (ya da yeniden kurulduysa)
+                // anahtar belleğe yazılmıyor: önceden kesilen bağlantının anahtarı
+                // geri geliyor, eşitleme onunla sürüyordu.
+                if (!ReferenceEquals(_token, kayit))
+                {
+                    return null;
+                }
 
-            return _accessToken;
+                _accessToken = token.AccessToken;
+                _accessTokenExpiry = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, token.ExpiresIn) - 60);
+
+                if (!string.IsNullOrEmpty(token.RefreshToken))
+                {
+                    kayit.RefreshToken = token.RefreshToken;
+                    _store.Save(kayit);
+                }
+
+                return token.AccessToken;
+            }
         }
         catch (Exception ex)
         {

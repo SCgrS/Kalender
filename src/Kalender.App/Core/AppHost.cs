@@ -439,7 +439,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             switch (secim)
             {
                 case MenuGoToDay:
-                    Ac(gun is null ? GoogleLinks.Month(_viewMonth) : GoogleLinks.Day(gun.Value));
+                    Ac(GoogleLinks.HesapIle(
+                        gun is null ? GoogleLinks.Month(_viewMonth) : GoogleLinks.Day(gun.Value),
+                        GoogleAccountEmail));
                     break;
 
                 case MenuPrevMonth:

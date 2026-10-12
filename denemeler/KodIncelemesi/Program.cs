@@ -40,7 +40,11 @@ using DRectangleF = System.Drawing.RectangleF;
 //      ve yüzeyin DPI'ı etkilemez); Döşe de piksel boyutuyla.
 //   8. Fotoğrafın EXIF yön etiketi uygulanır (büyük ve küçük sonlu), etiket
 //      kalkar, ön bellekte döndürülmüş hâli durur.
-//  12. Gün kutusu ölçeği farklı ekranda da hücrenin altında açılır: boyutu
+//  10. Ayarlar > Google'da bütün takvim ya da görev listesi anahtarları
+//      kapatılınca seçime "hiçbiri" işareti yazılır (boş liste yine "hepsi");
+//      pencere yeniden açılınca anahtarlar kapalı kurulur. (Eşitlemenin bu
+//      işarete uyması GoogleEsitleme sınamasında.)
+//  12.Gün kutusu ölçeği farklı ekranda da hücrenin altında açılır: boyutu
 //      hücrenin ekranının ölçeğiyle hesaplanır, ölçek değişiminden sonra yeri
 //      WPF'in taşımasından sonra yeniden konur; kapalı kutu görünür olmaz
 //      (görünmeyen ayrı bir Windows masaüstünde, programın ikinci kopyasında).
@@ -347,6 +351,7 @@ internal static class Program
             Bolum(() => Madde20(gecici));
             Bolum(Madde31);
             Bolum(Madde37);
+            Bolum(Madde10);
             Bolum(() => Madde12(gecici));
             Bolum(Madde23);
             Bolum(Madde24);
@@ -1320,6 +1325,84 @@ internal static class Program
             Bul(Komutlar(pencereTipi.GetMethod("OnPickMonitorPhoto", Hepsi)!), x => x.Uye is MethodBase m
                 && m.Name == "set_Item" && m.DeclaringType is { IsGenericType: true } d
                 && d.GetGenericTypeDefinition() == typeof(Dictionary<,>)) >= 0);
+    }
+
+    // ------------------------------------------------------------------ 10. madde
+
+    /// <summary>
+    /// Takvim ve görev listesi satırlarını kurabilen bir ayarlar penceresi:
+    /// SettingsWindow'un kurucusu çalışmaz, yalnız Window'unki çalışır ki
+    /// satırların biçemleri pencerenin kaynaklarından bulunabilsin. Ekranda açılmaz.
+    /// </summary>
+    private static object KaynakPenceresi(SahteAyarKapisi kapi)
+    {
+        object pencere = AyarPenceresi(kapi);
+        typeof(System.Windows.Window).GetConstructor(Type.EmptyTypes)!.Invoke(pencere, null);
+        ((System.Windows.FrameworkElement)pencere).Resources = new System.Windows.ResourceDictionary
+        {
+            ["Satir"] = new System.Windows.Style(typeof(DockPanel)),
+            ["SatirBasligi"] = new System.Windows.Style(typeof(TextBlock)),
+            ["SatirAciklamasi"] = new System.Windows.Style(typeof(TextBlock)),
+        };
+        AlanAta(pencere, "_sourceSignatures", new Dictionary<StackPanel, string>());
+        AlanAta(pencere, "CalendarListPanel", new StackPanel());
+        AlanAta(pencere, "TaskListPanel", new StackPanel());
+        return pencere;
+    }
+
+    /// <summary>Paneldeki anahtarlar, görünüş sırasıyla.</summary>
+    private static List<CheckBox> Anahtarlar(StackPanel panel)
+        => panel.Children.OfType<DockPanel>().SelectMany(d => d.Children.OfType<CheckBox>()).ToList();
+
+    private static void Madde10()
+    {
+        Console.WriteLine("10) Bütün takvim ya da görev listesi anahtarları kapatılınca hiçbiri gösteriliyor");
+        string hicbiri = Tip("Kalender.Settings.GoogleSettings").GetField("HicbiriSecili", Hepsi)?.GetValue(null) as string ?? "(yok)";
+
+        object depo = BellekDeposu();
+        object google = Oku(Oku(depo, "Current")!, "Google")!;
+        var takvimler = (List<string>)Oku(google, "SelectedCalendarIds")!;
+        var gorevListeleri = (List<string>)Oku(google, "SelectedTaskListIds")!;
+        SahteAyarKapisi kapi = Kapi(depo);
+        var kaynaklar = new List<(string Id, string Name)> { ("a@deneme", "İş"), ("b@deneme", "Ev") };
+        string Secim() => takvimler.Count == 0 ? "(boş: hepsi)" : string.Join(", ", takvimler);
+
+        object pencere = KaynakPenceresi(kapi);
+        var takvimPaneli = (StackPanel)AlanOku(pencere, "CalendarListPanel");
+        Cagir(pencere, "BuildSourceList", takvimPaneli, kaynaklar, takvimler);
+        List<CheckBox> anahtarlar = Anahtarlar(takvimPaneli);
+        Denetle("boş seçimde (eski ayar dosyası) bütün anahtarlar açık",
+            anahtarlar.Count == 2 && anahtarlar.All(k => k.IsChecked == true));
+
+        anahtarlar[0].IsChecked = false;
+        Denetle("biri kapatılınca yalnız öbürü seçili", takvimler.SequenceEqual(new[] { "b@deneme" }), Secim());
+
+        anahtarlar[1].IsChecked = false;
+        Denetle("hepsi kapatılınca seçimde \"hiçbiri\" işareti var (boş liste \"hepsi\" sayılırdı)",
+            takvimler.SequenceEqual(new[] { hicbiri }), Secim());
+        Denetle("her değişiklikte zorlanmış yenileme istendi", kapi.ZorlanmisYenileme == 2, $"{kapi.ZorlanmisYenileme} kez");
+
+        // Pencere kapatılıp yeniden açılıyor.
+        object yeniPencere = KaynakPenceresi(kapi);
+        var yeniPanel = (StackPanel)AlanOku(yeniPencere, "CalendarListPanel");
+        Cagir(yeniPencere, "BuildSourceList", yeniPanel, kaynaklar, takvimler);
+        List<CheckBox> yeniAnahtarlar = Anahtarlar(yeniPanel);
+        Denetle("pencere yeniden açılınca anahtarlar kapalı",
+            yeniAnahtarlar.Count == 2 && yeniAnahtarlar.All(k => k.IsChecked == false));
+
+        yeniAnahtarlar[0].IsChecked = true;
+        Denetle("birini açınca işaret kalkıyor, yalnız o seçili", takvimler.SequenceEqual(new[] { "a@deneme" }), Secim());
+        yeniAnahtarlar[1].IsChecked = true;
+        Denetle("hepsi açılınca seçim yine boş (\"hepsi\")", takvimler.Count == 0, Secim());
+
+        // Tek görev listesi: anahtarı kapatınca görevler gösterilmiyor.
+        var gorevPaneli = (StackPanel)AlanOku(yeniPencere, "TaskListPanel");
+        Cagir(yeniPencere, "BuildSourceList", gorevPaneli, new List<(string Id, string Name)> { ("liste", "Görevlerim") },
+            gorevListeleri);
+        Anahtarlar(gorevPaneli)[0].IsChecked = false;
+        Denetle("tek görev listesinin anahtarı kapatılınca \"hiçbiri\"", gorevListeleri.SequenceEqual(new[] { hicbiri }),
+            string.Join(", ", gorevListeleri));
+        Denetle("takvim seçimine dokunulmadı", takvimler.Count == 0);
     }
 
     // ------------------------------------------------------------------ 31. madde
@@ -2543,6 +2626,9 @@ public class SahteAyarKapisi : DispatchProxy
     /// <summary>ApplyAppearance kaç kez çağrıldı.</summary>
     public int Uygulama { get; private set; }
 
+    /// <summary>Google'dan zorlanmış (tam) yenileme kaç kez istendi.</summary>
+    public int ZorlanmisYenileme { get; private set; }
+
     protected override object? Invoke(MethodInfo? yontem, object?[]? a)
     {
         string ad = yontem!.Name;
@@ -2560,6 +2646,14 @@ public class SahteAyarKapisi : DispatchProxy
             case "ApplyAppearance":
                 Uygulama++;
                 return null;
+
+            case "RefreshGoogleAsync":
+                if (a?[0] is true)
+                {
+                    ZorlanmisYenileme++;
+                }
+
+                return Task.CompletedTask;
 
             default:
                 if (ad.StartsWith("add_", StringComparison.Ordinal) || ad.StartsWith("remove_", StringComparison.Ordinal))

@@ -37,6 +37,17 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// <summary>Bu süre geçtiyse artımlı değil tam yenileme yapılır.</summary>
     private static readonly TimeSpan FullSyncEvery = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// Artımlı yoklamada "son yoklamadan beri değişen var mı" sorusu bu kadar
+    /// geriden soruluyor. Sınır anı bilgisayarın saatinden alınıyor, Google ise
+    /// kaydın değişme zamanını kendi saatine göre yazıyor: bilgisayarın saati
+    /// birkaç saniye ilerideyse ya da Google değişikliği sorguya geç
+    /// yansıtırsa bir yoklamanın hemen ardındaki değişiklik görülmüyor, 30
+    /// dakikalık tam yenilemeyi bekliyordu. Bedeli küçük: değişen bir takvim
+    /// birkaç yoklama boyunca yeniden alınır.
+    /// </summary>
+    private static readonly TimeSpan ArtimliPay = TimeSpan.FromMinutes(2);
+
     /// <summary>Bellekte tutulan, daha önce gösterilmiş başka ay sayısı.</summary>
     private const int GecmisSiniri = 3;
 
@@ -115,6 +126,14 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
     public void LoadCache()
     {
+        // Bağlantı yokken yerel kopya gösterilmez. Önceki sürümlerde bağlantı
+        // kesilirken süren bir eşitleme, silinen kopyayı geri yazabiliyordu;
+        // o kopya yeniden bağlanılana dek her açılışta yükleniyordu.
+        if (!IsConnected)
+        {
+            return;
+        }
+
         try
         {
             if (!File.Exists(CachePath))
@@ -231,6 +250,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
         List<ProviderTask> tazeGorevler = yeni.Tasks.Where(t => t.Due >= ilk && t.Due <= son).ToList();
 
+        // Görevler de etkinlikler gibi kimliğe göre eleniyor: eskide ortak
+        // günlerin dışında duran, yenide ortak günlere taşınmış görevin iki
+        // kopyası kalıyor, sonraki eşitleme "aynı anahtar" hatasıyla düşüyordu.
+        var tazeGorevAnahtarlari = tazeGorevler.Select(t => t.Id + "@" + t.ListId).ToHashSet(StringComparer.Ordinal);
+
         return new ProviderBundle
         {
             AccountEmail = eski.AccountEmail,
@@ -252,7 +276,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 .ThenBy(e => e.StartTime ?? TimeOnly.MinValue)
                 .ToList(),
             Tasks = eski.Tasks
-                .Where(t => t.Due < ilk || t.Due > son)
+                .Where(t => (t.Due < ilk || t.Due > son) && !tazeGorevAnahtarlari.Contains(t.Id + "@" + t.ListId))
                 .Concat(tazeGorevler)
                 .OrderBy(t => t.Due)
                 .ToList(),
@@ -278,22 +302,24 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
     public void ClearCache()
     {
+        // Dosya da kilidin içinde siliniyor: eşitleme kopyayı aynı kilidin
+        // içinde yazıyor, silmenin arasına giremiyor.
         lock (_veriKilidi)
         {
             _gecmis.Clear();
             Data = new ProviderBundle();
-        }
 
-        try
-        {
-            if (File.Exists(CachePath))
+            try
             {
-                File.Delete(CachePath);
+                if (File.Exists(CachePath))
+                {
+                    File.Delete(CachePath);
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Google önbelleği silinemedi.", ex);
+            catch (Exception ex)
+            {
+                Log.Warn("Google önbelleği silinemedi.", ex);
+            }
         }
     }
 
@@ -329,6 +355,16 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             return false;
         }
 
+        // Seçim, istek geldiği anda kopyalanıyor (ilk beklemeden önce, yani
+        // isteyenin iş parçacığında). Ayarlardaki liste canlı nesne: eşitleme
+        // sürerken kullanıcı bir anahtarı değiştirince son süzgeç başka bir
+        // seçime bakıyor, ayın bütün etkinlikleri elenebiliyordu.
+        List<string> takvimSecimi = _settings.Current.Google.SelectedCalendarIds.ToList();
+        List<string> gorevSecimi = _settings.Current.Google.SelectedTaskListIds.ToList();
+
+        // Bu arada bağlantı kesilir ya da yeniden kurulursa sonuç yazılmaz.
+        int kusak = _auth.BaglantiKusagi;
+
         // Süren bir eşitleme varsa bitmesini (ya da iptalini) bekliyoruz.
         // Önceden meşgulse hemen "değişiklik yok" dönülüyordu; bağlanma anında
         // art arda gelen iki istekten ikincisi bu yüzden atlanıyor, ilk veri
@@ -337,6 +373,11 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
         try
         {
+            if (_auth.BaglantiKusagi != kusak)
+            {
+                return false;
+            }
+
             string? token = await _auth.GetAccessTokenAsync(cancel).ConfigureAwait(false);
             if (token is null)
             {
@@ -388,13 +429,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
                 // Etiket renkleri kullanıcı tarafından değiştirilebiliyor;
                 // her tam yenilemede tazeleniyor.
-                bundle.EventLabels = await FetchEventLabelsAsync(token, bundle, cancel).ConfigureAwait(false);
+                bundle.EventLabels = await FetchEventLabelsAsync(token, bundle, takvimSecimi, cancel).ConfigureAwait(false);
             }
 
-            DateTimeOffset? updatedMin = doFull ? null : Data.LastSyncUtc;
+            DateTimeOffset? updatedMin = doFull ? null : Data.LastSyncUtc - ArtimliPay;
 
-            await FetchEventsAsync(token, bundle, from, to, updatedMin, cancel).ConfigureAwait(false);
-            await FetchTasksAsync(token, bundle, from, to, updatedMin, cancel).ConfigureAwait(false);
+            await FetchEventsAsync(token, bundle, from, to, updatedMin, takvimSecimi, cancel).ConfigureAwait(false);
+            await FetchTasksAsync(token, bundle, from, to, updatedMin, gorevSecimi, cancel).ConfigureAwait(false);
 
             // Bu arada başka bir aya geçildiyse (yoklayıcı bu işi iptal etti)
             // eski ayın verisi yenisinin üstüne yazılmasın.
@@ -402,17 +443,26 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
             lock (_veriKilidi)
             {
+                // Bu arada bağlantı kesildiyse (ya da yeniden kurulduysa) eski
+                // yetkiyle alınan veri ne ekrana ne yerel kopyaya yazılıyor.
+                // Önceden kesince silinen kopya bir saniye sonra geri geliyordu.
+                // Kopyayı silen ClearCache de bu kilidi bekliyor.
+                if (_auth.BaglantiKusagi != kusak)
+                {
+                    return false;
+                }
+
                 if (Data.RangeFrom != bundle.RangeFrom || Data.RangeTo != bundle.RangeTo)
                 {
                     Gecmise(Data);
                 }
 
                 Data = bundle;
+                SaveCache();
             }
 
             IsOnline = true;
             SonHata = null;
-            SaveCache();
 
             _auth.UpdateAccountEmail(bundle.AccountEmail);
 
@@ -537,10 +587,10 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// yani ona bakarsak ekranda Google'dakinden başka bir renk çiziyoruz.
     /// </summary>
     private async Task<Dictionary<string, string>> FetchEventLabelsAsync(string token, ProviderBundle bundle,
-        CancellationToken cancel)
+        List<string> secim, CancellationToken cancel)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        IReadOnlyList<string> wanted = SelectedCalendarIds(bundle);
+        IReadOnlyList<string> wanted = SelectedCalendarIds(bundle, secim);
 
         foreach (ProviderCalendar calendar in bundle.Calendars)
         {
@@ -633,14 +683,21 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     }
 
     private async Task FetchEventsAsync(string token, ProviderBundle bundle,
-        DateOnly from, DateOnly to, DateTimeOffset? updatedMin, CancellationToken cancel)
+        DateOnly from, DateOnly to, DateTimeOffset? updatedMin, List<string> secim, CancellationToken cancel)
     {
         // Şartname: görünen ay ± 1 gün.
         string timeMin = Rfc3339(from.AddDays(-1).ToDateTime(TimeOnly.MinValue));
         string timeMax = Rfc3339(to.AddDays(2).ToDateTime(TimeOnly.MinValue));
 
-        var byId = bundle.Events.ToDictionary(e => e.Id + "@" + e.CalendarId, e => e);
-        IReadOnlyList<string> wanted = SelectedCalendarIds(bundle);
+        // ToDictionary değil: elde aynı kaydın iki kopyası olursa eşitleme
+        // "aynı anahtar" hatasıyla düşmesin, sonuncusu kalsın.
+        var byId = new Dictionary<string, ProviderEvent>();
+        foreach (ProviderEvent e in bundle.Events)
+        {
+            byId[e.Id + "@" + e.CalendarId] = e;
+        }
+
+        IReadOnlyList<string> wanted = SelectedCalendarIds(bundle, secim);
         var seenTypes = new HashSet<string>(StringComparer.Ordinal);
 
         // Tam yenilemede etiketler az önce indi; artımlı yoklamada ise en fazla
@@ -734,7 +791,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                     {
                         labelsFresh = true;
                         Log.Debug("Tanınmayan etkinlik etiketi; etiket renkleri yeniden alınıyor.");
-                        bundle.EventLabels = await FetchEventLabelsAsync(token, bundle, cancel).ConfigureAwait(false);
+                        bundle.EventLabels = await FetchEventLabelsAsync(token, bundle, secim, cancel).ConfigureAwait(false);
                     }
 
                     ProviderEvent? converted = Convert(item, calendar, bundle.EventColors, bundle.EventLabels);
@@ -792,13 +849,20 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     }
 
     private async Task FetchTasksAsync(string token, ProviderBundle bundle,
-        DateOnly from, DateOnly to, DateTimeOffset? updatedMin, CancellationToken cancel)
+        DateOnly from, DateOnly to, DateTimeOffset? updatedMin, List<string> secim, CancellationToken cancel)
     {
         string dueMin = Rfc3339(from.ToDateTime(TimeOnly.MinValue));
         string dueMax = Rfc3339(to.AddDays(1).ToDateTime(TimeOnly.MinValue));
 
-        var byId = bundle.Tasks.ToDictionary(t => t.Id + "@" + t.ListId, t => t);
-        IReadOnlyList<string> wanted = SelectedTaskListIds(bundle);
+        // ToDictionary değil: ay belleğinden gelen pakette aynı görevin iki
+        // kopyası olursa eşitleme "aynı anahtar" hatasıyla düşmesin.
+        var byId = new Dictionary<string, ProviderTask>();
+        foreach (ProviderTask t in bundle.Tasks)
+        {
+            byId[t.Id + "@" + t.ListId] = t;
+        }
+
+        IReadOnlyList<string> wanted = SelectedTaskListIds(bundle, secim);
 
         foreach (ProviderTaskList list in bundle.TaskLists)
         {
@@ -890,17 +954,16 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
     // ------------------------------------------------------------- yardımcı
 
-    private IReadOnlyList<string> SelectedCalendarIds(ProviderBundle bundle)
-    {
-        List<string> chosen = _settings.Current.Google.SelectedCalendarIds;
-        return chosen.Count == 0 ? bundle.Calendars.Select(c => c.Id).ToList() : chosen;
-    }
+    /// <summary>
+    /// Gösterilecek takvimler. Boş seçim "hepsi" demek; yalnız
+    /// <see cref="GoogleSettings.HicbiriSecili"/> içeren seçim hiçbir takvimle
+    /// eşleşmez, yani "hiçbiri".
+    /// </summary>
+    private static IReadOnlyList<string> SelectedCalendarIds(ProviderBundle bundle, List<string> chosen)
+        => chosen.Count == 0 ? bundle.Calendars.Select(c => c.Id).ToList() : chosen;
 
-    private IReadOnlyList<string> SelectedTaskListIds(ProviderBundle bundle)
-    {
-        List<string> chosen = _settings.Current.Google.SelectedTaskListIds;
-        return chosen.Count == 0 ? bundle.TaskLists.Select(l => l.Id).ToList() : chosen;
-    }
+    private static IReadOnlyList<string> SelectedTaskListIds(ProviderBundle bundle, List<string> chosen)
+        => chosen.Count == 0 ? bundle.TaskLists.Select(l => l.Id).ToList() : chosen;
 
     private static ProviderEvent? Convert(EventEntry item, ProviderCalendar calendar,
         IReadOnlyDictionary<string, string> colors, IReadOnlyDictionary<string, string> labels)
@@ -957,6 +1020,15 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         DateTimeOffset start = item.Start.DateTime.Value.ToLocalTime();
         DateTimeOffset end = (item.End?.DateTime ?? item.Start.DateTime.Value).ToLocalTime();
 
+        // Google'da bitiş anı dışlayıcı: 22:00–24:00 etkinliğin bitişi ertesi gün
+        // 00:00, ama etkinlik o gün sürmüyor. Bitiş tam gece yarısıysa son gün bir
+        // önceki gün; yoksa ertesi güne de saatsiz bir kayıt düşüyordu.
+        DateOnly lastDay = DateOnly.FromDateTime(end.DateTime);
+        if (end > start && end.TimeOfDay == TimeSpan.Zero)
+        {
+            lastDay = lastDay.AddDays(-1);
+        }
+
         return new ProviderEvent
         {
             Id = item.Id!,
@@ -965,7 +1037,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             AllDay = false,
             StartDate = DateOnly.FromDateTime(start.DateTime),
             StartTime = TimeOnly.FromDateTime(start.DateTime),
-            EndDate = DateOnly.FromDateTime(end.DateTime),
+            EndDate = lastDay,
             ColorHex = color,
         };
     }

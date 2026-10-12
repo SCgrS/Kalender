@@ -1004,6 +1004,8 @@ public partial class SettingsWindow : Window
     /// Takvim ya da görev listesi satırlarını kurar: solda ad, sağda anahtar,
     /// aralarında ince çizgi. Seçim listesi boşsa "hepsi" anlamına gelir;
     /// kullanıcı ilk kez bir anahtarı kapatınca liste gerçek seçimle doldurulur.
+    /// Hepsi kapatılınca listede yalnız <see cref="GoogleSettings.HicbiriSecili"/>
+    /// kalır; o hiçbir kaynakla eşleşmediği için bütün anahtarlar kapalı kurulur.
     ///
     /// Her yoklamadan sonra çağrılır; kaynaklar değişmediyse satırlara
     /// dokunulmaz, yoksa kullanıcının tam tıklayacağı anahtar altından kayardı.
@@ -1101,6 +1103,12 @@ public partial class SettingsWindow : Window
         if (target.Count == boxes.Count)
         {
             target.Clear();
+        }
+        else if (target.Count == 0)
+        {
+            // Hiçbiri işaretli değil. Boş liste "hepsi" sayılacağı için ayrı bir
+            // işaret konuyor; pencere yeniden açılınca anahtarlar da kapalı görünür.
+            target.Add(GoogleSettings.HicbiriSecili);
         }
 
         _host.ApplyAppearance();

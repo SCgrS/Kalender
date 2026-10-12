@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -15,6 +16,20 @@ using System.Text;
 //     ay dönünce kırmızı göründü).
 //  4. Eşitleme 5 dakika boyunca hiç tutmazsa bu, varsayılan günlük düzeyinde
 //     (yalnız hatalar) de yazılır; düzelince o da yazılır.
+//
+// Genel kod incelemesinin (2026-10-12) Google maddeleri (numaralar kalender.md'den):
+//   9. Tam gece yarısında biten saatli etkinlik ertesi güne düşmez.
+//  10. Bütün takvimler kapatılınca ("hiçbiri" işareti) hiçbir etkinlik alınmaz.
+//  11. Seçim eşitlemenin başında kopyalanır; zorlanmış istek süren zorlanmış
+//      işe katılmaz, onu iptal edip yeniden başlar.
+//  14. Bağlantı keserken süren eşitleme yerel kopyayı geri yazmaz; yenilenen
+//      anahtar kesilen bağlantıya yazılmaz; bağlantı yokken kopya yüklenmez.
+//  15. Onaydan sonraki zaman aşımı "onay gelmedi" değil, "Google yanıt vermedi"
+//      diye bildirilir (tarayıcı açılmaz, onayı sınama verir).
+//  16. "Takvimde aç" adresine bağlı hesabın e-postası (authuser) eklenir.
+//  17. Ay belleği birleştirmesinde görev kimliğe göre elenir; elde aynı kaydın
+//      iki kopyası olsa da eşitleme düşmez.
+//  38. Artımlı yoklamanın sınır anı son yoklamadan 2 dakika geriden sorulur.
 //
 // Google yerine bu programın içindeki sahte bir HTTP işleyicisi yanıt verir;
 // ağa çıkılmaz. Uygulamanın klasörü (Paths.RootFolder) %TEMP% altında geçici
@@ -98,6 +113,18 @@ internal static class Program
         public string EtkinlikEtiketi = "GRI";
         private int _sira;
 
+        /// <summary>Yalnız anahtar adresinin (oauth2) gecikmesi.</summary>
+        public TimeSpan TokenGecikmesi;
+
+        /// <summary>Anahtar yanıtında yeni bir yenileme anahtarı da verilsin mi?</summary>
+        public bool YenilemeAnahtariVer;
+
+        /// <summary>Verilirse tarih aralıklı etkinlik listesi isteklerine bu yanıt döner.</summary>
+        public string? EtkinlikYaniti;
+
+        /// <summary>Gelen isteklerin adresleri (anahtar adresi dışında).</summary>
+        public readonly List<string> Adresler = new();
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage istek, CancellationToken iptal)
         {
             if (Gecikme > TimeSpan.Zero)
@@ -109,6 +136,11 @@ internal static class Program
 
             if (url.StartsWith("https://oauth2.googleapis.com/token", StringComparison.Ordinal))
             {
+                if (TokenGecikmesi > TimeSpan.Zero)
+                {
+                    await Task.Delay(TokenGecikmesi, iptal);
+                }
+
                 Interlocked.Increment(ref TokenIstegi);
                 string yeni = "YENI" + Interlocked.Increment(ref _sira);
                 if (!HepReddet)
@@ -119,7 +151,14 @@ internal static class Program
                     }
                 }
 
-                return Json(200, $$"""{"access_token":"{{yeni}}","expires_in":3599}""");
+                return Json(200, YenilemeAnahtariVer
+                    ? $$"""{"access_token":"{{yeni}}","refresh_token":"yeni-yenileme","expires_in":3599}"""
+                    : $$"""{"access_token":"{{yeni}}","expires_in":3599}""");
+            }
+
+            lock (Adresler)
+            {
+                Adresler.Add(url);
             }
 
             Interlocked.Increment(ref Istek);
@@ -156,6 +195,11 @@ internal static class Program
                 if (url.Contains("updatedMin="))
                 {
                     return Json(200, """{"items":[]}""");
+                }
+
+                if (EtkinlikYaniti is not null)
+                {
+                    return Json(200, EtkinlikYaniti);
                 }
 
                 return Json(200, $$$"""{"items":[{"id":"e30","summary":"Dava","status":"confirmed","colorId":"1","eventLabelId":"{{{EtkinlikEtiketi}}}","start":{"date":"2026-09-30"},"end":{"date":"2026-10-01"}}]}""");
@@ -339,6 +383,20 @@ internal static class Program
             Birlestirme();
             GecmistenGetir();
             GunlugeYazma(gecici);
+
+            // Genel kod incelemesi (2026-10-12), Google eşitleme maddeleri.
+            await Bolum(Madde9);
+            await Bolum(Madde10);
+            await Bolum(Madde11);
+            await Bolum(Madde14);
+            await Bolum(Madde15);
+            await Bolum(() =>
+            {
+                Madde16();
+                return Task.CompletedTask;
+            });
+            await Bolum(Madde17);
+            await Bolum(Madde38);
         }
         finally
         {
@@ -641,5 +699,463 @@ internal static class Program
         int sifir = kaynak.IndexOf("_ilkHataUtc = null;", basla, StringComparison.Ordinal);
         int bitis = kaynak.IndexOf("public void Stop()", StringComparison.Ordinal);
         Denetle("Start() sayacı sıfırlıyor", basla > 0 && sifir > basla && sifir < bitis);
+    }
+
+    // ------------------------------------------- genel kod incelemesi (2026-10-12)
+
+    /// <summary>Bir bölümü çalıştırır; beklenmeyen hata öbür bölümleri durdurmaz.</summary>
+    private static async Task Bolum(Func<Task> bolum)
+    {
+        try
+        {
+            await bolum();
+        }
+        catch (Exception ex)
+        {
+            _hata++;
+            Console.WriteLine("   BEKLENMEYEN HATA: " + (ex.InnerException ?? ex).Message);
+        }
+    }
+
+    /// <summary>Seçimdeki "hiçbiri" işareti (düzeltmeden önceki kodla sınanırken de aynı değer).</summary>
+    private static string Hicbiri
+        => Tip("Kalender.Settings.GoogleSettings").GetField("HicbiriSecili", Hepsi)?.GetValue(null) as string ?? "(yok)";
+
+    /// <summary>Yetkinin bağlantı kuşağı; bu özellik yoksa (düzeltmeden önceki kod) -1.</summary>
+    private static int Kusak(object yetki) => yetki.GetType().GetProperty("BaglantiKusagi", Hepsi)?.GetValue(yetki) as int? ?? -1;
+
+    /// <summary>Ayarlardaki canlı takvim seçimi listesi.</summary>
+    private static List<string> TakvimSecimi
+        => (List<string>)Oku(Oku(Oku(_ayarlar, "Current")!, "Google")!, "SelectedCalendarIds")!;
+
+    private static string Klasor(string ad) => (string)Tip("Kalender.Core.Paths").GetProperty(ad, Hepsi)!.GetValue(null)!;
+
+    private static IList Etkinlikler(object saglayici) => (IList)Oku(Oku(saglayici, "Data")!, "Events")!;
+
+    private static object? EtkinlikBul(object saglayici, string id)
+        => Etkinlikler(saglayici).Cast<object>().FirstOrDefault(e => (string)Oku(e, "Id")! == id);
+
+    /// <summary>Google'ın tanıdığı geçerli bir anahtarla kurulmuş sağlayıcı.</summary>
+    private static (object Yetki, object Saglayici, SahteGoogle Google) Bagli()
+    {
+        var kurulan = Kur();
+        EskiAnahtarKoy(kurulan.Yetki, "GECERLI");
+        kurulan.Google.Gecerli.Add("GECERLI");
+        return kurulan;
+    }
+
+    /// <summary>Ekim 2026'yı gösteren takvim içeriği (tatilsiz).</summary>
+    private static object VeriHizmeti(object saglayici)
+    {
+        object tatiller = Activator.CreateInstance(Tip("Kalender.Calendar.Holidays.HolidayService"))!;
+        object veri = Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataService"), tatiller, saglayici, _ayarlar)!;
+        Cagir(veri, "SetViewMonth", new DateOnly(2026, 10, 1));
+        return veri;
+    }
+
+    /// <summary>Takvim içeriğinde o günün kayıtlarının başlıkları ve saatleri.</summary>
+    private static List<(string Baslik, TimeOnly? Saat)> GunKayitlari(object veri, DateOnly gun)
+    {
+        object? icerik = Cagir(Oku(veri, "Current")!, "For", gun);
+        return icerik is null
+            ? new List<(string, TimeOnly?)>()
+            : ((IEnumerable)Oku(icerik, "Entries")!).Cast<object>()
+                .Select(k => ((string)Oku(k, "Title")!, (TimeOnly?)Oku(k, "Start"))).ToList();
+    }
+
+    /// <summary>Yerel saatte bir an, Google'ın yazdığı biçimde (ör. 2026-10-10T22:00:00+03:00).</summary>
+    private static string Yerel(DateTime an)
+        => new DateTimeOffset(an, TimeZoneInfo.Local.GetUtcOffset(an)).ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+
+    /// <summary>Yerel saatteki anın UTC yazılışı (ör. 2026-10-16T21:00:00Z).</summary>
+    private static string Utc(DateTime an)
+        => new DateTimeOffset(an, TimeZoneInfo.Local.GetUtcOffset(an)).UtcDateTime
+            .ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    private static string Saatli(string id, string bas, string son)
+        => $$$"""{"id":"{{{id}}}","summary":"{{{id}}}","status":"confirmed","start":{"dateTime":"{{{bas}}}"},"end":{"dateTime":"{{{son}}}"}}""";
+
+    // 9 -------------------------------------------------------------------------
+
+    private static async Task Madde9()
+    {
+        Console.WriteLine();
+        Console.WriteLine("9) Tam gece yarısında biten saatli etkinlik ertesi güne düşmüyor");
+
+        var (_, saglayici, google) = Bagli();
+        google.EtkinlikYaniti = "{\"items\":[" + string.Join(",",
+            Saatli("yemek", Yerel(new DateTime(2026, 10, 10, 22, 0, 0)), Yerel(new DateTime(2026, 10, 11, 0, 0, 0))),
+            Saatli("tasan", Yerel(new DateTime(2026, 10, 10, 22, 0, 0)), Yerel(new DateTime(2026, 10, 11, 1, 0, 0))),
+            Saatli("tamgun", Yerel(new DateTime(2026, 10, 12, 0, 0, 0)), Yerel(new DateTime(2026, 10, 13, 0, 0, 0))),
+            Saatli("anlik", Yerel(new DateTime(2026, 10, 14, 0, 0, 0)), Yerel(new DateTime(2026, 10, 14, 0, 0, 0))),
+            Saatli("utc", Utc(new DateTime(2026, 10, 16, 22, 0, 0)), Utc(new DateTime(2026, 10, 17, 0, 0, 0)))) + "]}";
+
+        bool sonuc = await Esitle(saglayici);
+        Denetle("eşitleme tuttu", sonuc, (string?)Oku(saglayici, "SonHata") ?? "hata yok");
+
+        string Gunler(string id)
+        {
+            object? e = EtkinlikBul(saglayici, id);
+            return e is null ? "yok" : $"{(DateOnly)Oku(e, "StartDate")!:dd.MM}-{(DateOnly)Oku(e, "EndDate")!:dd.MM}";
+        }
+
+        Denetle("22:00–00:00 etkinlik yalnız 10 Ekim'de", Gunler("yemek") == "10.10-10.10", Gunler("yemek"));
+        Denetle("gece yarısını geçen (01:00'de biten) etkinlik ertesi güne de düşüyor", Gunler("tasan") == "10.10-11.10", Gunler("tasan"));
+        Denetle("00:00–00:00 (24 saat) etkinlik tek gün", Gunler("tamgun") == "12.10-12.10", Gunler("tamgun"));
+        Denetle("süresiz 00:00 etkinliği kendi gününde", Gunler("anlik") == "14.10-14.10", Gunler("anlik"));
+        Denetle("UTC yazılmış, yerel gece yarısında biten etkinlik de tek gün", Gunler("utc") == "16.10-16.10", Gunler("utc"));
+
+        object veri = VeriHizmeti(saglayici);
+        List<(string Baslik, TimeOnly? Saat)> on = GunKayitlari(veri, new DateOnly(2026, 10, 10));
+        List<(string Baslik, TimeOnly? Saat)> onbir = GunKayitlari(veri, new DateOnly(2026, 10, 11));
+        Denetle("takvimde 10 Ekim'de saatiyle görünüyor", on.Contains(("yemek", new TimeOnly(22, 0))));
+        Denetle("11 Ekim'de \"Tüm gün\" kaydı ve noktacığı yok", !onbir.Any(k => k.Baslik == "yemek"),
+            string.Join(", ", onbir.Select(k => k.Baslik)));
+        Denetle("01:00'de biten etkinlik 11 Ekim'de duruyor", onbir.Any(k => k.Baslik == "tasan"));
+        Cagir(saglayici, "ClearCache");
+    }
+
+    // 10 ------------------------------------------------------------------------
+
+    private static async Task Madde10()
+    {
+        Console.WriteLine();
+        Console.WriteLine("10) Bütün takvimler kapatılınca hiçbir etkinlik alınmıyor");
+
+        var (_, saglayici, google) = Bagli();
+        try
+        {
+            TakvimSecimi.Clear();
+            TakvimSecimi.Add(Hicbiri);
+            bool sonuc = await Esitle(saglayici);
+
+            int liste;
+            int etiket;
+            lock (google.Adresler)
+            {
+                liste = google.Adresler.Count(a => a.Contains("/events?timeMin=", StringComparison.Ordinal));
+                etiket = google.Adresler.Count(a => a.Contains("labelProperties", StringComparison.Ordinal));
+            }
+
+            Denetle("eşitleme tuttu, hiç etkinlik yok", sonuc && Etkinlikler(saglayici).Count == 0,
+                $"{Etkinlikler(saglayici).Count} etkinlik");
+            Denetle("takvimin etkinlikleri ve etiketleri hiç istenmedi", liste == 0 && etiket == 0,
+                $"{liste} etkinlik, {etiket} etiket isteği");
+            Denetle("takvim listesi yine alındı (ayarlarda gösterilsin)",
+                ((IList)Oku(Oku(saglayici, "Data")!, "Calendars")!).Count == 1);
+
+            TakvimSecimi.Clear();
+            bool hepsi = await Esitle(saglayici);
+            Denetle("boş seçim (eski ayar dosyası) yine \"hepsi\" demek", hepsi && Etkinlikler(saglayici).Count == 1);
+        }
+        finally
+        {
+            TakvimSecimi.Clear();
+            Cagir(saglayici, "ClearCache");
+        }
+    }
+
+    // 11 ------------------------------------------------------------------------
+
+    private static async Task Madde11()
+    {
+        Console.WriteLine();
+        Console.WriteLine("11) Seçim eşitlemenin başında kopyalanıyor; zorlanmış istek süren zorlanmış işe katılmıyor");
+
+        try
+        {
+            // Liste eşitleme sürerken değişiyor, yeni istek gelmiyor: eşitleme
+            // başladığı andaki seçimle bitiyor (önceden son süzgeç canlı listeye bakıyordu).
+            var (_, saglayici, google) = Bagli();
+            google.Gecikme = TimeSpan.FromMilliseconds(150);
+            TakvimSecimi.Clear();
+            Task<bool> gorev = Esitle(saglayici);
+            await Task.Delay(250);
+            TakvimSecimi.Add(Hicbiri);
+            bool sonuc = await gorev;
+            Denetle("eşitleme başladığı andaki seçimle bitti", sonuc && Etkinlikler(saglayici).Count == 1,
+                $"{Etkinlikler(saglayici).Count} etkinlik");
+            TakvimSecimi.Clear();
+            Cagir(saglayici, "ClearCache");
+
+            // Yoklayıcı üzerinden, ayarlar penceresindeki gibi: her anahtar değişikliği zorlanmış yenileme ister.
+            var (_, saglayici2, google2) = Bagli();
+            google2.Gecikme = TimeSpan.FromMilliseconds(150);
+            object veri = VeriHizmeti(saglayici2);
+            object yoklayici = Activator.CreateInstance(Tip("Kalender.Google.GooglePoller"), saglayici2, veri, _ayarlar)!;
+            Task Yenile(bool zorla) => (Task)Cagir(yoklayici, "RefreshAsync", zorla)!;
+
+            Task ilk = Yenile(true);
+            await Task.Delay(250);
+            TakvimSecimi.Add(Hicbiri);
+            Task ikinci = Yenile(true);
+            Task ucuncu = Yenile(false);
+            Denetle("zorlanmış istek süren zorlanmış işe katılmadı, yeni iş başladı", !ReferenceEquals(ilk, ikinci));
+            Denetle("zorlanmamış istek süren işe katıldı", ReferenceEquals(ikinci, ucuncu));
+            await Task.WhenAll(ilk, ikinci);
+            Denetle("son seçim uygulandı (hiçbiri): etkinlik yok", Etkinlikler(saglayici2).Count == 0,
+                $"{Etkinlikler(saglayici2).Count} etkinlik");
+
+            // Yanlışlıkla kapatılıp 1–2 saniye içinde yeniden açılan takvim.
+            TakvimSecimi.Clear();
+            TakvimSecimi.Add(Hicbiri);
+            Task kapat = Yenile(true);
+            await Task.Delay(250);
+            TakvimSecimi.Clear();
+            Task ac = Yenile(true);
+            await Task.WhenAll(kapat, ac);
+            Denetle("kapatılıp hemen açılan takvimin etkinlikleri geldi", Etkinlikler(saglayici2).Count == 1,
+                $"{Etkinlikler(saglayici2).Count} etkinlik");
+            Denetle("ve takvimde görünüyor", GunKayitlari(veri, new DateOnly(2026, 9, 30)).Any(k => k.Baslik == "Dava"));
+            ((IDisposable)yoklayici).Dispose();
+            Cagir(saglayici2, "ClearCache");
+        }
+        finally
+        {
+            TakvimSecimi.Clear();
+        }
+    }
+
+    // 14 ------------------------------------------------------------------------
+
+    private static async Task Madde14()
+    {
+        Console.WriteLine();
+        Console.WriteLine("14) Bağlantı keserken süren eşitleme yerel kopyayı geri yazmıyor");
+
+        string onbellek = Path.Combine(Klasor("CacheFolder"), "google.json");
+        string yetkiDosyasi = Path.Combine(Klasor("RootFolder"), "google-token.dat");
+
+        var (yetki, saglayici, google) = Bagli();
+        Cagir(saglayici, "ClearCache");
+        google.Gecikme = TimeSpan.FromMilliseconds(150);
+        int kusak = Kusak(yetki);
+        Task<bool> gorev = Esitle(saglayici);
+        await Task.Delay(400);
+
+        // "Bağlantıyı kes": AppHost önce yetkiyi siler, sonra yoklamayı durdurup kopyayı siler.
+        Cagir(yetki, "SignOut");
+        Cagir(saglayici, "ClearCache");
+        bool sonuc = await gorev;
+        Denetle("bağlantı kesilince kuşak arttı", kusak >= 0 && Kusak(yetki) == kusak + 1);
+        Denetle("süren eşitlemenin sonucu atıldı", !sonuc);
+        Denetle("ekrana yazılmadı (bellekteki veri boş)", Etkinlikler(saglayici).Count == 0
+            && ((IList)Oku(Oku(saglayici, "Data")!, "Calendars")!).Count == 0, $"{Etkinlikler(saglayici).Count} etkinlik");
+        Denetle("yerel kopya silinmiş kaldı", !File.Exists(onbellek));
+
+        // Erişim anahtarı yenilenirken bağlantı kesiliyor.
+        foreach (bool yenilemeAnahtari in new[] { false, true })
+        {
+            var (yetki2, _, google2) = Kur();
+            google2.TokenGecikmesi = TimeSpan.FromMilliseconds(300);
+            google2.YenilemeAnahtariVer = yenilemeAnahtari;
+            var anahtar = (Task<string?>)Cagir(yetki2, "GetAccessTokenAsync", CancellationToken.None)!;
+            await Task.Delay(100);
+            Cagir(yetki2, "SignOut");
+            string? alinan = await anahtar;
+            string ek = yenilemeAnahtari ? " (Google yeni yenileme anahtarı da verdi)" : string.Empty;
+            Denetle("yenilenen anahtar kesilen bağlantıya verilmedi" + ek,
+                alinan is null && Oku(yetki2, "_accessToken") is null, alinan ?? (string?)Oku(yetki2, "_accessToken") ?? "yok");
+            Denetle("yetki dosyası yeniden yazılmadı" + ek, !File.Exists(yetkiDosyasi));
+        }
+
+        // Açılış: bağlıyken kopya yükleniyor, bağlı değilken diskte kalmış kopya yüklenmiyor.
+        var (_, saglayici3, _) = Bagli();
+        bool yazildi = await Esitle(saglayici3);
+        Denetle("bağlıyken yerel kopya yazıldı", yazildi && File.Exists(onbellek));
+
+        var (_, saglayici4, _) = Kur();
+        Cagir(saglayici4, "LoadCache");
+        Denetle("bağlıyken açılışta kopya yükleniyor", Etkinlikler(saglayici4).Count == 1);
+
+        var (yetki5, saglayici5, _) = Kur();
+        Yaz(yetki5, "_token", null);
+        Cagir(saglayici5, "LoadCache");
+        Denetle("bağlı değilken diskte kalmış kopya yüklenmiyor", Etkinlikler(saglayici5).Count == 0);
+        Cagir(saglayici3, "ClearCache");
+    }
+
+    // 15 ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Tarayıcının yerine geçer: onay adresindeki dönüş adresine ve durum
+    /// değerine bakıp yerel dinleyiciye "onaylandı" yanıtını gönderir.
+    /// </summary>
+    private static async Task OnayVer(string adres)
+    {
+        var sorgu = System.Web.HttpUtility.ParseQueryString(new Uri(adres).Query);
+        using var istemci = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(10) };
+        try
+        {
+            await istemci.GetStringAsync($"{sorgu["redirect_uri"]}/?code=deneme-kodu&state={Uri.EscapeDataString(sorgu["state"]!)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("   (onay isteği gönderilemedi: " + ex.Message + ")");
+        }
+    }
+
+    private static async Task<(bool Basari, string Ileti)> Baglan(object yetki, CancellationToken iptal = default)
+    {
+        var gorev = (Task)Cagir(yetki, "SignInAsync", iptal)!;
+        await gorev;
+        object sonuc = gorev.GetType().GetProperty("Result")!.GetValue(gorev)!;
+        return ((bool)Oku(sonuc, "Success")!, (string)Oku(sonuc, "Message")!);
+    }
+
+    private static async Task Madde15()
+    {
+        Console.WriteLine();
+        Console.WriteLine("15) Onaydan sonraki zaman aşımı \"onay gelmedi\" diye bildirilmiyor (tarayıcı açılmıyor)");
+
+        // Tarayıcıyı açan kanca yoksa bağlanma hiç denenmez: gerçek tarayıcı açılırdı.
+        PropertyInfo? acici = Tip("Kalender.Google.GoogleAuthenticator").GetProperty("TarayiciAcici", Hepsi);
+        Denetle("tarayıcıyı açan adım sınamada değiştirilebiliyor", acici is not null);
+        if (acici is null)
+        {
+            return;
+        }
+
+        object asil = acici.GetValue(null)!;
+        int acilan = 0;
+        acici.SetValue(null, new Action<string>(adres =>
+        {
+            Interlocked.Increment(ref acilan);
+            _ = Task.Run(() => OnayVer(adres));
+        }));
+
+        try
+        {
+            // Google'ın anahtar adresi 3 sn'de yanıt veriyor, istemcinin sabrı 1 sn.
+            var (yetki, _, google) = Kur();
+            Yaz(yetki, "_http", new HttpClient(google) { Timeout = TimeSpan.FromSeconds(1) });
+            google.TokenGecikmesi = TimeSpan.FromSeconds(3);
+            var (basari, ileti) = await Baglan(yetki);
+            Denetle("onay geldi, alışveriş zaman aşımına düştü: \"Google yanıt vermedi\" deniyor",
+                !basari && ileti.Contains("Google yanıt vermedi", StringComparison.Ordinal)
+                && !ileti.Contains("onay gelmedi", StringComparison.Ordinal), ileti);
+
+            // Kullanıcı alışveriş sürerken vazgeçiyor.
+            var (yetki2, _, google2) = Kur();
+            google2.TokenGecikmesi = TimeSpan.FromSeconds(3);
+            using var vazgec = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+            var (basari2, ileti2) = await Baglan(yetki2, vazgec.Token);
+            Denetle("vazgeçince \"vazgeçildi\" deniyor", !basari2 && ileti2 == "Bağlanmaktan vazgeçildi.", ileti2);
+
+            // Olağan bağlanma: kuşak artıyor (eski bağlantının süren eşitlemesi yazılmasın).
+            var (yetki3, _, google3) = Kur();
+            google3.YenilemeAnahtariVer = true;
+            int kusak = Kusak(yetki3);
+            var (basari3, ileti3) = await Baglan(yetki3);
+            Denetle("olağan bağlanma tutuyor, kuşak artıyor", basari3 && Kusak(yetki3) == kusak + 1, ileti3);
+            Cagir(yetki3, "SignOut");
+
+            Denetle("gerçek tarayıcı açılmadı, onayı sınama verdi", acilan == 3, $"{acilan} kez");
+        }
+        finally
+        {
+            acici.SetValue(null, asil);
+        }
+    }
+
+    // 16 ------------------------------------------------------------------------
+
+    private static void Madde16()
+    {
+        Console.WriteLine();
+        Console.WriteLine("16) \"Takvimde aç\" bağlı hesabın takvimini açıyor");
+
+        Type link = Tip("Kalender.Google.GoogleLinks");
+        string gun = (string)Cagir(link, "Day", new DateOnly(2026, 10, 10))!;
+        string ay = (string)Cagir(link, "Month", new DateOnly(2026, 10, 1))!;
+        string Hesapli(string adres, string? hesap) => (string)Cagir(link, "HesapIle", adres, hesap)!;
+
+        Denetle("gün adresine hesap ekleniyor, yol bozulmuyor",
+            Hesapli(gun, "ad.soyad+is@gmail.com")
+                == "https://calendar.google.com/calendar/u/0/r/day/2026/10/10?authuser=ad.soyad%2Bis%40gmail.com",
+            Hesapli(gun, "ad.soyad+is@gmail.com"));
+        Denetle("ay adresine de", Hesapli(ay, "hesap@deneme") == ay + "?authuser=hesap%40deneme");
+        Denetle("hesap bilinmiyorsa adres eskisi gibi", Hesapli(gun, null) == gun && Hesapli(gun, " ") == gun);
+
+        string kaynak = File.ReadAllText(Path.Combine(DepoKoku(), "src", "Kalender.App", "Core", "AppHost.cs"));
+        int menu = kaynak.IndexOf("case MenuGoToDay:", StringComparison.Ordinal);
+        int hesapIle = kaynak.IndexOf("GoogleLinks.HesapIle(", Math.Max(0, menu), StringComparison.Ordinal);
+        int eposta = kaynak.IndexOf("GoogleAccountEmail", Math.Max(0, hesapIle), StringComparison.Ordinal);
+        int son = kaynak.IndexOf("break;", Math.Max(0, menu), StringComparison.Ordinal);
+        Denetle("sağ tık menüsü adresi bağlı hesabın e-postasıyla açıyor",
+            menu > 0 && hesapIle > menu && eposta > hesapIle && eposta < son);
+    }
+
+    // 17 ------------------------------------------------------------------------
+
+    private static async Task Madde17()
+    {
+        Console.WriteLine();
+        Console.WriteLine("17) Ay belleğinde tarihi değişen görev iki kez kalmıyor, eşitleme düşmüyor");
+
+        var dun1148 = new DateTimeOffset(2026, 9, 30, 8, 48, 34, TimeSpan.Zero);
+        var dun2223 = new DateTimeOffset(2026, 9, 30, 19, 23, 24, TimeSpan.Zero);
+
+        // Kasım (26 Ekim–6 Aralık) önce gösterildi: "itiraz" 20 Kasım'da.
+        object kasim = Paket(new DateOnly(2026, 10, 26), new DateOnly(2026, 12, 6), dun1148, "hesap@deneme",
+            Array.Empty<object>(),
+            new[] { Gorev("itiraz", new DateOnly(2026, 11, 20), false), Gorev("kasim5", new DateOnly(2026, 12, 5), false) });
+
+        // Ekim sonra tazelendi: görev telefondan 2 Kasım'a (Ekim ızgarasında) alınmış.
+        object ekim = Paket(new DateOnly(2026, 9, 28), new DateOnly(2026, 11, 8), dun2223, "hesap@deneme",
+            Array.Empty<object>(), new[] { Gorev("itiraz", new DateOnly(2026, 11, 2), false) });
+
+        object sonuc = Cagir(Tip("Kalender.Google.GoogleCalendarProvider"), "TazesiyleBirlestir", kasim, ekim)!;
+        List<object> gorevler = ((IList)Oku(sonuc, "Tasks")!).Cast<object>().ToList();
+        List<DateOnly> itiraz = gorevler.Where(g => (string)Oku(g, "Id")! == "itiraz").Select(g => (DateOnly)Oku(g, "Due")!).ToList();
+        Denetle("taşınan görev bir kez, yeni tarihinde", itiraz.Count == 1 && itiraz[0] == new DateOnly(2026, 11, 2),
+            string.Join(", ", itiraz.Select(d => d.ToString("dd.MM", CultureInfo.InvariantCulture))));
+        Denetle("yalnız Kasım'a ait görev korunuyor", gorevler.Any(g => (string)Oku(g, "Id")! == "kasim5"));
+
+        // Elde aynı kaydın iki kopyası varken artımlı eşitleme düşmüyor.
+        var (_, saglayici, _) = Bagli();
+        object cift = Paket(new DateOnly(2026, 9, 28), new DateOnly(2026, 11, 8), DateTimeOffset.UtcNow.AddMinutes(-1),
+            "takvim@deneme",
+            new[]
+            {
+                Etkinlik("e1", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 1), "#7c7c7c"),
+                Etkinlik("e1", new DateOnly(2026, 10, 2), new DateOnly(2026, 10, 2), "#7c7c7c"),
+            },
+            new[] { Gorev("g1", new DateOnly(2026, 10, 1), false), Gorev("g1", new DateOnly(2026, 10, 3), false) });
+        Yaz(saglayici, "Data", cift);
+        bool tuttu = await Esitle(saglayici, tam: false);
+        Denetle("aynı anahtarlı iki kopya artımlı eşitlemeyi düşürmüyor", tuttu && Oku(saglayici, "SonHata") is null,
+            (string?)Oku(saglayici, "SonHata") ?? "hata yok");
+        Denetle("etkinliğin tek kopyası kaldı", Etkinlikler(saglayici).Count == 1, $"{Etkinlikler(saglayici).Count} kayıt");
+        Cagir(saglayici, "ClearCache");
+    }
+
+    // 38 ------------------------------------------------------------------------
+
+    private static async Task Madde38()
+    {
+        Console.WriteLine();
+        Console.WriteLine("38) Artımlı yoklama son yoklamadan 2 dakika geriden soruyor");
+
+        var (_, saglayici, google) = Bagli();
+        DateTimeOffset son = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60);
+        Yaz(saglayici, "Data", Paket(new DateOnly(2026, 9, 28), new DateOnly(2026, 11, 8), son, "takvim@deneme",
+            new[] { Etkinlik("e1", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 1), "#7c7c7c") }));
+
+        bool tuttu = await Esitle(saglayici, tam: false);
+        List<string> sorulan;
+        lock (google.Adresler)
+        {
+            sorulan = google.Adresler.Where(a => a.Contains("updatedMin=", StringComparison.Ordinal))
+                .Select(Uri.UnescapeDataString).ToList();
+        }
+
+        string beklenen = "updatedMin=" + son.AddMinutes(-2).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+        Denetle("artımlı yoklama yapıldı", tuttu && sorulan.Count > 0, $"{sorulan.Count} soru");
+        Denetle("sınır anı son yoklamadan 2 dakika önce", sorulan.Count > 0 && sorulan.All(a => a.Contains(beklenen, StringComparison.Ordinal)),
+            sorulan.FirstOrDefault() is string ilk ? ilk[ilk.IndexOf("updatedMin=", StringComparison.Ordinal)..].Split('&')[0] : "yok");
+        Denetle("sonraki yoklamanın sınırı yine bu eşitlemenin başladığı an (pay yalnız soruda)",
+            (DateTimeOffset?)Oku(Oku(saglayici, "Data")!, "LastSyncUtc") > son.AddSeconds(30));
+        Cagir(saglayici, "ClearCache");
     }
 }
