@@ -11,8 +11,20 @@ namespace Kalender.Core;
 /// </summary>
 internal static class StartupManager
 {
-    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "Kalender";
+
+    /// <summary>Açılış kaydının anahtarı. Sınamada geçici bir anahtara çevrilebilsin diye sabit değil.</summary>
+    internal static string RunKey { get; set; } = @"Software\Microsoft\Windows\CurrentVersion\Run";
+
+    /// <summary>
+    /// Windows'un "Başlangıç uygulamaları" listesi (Görev Yöneticisi, Ayarlar)
+    /// açık/kapalı durumunu buraya yazar. Run kaydı silinip yeniden yazılsa da
+    /// bu değer yerinde kalır: Windows'ta kapatılmış Kalender, Run kaydı
+    /// dursa bile açılışta başlamaz. Sınamada geçici bir anahtara çevrilebilsin
+    /// diye sabit değil.
+    /// </summary>
+    internal static string StartupApprovedKey { get; set; } =
+        @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
     /// <summary>Şu an açılışta başlatılacak şekilde kayıtlı mı?</summary>
     public static bool IsEnabled()
@@ -55,8 +67,28 @@ internal static class StartupManager
         }
     }
 
-    /// <summary>Ayara göre kaydı yazar ya da siler.</summary>
+    /// <summary>
+    /// Ayara göre kaydı yazar ya da siler. Açılışta da çağrılır; kaydı yazarken
+    /// Windows'un başlangıç listesindeki işarete dokunulmaz ki orada verilen
+    /// karar her açılışta ezilmesin (bkz. <see cref="ApplyByUser"/>). Kayıt
+    /// silinirken işaret de silinir: Windows listesinde kaldırılmış programın
+    /// artığı kalmasın.
+    /// </summary>
     public static void Apply(bool enabled) => Apply(enabled, Environment.ProcessPath);
+
+    /// <summary>
+    /// Kullanıcı ayarlardaki "Windows ile başlat" anahtarına dokundu. Açtıysa
+    /// Windows'un başlangıç listesindeki "kapalı" işareti de kaldırılır; yoksa
+    /// anahtar açık görünür ama Kalender açılışta başlamazdı.
+    /// </summary>
+    public static void ApplyByUser(bool enabled)
+    {
+        Apply(enabled);
+        if (enabled)
+        {
+            RemoveStartupApproval();
+        }
+    }
 
     /// <summary>Belirli bir dosya için kaydı yazar ya da siler (kurulum sırasında gerekir).</summary>
     public static void Apply(bool enabled, string? exePath)
@@ -73,6 +105,7 @@ internal static class StartupManager
                     Log.Info("Açılışta başlatma kapatıldı.");
                 }
 
+                RemoveStartupApproval();
                 return;
             }
 
@@ -96,6 +129,24 @@ internal static class StartupManager
         {
             // Kayıt yazılamazsa uygulama yine çalışır; yalnızca açılışta gelmez.
             Log.Warn("Açılış kaydı güncellenemedi.", ex);
+        }
+    }
+
+    /// <summary>Başlangıç uygulamaları listesindeki onay kaydını siler; yoksa bir şey yapmaz.</summary>
+    private static void RemoveStartupApproval()
+    {
+        try
+        {
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(StartupApprovedKey, writable: true);
+            if (key?.GetValue(ValueName) is not null)
+            {
+                key.DeleteValue(ValueName, throwOnMissingValue: false);
+                Log.Info("Başlangıç uygulamaları onay kaydı silindi.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Başlangıç uygulamaları onay kaydı silinemedi.", ex);
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -97,7 +98,13 @@ internal sealed class UpdateService : IDisposable
 
     private static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(30);
 
-    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(10);
+    /// <summary>
+    /// İndirmede hiç veri gelmeden geçebilecek en uzun süre. Toplam süreye
+    /// sınır yok: yavaş ama ilerleyen bir bağlantıda indirme sürer, asılı kalan
+    /// bir bağlantı ise bu süre dolunca kesilir. Sınamada kısaltılabilsin diye
+    /// sabit değil.
+    /// </summary>
+    internal static TimeSpan DownloadStallTimeout { get; set; } = TimeSpan.FromSeconds(60);
 
     // Süreler her istekte ayrı verildiği için istemcinin kendi sınırı kapalı.
     private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
@@ -287,10 +294,30 @@ internal sealed class UpdateService : IDisposable
         {
             Log.Warn("Güncelleme kurulamadı.", ex);
             State = UpdateState.Failed;
-            Error = ex.Message;
+            Error = UserMessage(ex);
             Changed?.Invoke();
         }
     }
+
+    /// <summary>
+    /// İndirme ya da kurma hatasının kullanıcıya gösterilecek sade Türkçe
+    /// açıklaması. .NET'in kendi iletileri İngilizce ve teknik; bu sınıfın
+    /// attığı hatalar (eksik dosya, tutmayan özet, yanlış sürüm) zaten Türkçe.
+    /// </summary>
+    internal static string UserMessage(Exception ex) => ex switch
+    {
+        OperationCanceledException =>
+            $"İndirme {DownloadStallTimeout.TotalSeconds:0} saniye boyunca hiç ilerlemediği için durduruldu. "
+            + "İnternet bağlantınız kopmuş ya da çok yavaşlamış olabilir.",
+        HttpRequestException { StatusCode: HttpStatusCode code } =>
+            $"Yeni sürüm indirilemedi: sunucu dosyayı vermedi (HTTP {(int)code}).",
+        HttpRequestException or HttpIOException =>
+            "Yeni sürüm indirilemedi: sunucuya bağlanılamadı ya da bağlantı indirme sırasında koptu.",
+        InvalidDataException => ex.Message,
+        IOException or UnauthorizedAccessException => "İndirilen dosya diske yazılamadı.",
+        Win32Exception or InvalidOperationException => "İndirilen kurulum dosyası başlatılamadı.",
+        _ => "Yeni sürüm indirilemedi.",
+    };
 
     // ---------------------------------------------------------------- GitHub
 
@@ -379,7 +406,9 @@ internal sealed class UpdateService : IDisposable
         string target = Path.Combine(DownloadFolder, $"Kalender-Kurulum-{Installer.VersionText(info.Version)}.exe");
         string partial = target + ".indiriliyor";
 
-        using var cts = new CancellationTokenSource(DownloadTimeout);
+        // Süre her okumadan sonra baştan kurulur: indirmenin tamamı değil, veri
+        // gelmeden geçen süre sınırlı (bkz. DownloadStallTimeout).
+        using var cts = new CancellationTokenSource(DownloadStallTimeout);
         using var request = new HttpRequestMessage(HttpMethod.Get, info.DownloadUrl);
         request.Headers.UserAgent.Add(UserAgent);
 
@@ -400,6 +429,7 @@ internal sealed class UpdateService : IDisposable
             int n;
             while ((n = await source.ReadAsync(buffer, cts.Token)) > 0)
             {
+                cts.CancelAfter(DownloadStallTimeout);
                 await dest.WriteAsync(buffer.AsMemory(0, n), cts.Token);
                 hash.AppendData(buffer, 0, n);
                 read += n;

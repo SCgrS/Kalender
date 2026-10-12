@@ -64,6 +64,42 @@ internal static class Installer
     /// </summary>
     public static string VersionText(Version v) => v.Build > 0 ? v.ToString(3) : v.ToString(2);
 
+    /// <summary>Kurulu exe'nin sürümü (üç parçalı); kurulu değilse ya da okunamazsa null.</summary>
+    public static Version? InstalledVersion => ReadVersion(InstalledExe);
+
+    /// <summary>
+    /// Kurulu sürüm bu dosyanınkinden yeniyse onun sürümü, değilse null.
+    /// Eski bir kurucu yeni sürümün üzerine kurulmaz: uygulama eskiye döner,
+    /// eski sürüm de yeni sürümün ayarlarını tanımaz (ör. 1.11'den önceki
+    /// sürümler şifreli Google istemci parolasını okuyamaz, eşitleme durur).
+    /// </summary>
+    public static Version? NewerInstalledVersion =>
+        InstalledVersion is Version installed && installed > UpdateService.CurrentVersion ? installed : null;
+
+    /// <summary>
+    /// Dosyanın sürümü (üç parçalı). Dosya yoksa, sürüm bilgisi taşımıyorsa ya
+    /// da okunamazsa null.
+    /// </summary>
+    internal static Version? ReadVersion(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            FileVersionInfo info = FileVersionInfo.GetVersionInfo(path);
+            var version = new Version(info.FileMajorPart, info.FileMinorPart, info.FileBuildPart);
+            return version > new Version(0, 0, 0) ? version : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Dosyanın sürümü okunamadı: " + path, ex);
+            return null;
+        }
+    }
+
     private static string ShortcutPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Programs), ShortcutName);
 
@@ -82,6 +118,15 @@ internal static class Installer
             if (RunningInstalled)
             {
                 return new SetupResult(false, "Kalender zaten kurulu ve bu dosyadan çalışıyor.");
+            }
+
+            // Eski bir kurucu daha yeni kurulu sürümün üzerine yazmasın. Kurulum
+            // penceresi ve güncelleme yolu buna önceden bakıyor; burası son güvence.
+            if (NewerInstalledVersion is Version newer)
+            {
+                Log.Warn($"Kurulu sürüm ({VersionText(newer)}) bu dosyanınkinden ({Version}) yeni; kurulum yapılmadı.");
+                return new SetupResult(false,
+                    $"Bu bilgisayarda daha yeni bir sürüm ({VersionText(newer)}) kurulu; eski sürüm ({Version}) kurulmadı.");
             }
 
             // Kurulu sürüm açıksa dosyayı değiştiremeyiz; önce kibarca kapatıyoruz.

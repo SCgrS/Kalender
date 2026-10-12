@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Kalender.Settings;
@@ -71,6 +72,10 @@ internal sealed class MonitorPlacement
     /// <summary>Bu monitörde takvim gösterilsin mi (SelectedScreens kipinde kullanılır).</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>Bu sürümün tanımadığı alanlar; bkz. <see cref="AppSettings.BilinmeyenAlanlar"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? BilinmeyenAlanlar { get; set; }
+
     public MonitorPlacement Clone() => (MonitorPlacement)MemberwiseClone();
 }
 
@@ -94,6 +99,10 @@ internal sealed class CalendarTextColors
 
     /// <summary>Bugünün arkasındaki dolu daire.</summary>
     public string? TodayCircle { get; set; }
+
+    /// <summary>Bu sürümün tanımadığı alanlar; bkz. <see cref="AppSettings.BilinmeyenAlanlar"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? BilinmeyenAlanlar { get; set; }
 }
 
 /// <summary>Görünüm ayarları.</summary>
@@ -134,6 +143,10 @@ internal sealed class AppearanceSettings
     public PhotoFit PhotoFit { get; set; } = PhotoFit.Fill;
 
     public DisplayTarget DisplayTarget { get; set; } = DisplayTarget.AllScreens;
+
+    /// <summary>Bu sürümün tanımadığı alanlar; bkz. <see cref="AppSettings.BilinmeyenAlanlar"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? BilinmeyenAlanlar { get; set; }
 }
 
 /// <summary>Google bağlantısı ve yoklama ayarları.</summary>
@@ -214,6 +227,10 @@ internal sealed class GoogleSettings
 
     /// <summary>Bağlı hesabın e-posta adresi; yalnızca ayarlarda göstermek için.</summary>
     public string? AccountEmail { get; set; }
+
+    /// <summary>Bu sürümün tanımadığı alanlar; bkz. <see cref="AppSettings.BilinmeyenAlanlar"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? BilinmeyenAlanlar { get; set; }
 }
 
 /// <summary>Resmi tatil ayarları.</summary>
@@ -223,6 +240,10 @@ internal sealed class HolidaySettings
 
     /// <summary>Tatil listesinin en son ne zaman indirildiği.</summary>
     public DateTimeOffset? LastFetchUtc { get; set; }
+
+    /// <summary>Bu sürümün tanımadığı alanlar; bkz. <see cref="AppSettings.BilinmeyenAlanlar"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? BilinmeyenAlanlar { get; set; }
 }
 
 /// <summary>Tüm uygulama ayarları. Diskte ayarlar.json olarak durur.</summary>
@@ -277,6 +298,15 @@ internal sealed class AppSettings
     /// izlenir, sonra kullanıcının seçimi (true = karanlık) saklanır.
     /// </summary>
     public bool? DarkSettingsWindow { get; set; }
+
+    /// <summary>
+    /// Bu sürümün tanımadığı alanlar (daha yeni bir sürümün yazdıkları).
+    /// Ayar dosyası yeniden yazılırken olduğu gibi geri yazılır; eski bir
+    /// sürüme dönülse bile yeni sürümün ayarları silinmez. İç içe her ayar
+    /// sınıfında aynı alan var.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? BilinmeyenAlanlar { get; set; }
 
     [JsonIgnore]
     public MonitorPlacement DefaultPlacement { get; } = new();

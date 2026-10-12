@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using DPoint = System.Drawing.Point;
 using DPointF = System.Drawing.PointF;
 using DRectangle = System.Drawing.Rectangle;
@@ -20,15 +21,23 @@ using DRectangleF = System.Drawing.RectangleF;
 //      "Eski duvar kâğıdıma dön" önce yazmayı kapatır.
 //   4. Yazma kapalıyken takvimin eski yeri sağ tık, ok ve gün kutusu için
 //      isabet vermez.
+//   5. Kurucu kurulu exe'nin sürümüne bakar: kurulu sürüm daha yeniyse kurmaz
+//      (pencere, kurulum ve güncelleme yolu), aynı sürümde "Yeniden kur" der.
+//      (Bilinmeyen ayar alanlarının korunması Guncelleme sınamasında.)
 //   6. Geri yükleme: yedekte olmayan ekrana ortak yol ya da yedekteki ilk
 //      ekranın yolu konur; bir ekrandaki hata öbürlerini durdurmaz; dosyası
 //      olmayan fotoğraf denenmez; ekranda duran zemin dosyası silinmez; takvimin
 //      kendi görüntüsü yedeğe yazılmaz; yedek kullanılınca silinir.
+//  19. Ayarlardan açılan "Windows ile başlat", Windows'un başlangıç
+//      listesindeki kapalı işaretini kaldırır; açılıştaki eşitleme kaldırmaz.
 //  25. Yazma yeniden açılınca sıkıştırma kalitesi yeniden denetlenir.
 //  32. Ayarlar penceresi açıkken ayar başka yerden değişince duvar kâğıdı
 //      anahtarı ona eşitlenir.
 //
-// Gerçek duvar kâğıdına yazılmaz: Windows'un duvar kâğıdı arayüzü yerine bu
+// Kayıt defterinde yalnızca HKCU altında bu sınamanın açtığı geçici bir anahtara
+// yazılır ve sonunda silinir; gerçek açılış kaydına ve Windows'un başlangıç
+// listesine dokunulmaz (sonda denetlenir). Kurucu ve kurulu uygulama hiç
+// başlatılmaz. Gerçek duvar kâğıdına yazılmaz: Windows'un duvar kâğıdı arayüzü yerine bu
 // programdaki sahtesi kullanılır; gerçeği yalnızca okunur. Uygulamanın klasörü
 // (Paths.RootFolder) %TEMP% altında geçici bir klasöre çevrilir: kurulu
 // Kalender'in ayarlarına ve duvar kâğıdı yedeğine dokunulmaz (sonda
@@ -286,6 +295,8 @@ internal static class Program
             Bolum(Madde3);
             Bolum(() => Madde6(gecici));
             Bolum(Madde25);
+            Bolum(() => Madde5(gecici));
+            Bolum(Madde19);
         }
         finally
         {
@@ -721,6 +732,217 @@ internal static class Program
         Denetle("takvim kaldırılırken yedek ve kalite atlanıyor",
             atla is not null && (atla.Kod == OpCodes.Brtrue || atla.Kod == OpCodes.Brtrue_S)
             && yedek > dal && kaliteCagri > dal && k[yedek].Yer < atla.Hedef && k[kaliteCagri].Yer < atla.Hedef);
+    }
+
+    // ------------------------------------------------------------------- 5. madde
+
+    private static void Madde5(string gecici)
+    {
+        Console.WriteLine("5) Kurucu kurulu sürüme bakıyor: eskiye dönmüyor, aynı sürümde yeniden kuruyor");
+        Type kurucu = Tip("Kalender.Core.Installer");
+        Type pencereTipi = Tip("Kalender.Ui.SetupWindow");
+        var bu = (Version)Tip("Kalender.Core.UpdateService").GetProperty("CurrentVersion")!.GetValue(null)!;
+        string Kisa(Version v) => (string)Statik(kurucu, "VersionText", v)!;
+        Version? SurumOku(string yol) => (Version?)Statik(kurucu, "ReadVersion", yol);
+
+        // Sürümü belli dosyalar: uygulamanın kendisi (aynı sürüm), bu sınama
+        // (1.0, daha eski), .NET'in kendi kütüphanesi (10.x, daha yeni).
+        string ayni = Uyg.Location;
+        string eski = typeof(Program).Assembly.Location;
+        string yeni = typeof(object).Assembly.Location;
+        Version? yeniSurum = SurumOku(yeni);
+        Denetle("dosyanın sürümü üç parçalı okunuyor",
+            SurumOku(ayni) == bu && SurumOku(eski) == new Version(1, 0, 0) && yeniSurum is not null && yeniSurum > bu,
+            $"{SurumOku(ayni)} / {SurumOku(eski)} / {yeniSurum}");
+        string bos = Path.Combine(gecici, "sürümsüz.exe");
+        File.WriteAllBytes(bos, new byte[] { 0x4D, 0x5A });
+        Denetle("dosya yoksa ya da sürüm bilgisi taşımıyorsa sürüm bilinmiyor",
+            SurumOku(Path.Combine(gecici, "olmayan.exe")) is null && SurumOku(bos) is null);
+
+        // Kurulu exe geçici klasörde (Paths.RootFolder çevrildi).
+        string kuruluExe = (string)kurucu.GetProperty("InstalledExe")!.GetValue(null)!;
+        Denetle("kurulu exe deneme klasöründe", kuruluExe.StartsWith(gecici, StringComparison.OrdinalIgnoreCase), kuruluExe);
+        if (!kuruluExe.StartsWith(gecici, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(kuruluExe)!);
+        Version? DahaYeni() => (Version?)kurucu.GetProperty("NewerInstalledVersion")!.GetValue(null);
+        object kurulum = Enum.Parse(Tip("Kalender.Ui.SetupMode"), "Install");
+
+        // Kurulu dosyayı koyar (null: kurulu değil), kurulum penceresini kurar
+        // (gösterilmez), yazılarını ve düğmelerini döndürür.
+        (string Baslik, string Govde, string Birinci, string Ikinci, bool Klasor, bool DahaYeniMi) Pencere(string? kaynak)
+        {
+            if (kaynak is null)
+            {
+                File.Delete(kuruluExe);
+            }
+            else
+            {
+                File.Copy(kaynak, kuruluExe, overwrite: true);
+            }
+
+            var p = (System.Windows.Window)Activator.CreateInstance(pencereTipi, Hepsi, null, new[] { kurulum }, null)!;
+            try
+            {
+                return (((TextBlock)p.FindName("HeadingText")).Text, ((TextBlock)p.FindName("BodyText")).Text,
+                    (string)((Button)p.FindName("PrimaryButton")).Content, (string)((Button)p.FindName("CancelButton")).Content,
+                    ((System.Windows.FrameworkElement)p.FindName("PathBox")).Visibility == System.Windows.Visibility.Visible,
+                    (bool)AlanOku(p, "_newerInstalled"));
+            }
+            finally
+            {
+                p.Close();
+            }
+        }
+
+        var ilk = Pencere(null);
+        Denetle("kurulu değilse: Kur", ilk.Baslik == "Kalender bu bilgisayara kurulacak" && ilk.Birinci == "Kur"
+            && ilk.Ikinci == "Vazgeç" && DahaYeni() is null, ilk.Baslik);
+
+        var eskiKurulu = Pencere(eski);
+        Denetle("kurulu sürüm eskiyse: Güncelle, iki sürüm de yazıyor",
+            eskiKurulu.Birinci == "Güncelle" && eskiKurulu.Baslik == "Kalender güncellenecek"
+            && eskiKurulu.Govde.StartsWith($"Kurulu 1.0 sürümünün üzerine {Kisa(bu)} sürümü yazılacak") && DahaYeni() is null,
+            eskiKurulu.Govde);
+
+        var ayniKurulu = Pencere(ayni);
+        Denetle("aynı sürüm kuruluysa: Yeniden kur",
+            ayniKurulu.Birinci == "Yeniden kur" && ayniKurulu.Baslik == $"Kalender {Kisa(bu)} zaten kurulu"
+            && !ayniKurulu.DahaYeniMi && DahaYeni() is null, ayniKurulu.Baslik);
+
+        var bilinmeyen = Pencere(bos);
+        Denetle("kurulu sürüm okunamazsa eskisi gibi: Güncelle",
+            bilinmeyen.Birinci == "Güncelle" && bilinmeyen.Govde.StartsWith("Kurulu sürümün üzerine") && DahaYeni() is null,
+            bilinmeyen.Govde);
+
+        var yeniKurulu = Pencere(yeni);
+        Denetle("kurulu sürüm daha yeniyse kurulum yok; kurulu olanı aç ya da kapat",
+            yeniKurulu.DahaYeniMi && yeniKurulu.Birinci == "Kalender'i aç" && yeniKurulu.Ikinci == "Kapat" && !yeniKurulu.Klasor
+            && yeniKurulu.Baslik == $"Bu bilgisayarda daha yeni bir sürüm ({Kisa(yeniSurum!)}) kurulu"
+            && DahaYeni() == yeniSurum, yeniKurulu.Baslik);
+        File.Delete(kuruluExe);
+
+        // Derlenmiş koddan: düğme kurmadan kurulu olanı açıyor; kurulum ve
+        // güncelleme yolu, çalışan Kalender'i kapatmadan ve dosyayı yazmadan önce bakıyor.
+        MethodInfo dugme = pencereTipi.GetMethod("OnPrimary", Hepsi)!;
+        List<Komut> d = Komutlar(dugme.GetCustomAttribute<AsyncStateMachineAttribute>()!.StateMachineType.GetMethod("MoveNext", Hepsi)!);
+        int bayrak = Bul(d, x => AlanKomutu(x, OpCodes.Ldfld, "_newerInstalled"));
+        int ac = Bul(d, x => Cagri(x, kurucu, "LaunchInstalled"));
+        int kur = Bul(d, x => Cagri(x, kurucu, "Install"));
+        Denetle("pencerede daha yeni kuruluyken düğme kurulu olanı açıyor, kurmuyor",
+            bayrak >= 0 && ac > bayrak && kur > ac, $"{bayrak} / {ac} / {kur}");
+
+        List<Komut> kurma = Komutlar(kurucu.GetMethod("Install", Hepsi)!);
+        int bak = Bul(kurma, x => Cagri(x, kurucu, "get_NewerInstalledVersion"));
+        int kapat = Bul(kurma, x => Cagri(x, Tip("Kalender.Core.AppInstance"), "StopRunning"));
+        int kopya = Bul(kurma, x => Cagri(x, typeof(File), "Copy"));
+        Denetle("kurulum, çalışanı kapatmadan ve kopyalamadan önce sürüme bakıyor",
+            bak >= 0 && kapat > bak && kopya > kapat, $"{bak} / {kapat} / {kopya}");
+
+        List<Komut> g = Komutlar(typeof(Kalender.App).GetMethod("TryRunUpdate", Hepsi)!);
+        int gBak = Bul(g, x => Cagri(x, kurucu, "get_NewerInstalledVersion"));
+        int gAc = Bul(g, x => Cagri(x, kurucu, "LaunchInstalled"));
+        int gKur = Bul(g, x => Cagri(x, kurucu, "Install"));
+        Denetle("güncelleme yolunda daha yeni kuruluysa kurulu olan açılıyor, kurulmuyor",
+            gBak >= 0 && gAc > gBak && gKur > gAc, $"{gBak} / {gAc} / {gKur}");
+    }
+
+    // ------------------------------------------------------------------ 19. madde
+
+    private static void Madde19()
+    {
+        Console.WriteLine("19) Ayarlardan açılan \"Windows ile başlat\" Windows'taki kapalı işaretini kaldırıyor");
+        Type sm = Tip("Kalender.Core.StartupManager");
+        PropertyInfo runOzelligi = sm.GetProperty("RunKey", Hepsi)!;
+        PropertyInfo onayOzelligi = sm.GetProperty("StartupApprovedKey", Hepsi)!;
+        string gercekRun = (string)runOzelligi.GetValue(null)!;
+        string gercekOnay = (string)onayOzelligi.GetValue(null)!;
+
+        static object? DegerOku(string anahtar)
+        {
+            using RegistryKey? k = Registry.CurrentUser.OpenSubKey(anahtar);
+            return k?.GetValue("Kalender");
+        }
+
+        static string Ozet(object? deger) => deger switch
+        {
+            null => "yok",
+            byte[] b => Convert.ToHexString(b),
+            _ => deger.ToString()!,
+        };
+
+        string runOnce = Ozet(DegerOku(gercekRun));
+        string onayOnce = Ozet(DegerOku(gercekOnay));
+
+        string kok = @"Software\Kalender Sınama " + Guid.NewGuid().ToString("N");
+        string run = kok + @"\Run";
+        string onay = kok + @"\StartupApproved\Run";
+        runOzelligi.SetValue(null, run);
+        onayOzelligi.SetValue(null, onay);
+        try
+        {
+            MethodInfo uygula = sm.GetMethod("Apply", Hepsi, new[] { typeof(bool) })!;
+            MethodInfo kullanici = sm.GetMethod("ApplyByUser", Hepsi)!;
+            void Acilis(bool acik) => uygula.Invoke(null, new object[] { acik });
+            void Ayarlar(bool acik) => kullanici.Invoke(null, new object[] { acik });
+
+            // Görev Yöneticisi'nin yazdığı biçim: ilk bayt 3 = kapalı, ardından kapatıldığı an.
+            void WindowsKapatti()
+            {
+                using RegistryKey k = Registry.CurrentUser.CreateSubKey(onay);
+                k.SetValue("Kalender", new byte[] { 3, 0, 0, 0, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0xD8, 0x01 },
+                    RegistryValueKind.Binary);
+            }
+
+            string beklenen = "\"" + Environment.ProcessPath + "\"";
+
+            WindowsKapatti();
+            Acilis(true);
+            Denetle("açılıştaki eşitleme açılış kaydını yazıyor, Windows'ta verilen kararı ezmiyor",
+                DegerOku(run) as string == beklenen && DegerOku(onay) is byte[]);
+
+            Ayarlar(true);
+            Denetle("ayarlardan açınca Windows'taki kapalı işareti kalkıyor, açılış kaydı duruyor",
+                DegerOku(run) as string == beklenen && DegerOku(onay) is null);
+
+            WindowsKapatti();
+            Ayarlar(false);
+            Denetle("ayarlardan kapatınca açılış kaydı da işaret de siliniyor", DegerOku(run) is null && DegerOku(onay) is null);
+
+            // Bulgudaki senaryo: Windows'ta kapatıldı, sonra ayarlarda kapatılıp açıldı.
+            Acilis(true);
+            WindowsKapatti();
+            Ayarlar(false);
+            Ayarlar(true);
+            Denetle("Windows'ta kapatılıp ayarlarda kapatılıp açılınca açılışta yeniden başlıyor",
+                DegerOku(run) as string == beklenen && DegerOku(onay) is null);
+
+            WindowsKapatti();
+            sm.GetMethod("Apply", Hepsi, new[] { typeof(bool), typeof(string) })!.Invoke(null, new object?[] { false, null });
+            Denetle("kaldırmada işaret de siliniyor (Windows'un listesinde artık kalmıyor)",
+                DegerOku(run) is null && DegerOku(onay) is null);
+        }
+        finally
+        {
+            runOzelligi.SetValue(null, gercekRun);
+            onayOzelligi.SetValue(null, gercekOnay);
+            Registry.CurrentUser.DeleteSubKeyTree(kok, throwOnMissingSubKey: false);
+        }
+
+        Denetle("gerçek açılış kaydına ve Windows'un başlangıç listesine dokunulmadı",
+            Ozet(DegerOku(gercekRun)) == runOnce && Ozet(DegerOku(gercekOnay)) == onayOnce
+            && Registry.CurrentUser.OpenSubKey(kok) is null);
+
+        // Çağıranlar (derlenmiş koddan): ayarlar penceresi ApplyByUser'ı, açılış Apply'ı.
+        List<Komut> anahtar = Komutlar(Tip("Kalender.Ui.SettingsWindow").GetMethod("OnStartupChanged", Hepsi)!);
+        Denetle("ayarlardaki anahtar işareti de kaldıran yolu çağırıyor",
+            Bul(anahtar, x => Cagri(x, sm, "ApplyByUser")) >= 0 && Bul(anahtar, x => Cagri(x, sm, "Apply")) < 0);
+        List<Komut> acilis = Komutlar(Tip("Kalender.Core.AppHost").GetMethod("Start", Hepsi)!);
+        Denetle("açılıştaki eşitleme işarete dokunmayan yolu çağırıyor",
+            Bul(acilis, x => Cagri(x, sm, "Apply")) >= 0 && Bul(acilis, x => Cagri(x, sm, "ApplyByUser")) < 0);
     }
 }
 

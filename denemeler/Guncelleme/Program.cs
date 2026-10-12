@@ -1,5 +1,6 @@
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -15,7 +16,9 @@ using System.Windows.Threading;
 // açılıştan bir dakika sonra denetim, yeni sürüm varken pencere isteği,
 // haftada bir hatırlatma kuralı, denetim kapalıyken ağa çıkılmaması, indirme
 // ve doğrulama hataları, güncelleme penceresinin yazıları ve düğmeleri, eski
-// ayar dosyasının yeni sürümde eksiksiz okunması.
+// ayar dosyasının yeni sürümde eksiksiz okunması, daha yeni bir sürümün
+// yazdığı bilinmeyen ayar alanlarının korunması, indirmede toplam süre değil
+// durgunluk sınırı ve hata iletilerinin Türkçe olması.
 //
 // GitHub yerine bu programın açtığı yerel bir sunucuya sorulur. Kurucu hiç
 // başlatılmaz; kurulu uygulamaya, ayar dosyasına, duvar kağıdına dokunulmaz.
@@ -83,6 +86,7 @@ internal static class Program
     {
         private readonly TcpListener _dinleyici = new(IPAddress.Loopback, 0);
         private readonly Dictionary<string, (int Durum, byte[] Govde)> _yollar = new();
+        private readonly Dictionary<string, (int Parca, TimeSpan Ara, int Dur)> _yavas = new();
         private readonly Dictionary<string, int> _sayac = new();
 
         public Sunucu()
@@ -98,6 +102,21 @@ internal static class Program
             lock (_yollar)
             {
                 _yollar[yol] = (durum, govde);
+                _yavas.Remove(yol);
+            }
+        }
+
+        /// <summary>
+        /// Gövde <paramref name="parca"/> parçada, aralarında <paramref name="ara"/>
+        /// bekleyerek gönderilir. <paramref name="dur"/> parçadan sonra hiç veri
+        /// gönderilmez, bağlantı açık kalır (asılı kalmış sunucu gibi).
+        /// </summary>
+        public void YavasKoy(string yol, byte[] govde, int parca, TimeSpan ara, int dur = int.MaxValue)
+        {
+            lock (_yollar)
+            {
+                _yollar[yol] = (200, govde);
+                _yavas[yol] = (parca, ara, dur);
             }
         }
 
@@ -123,43 +142,81 @@ internal static class Program
                     return; // Dinleyici kapandı.
                 }
 
-                try
+                // Her bağlantı ayrı yürür: asılı bırakılan bir yanıt sonrakileri bekletmesin.
+                _ = Task.Run(() => YanitlaAsync(istemci));
+            }
+        }
+
+        private async Task YanitlaAsync(TcpClient istemci)
+        {
+            try
+            {
+                using (istemci)
                 {
-                    using (istemci)
+                    istemci.NoDelay = true;
+                    NetworkStream akis = istemci.GetStream();
+                    var baslik = new StringBuilder();
+                    byte[] tampon = new byte[4096];
+                    while (!baslik.ToString().Contains("\r\n\r\n"))
                     {
-                        NetworkStream akis = istemci.GetStream();
-                        var baslik = new StringBuilder();
-                        byte[] tampon = new byte[4096];
-                        while (!baslik.ToString().Contains("\r\n\r\n"))
+                        int n = await akis.ReadAsync(tampon);
+                        if (n <= 0)
                         {
-                            int n = await akis.ReadAsync(tampon);
-                            if (n <= 0)
+                            break;
+                        }
+
+                        baslik.Append(Encoding.ASCII.GetString(tampon, 0, n));
+                    }
+
+                    string yol = baslik.ToString().Split(' ') is { Length: > 1 } p ? p[1] : "/";
+                    (int Durum, byte[] Govde) yanit;
+                    (int Parca, TimeSpan Ara, int Dur)? yavas;
+                    lock (_yollar)
+                    {
+                        _sayac[yol] = _sayac.GetValueOrDefault(yol) + 1;
+                        yanit = _yollar.TryGetValue(yol, out var y) ? y : (404, Array.Empty<byte>());
+                        yavas = _yavas.TryGetValue(yol, out var v) ? v : null;
+                    }
+
+                    byte[] ust = Encoding.ASCII.GetBytes(
+                        $"HTTP/1.1 {yanit.Durum} X\r\nContent-Length: {yanit.Govde.Length}\r\n"
+                        + "Content-Type: application/octet-stream\r\nConnection: close\r\n\r\n");
+                    await akis.WriteAsync(ust);
+
+                    if (yavas is not (int parca, TimeSpan ara, int dur))
+                    {
+                        await akis.WriteAsync(yanit.Govde);
+                        return;
+                    }
+
+                    int boy = (yanit.Govde.Length + parca - 1) / parca;
+                    for (int i = 0; i < parca; i++)
+                    {
+                        if (i >= dur)
+                        {
+                            // Veri yok, bağlantı açık: istemci kesene dek (en çok 30 sn) bekle.
+                            using var sinir = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                            while (await akis.ReadAsync(tampon, sinir.Token) > 0)
                             {
-                                break;
                             }
 
-                            baslik.Append(Encoding.ASCII.GetString(tampon, 0, n));
+                            return;
                         }
 
-                        string yol = baslik.ToString().Split(' ') is { Length: > 1 } p ? p[1] : "/";
-                        (int Durum, byte[] Govde) yanit;
-                        lock (_yollar)
+                        if (i > 0)
                         {
-                            _sayac[yol] = _sayac.GetValueOrDefault(yol) + 1;
-                            yanit = _yollar.TryGetValue(yol, out var y) ? y : (404, Array.Empty<byte>());
+                            await Task.Delay(ara);
                         }
 
-                        byte[] ust = Encoding.ASCII.GetBytes(
-                            $"HTTP/1.1 {yanit.Durum} X\r\nContent-Length: {yanit.Govde.Length}\r\n"
-                            + "Content-Type: application/octet-stream\r\nConnection: close\r\n\r\n");
-                        await akis.WriteAsync(ust);
-                        await akis.WriteAsync(yanit.Govde);
+                        int bas = i * boy;
+                        await akis.WriteAsync(yanit.Govde.AsMemory(bas, Math.Min(boy, yanit.Govde.Length - bas)));
+                        await akis.FlushAsync();
                     }
                 }
-                catch
-                {
-                    // İstemci bağlantıyı kesti; sınama sonucu zaten bunu gösterir.
-                }
+            }
+            catch
+            {
+                // İstemci bağlantıyı kesti; sınama sonucu zaten bunu gösterir.
             }
         }
 
@@ -509,6 +566,110 @@ internal static class Program
             object b = JsonSerializer.Deserialize(yeni, ayarTipi, secenek)!;
             Denetle("hatırlatma zamanı yazılıp okunur, öteki ayarlar değişmez",
                 Ayni(b) && (DateTime?)Oku(b, "UpdatePromptShownUtc") == an);
+
+            // Daha yeni bir sürümün yazdığı, bu sürümün tanımadığı alanlar: dosya
+            // yeniden yazılırken silinmemeli (eskiye dönülse bile). Lite'ta "Google"
+            // bütünüyle bilinmeyen bir alan, Kalender'de içindeki alan bilinmiyor.
+            const string gelecek = """
+                {
+                  "GelecekAlan": { "Liste": [1, 2, 3], "Yazi": "ğüşıöç" },
+                  "Appearance": {
+                    "SolidColor": "#123456",
+                    "GelecekRenk": "#ABCDEF",
+                    "Colors": { "Weekday": "#111111", "GelecekYazi": "#010203" }
+                  },
+                  "Holidays": { "Enabled": false, "GelecekTatil": 7 },
+                  "Google": { "GelecekGoogle": true },
+                  "Monitors": { "EKRAN-1": { "ScalePercent": 120, "GelecekEkran": "x" } },
+                  "StartWithWindows": false
+                }
+                """;
+
+            object c = JsonSerializer.Deserialize(gelecek, ayarTipi, secenek)!;
+            string yazilan = JsonSerializer.Serialize(c, ayarTipi, secenek);
+            using JsonDocument okunan = JsonDocument.Parse(yazilan);
+            JsonElement k = okunan.RootElement;
+            JsonElement gorunum = k.GetProperty("Appearance");
+            bool korundu = k.GetProperty("GelecekAlan").GetProperty("Yazi").GetString() == "ğüşıöç"
+                && k.GetProperty("GelecekAlan").GetProperty("Liste").GetArrayLength() == 3
+                && gorunum.GetProperty("GelecekRenk").GetString() == "#ABCDEF"
+                && gorunum.GetProperty("Colors").GetProperty("GelecekYazi").GetString() == "#010203"
+                && k.GetProperty("Holidays").GetProperty("GelecekTatil").GetInt32() == 7
+                && k.GetProperty("Google").GetProperty("GelecekGoogle").GetBoolean()
+                && k.GetProperty("Monitors").GetProperty("EKRAN-1").GetProperty("GelecekEkran").GetString() == "x";
+            Denetle("bu sürümün tanımadığı alanlar (her düzeyde) yeniden yazılırken korunur", korundu,
+                korundu ? "" : yazilan);
+            Denetle("tanınan alanlar yine okunur ve yazılır",
+                (string)Oku(Oku(c, "Appearance")!, "SolidColor")! == "#123456"
+                && (string?)Oku(Oku(Oku(c, "Appearance")!, "Colors")!, "Weekday") == "#111111"
+                && !(bool)Oku(c, "StartWithWindows")! && !(bool)Oku(Oku(c, "Holidays")!, "Enabled")!
+                && gorunum.GetProperty("SolidColor").GetString() == "#123456" && !k.GetProperty("StartWithWindows").GetBoolean());
+            Denetle("bilinmeyen alan yoksa dosyaya fazladan bir şey yazılmaz",
+                !JsonSerializer.Serialize(Activator.CreateInstance(ayarTipi, true), ayarTipi, secenek).Contains("Bilinmeyen")
+                && !yazilan.Contains("Bilinmeyen"));
+        }
+
+        // -------------------------------------------------------------- indirme
+        Console.WriteLine("6) İndirme: toplam süre değil durgunluk sınırı; Türkçe hata iletileri");
+
+        {
+            PropertyInfo durgunluk = Hizmet.GetProperty("DownloadStallTimeout", Hepsi)!;
+            Denetle("durgunluk sınırı 60 saniye, toplam süre sınırı yok",
+                (TimeSpan)durgunluk.GetValue(null)! == TimeSpan.FromSeconds(60)
+                && Hizmet.GetField("DownloadTimeout", Hepsi) is null);
+
+            durgunluk.SetValue(null, TimeSpan.FromSeconds(2));
+            try
+            {
+                byte[] govde = RandomNumberGenerator.GetBytes(350_000);
+                string sha = Convert.ToHexString(SHA256.HashData(govde));
+                var (h, _, _) = YeniHizmet();
+
+                // Yavaş ama ilerleyen bağlantı: 7 parça, aralarında yarım saniye;
+                // toplam ~3 sn, yani durgunluk sınırından uzun.
+                sunucu.YavasKoy("/yavas.exe", govde, parca: 7, ara: TimeSpan.FromMilliseconds(500));
+                Yaz(h, "Available", SurumBilgisi(new Version(99, 0, 0), sunucu.Adres + "/yavas.exe", govde.Length, sha));
+                var saat = System.Diagnostics.Stopwatch.StartNew();
+                await (Task)Cagir(h, "InstallAsync", false)!;
+                string hata = (string?)Oku(h, "Error") ?? "";
+
+                // İndirme bitip özet tuttuysa sıra sürüm denetimine gelir; rastgele
+                // baytlar uygulama olmadığı için orada durur, kurucu başlatılmaz.
+                Denetle("yavaş ama ilerleyen indirme, durgunluk sınırından uzun sürse de tamamlanır",
+                    saat.Elapsed > TimeSpan.FromSeconds(2.5) && hata.Contains("beklenen " + urun),
+                    $"{saat.Elapsed.TotalSeconds:0.0} sn; {hata}");
+
+                // Asılı kalan bağlantı: ilk parçadan sonra hiç veri gelmiyor.
+                sunucu.YavasKoy("/asili.exe", govde, parca: 7, ara: TimeSpan.Zero, dur: 1);
+                Yaz(h, "Available", SurumBilgisi(new Version(99, 0, 0), sunucu.Adres + "/asili.exe", govde.Length, sha));
+                saat.Restart();
+                await (Task)Cagir(h, "InstallAsync", false)!;
+                hata = (string?)Oku(h, "Error") ?? "";
+                Denetle("hiç veri gelmeyen indirme, durgunluk sınırı dolunca kesilir",
+                    Durum(h) == "Failed" && saat.Elapsed >= TimeSpan.FromSeconds(1.5) && saat.Elapsed < TimeSpan.FromSeconds(10),
+                    $"{saat.Elapsed.TotalSeconds:0.0} sn");
+                Denetle("kesilen indirmenin iletisi Türkçe ve sade",
+                    hata.Contains("2 saniye boyunca hiç ilerlemediği için durduruldu")
+                    && !hata.Contains("cancel", StringComparison.OrdinalIgnoreCase), hata);
+                ((IDisposable)h).Dispose();
+            }
+            finally
+            {
+                durgunluk.SetValue(null, TimeSpan.FromSeconds(60));
+            }
+
+            string Ileti(Exception ex) => (string)Cagir(Hizmet, "UserMessage", ex)!;
+            Denetle("sunucu hatasında HTTP kodu Türkçe iletiyle verilir",
+                Ileti(new HttpRequestException("Response status code does not indicate success: 404 (Not Found).",
+                    null, HttpStatusCode.NotFound)) == "Yeni sürüm indirilemedi: sunucu dosyayı vermedi (HTTP 404).");
+            Denetle("bağlanamama ve kopma Türkçe",
+                Ileti(new HttpRequestException("No such host is known.")).Contains("bağlanılamadı")
+                && Ileti(new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.")).Contains("koptu"));
+            Denetle("disk hatası Türkçe", Ileti(new IOException("There is not enough space on the disk.")) == "İndirilen dosya diske yazılamadı.");
+            Denetle("uygulamanın kendi Türkçe iletisi olduğu gibi kalır",
+                Ileti(new InvalidDataException("İndirilen dosya eksik (1 / 2 bayt).")) == "İndirilen dosya eksik (1 / 2 bayt).");
+            Denetle("bilinmeyen hatada İngilizce ileti gösterilmez",
+                Ileti(new NotSupportedException("Specified method is not supported.")) == "Yeni sürüm indirilemedi.");
         }
 
         // Sınamanın indirdiği dosyalar kalmasın.

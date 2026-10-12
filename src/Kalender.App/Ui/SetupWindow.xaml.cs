@@ -26,6 +26,9 @@ public partial class SetupWindow : Window
     private readonly UpdateService? _updates;
     private bool _done;
 
+    /// <summary>Kurulu sürüm bu dosyanınkinden yeni: kurulum yapılmaz, kurulu olan açılır.</summary>
+    private bool _newerInstalled;
+
     /// <summary>
     /// Güncelleme kipi: çalışan uygulama yeni sürüm bulunca bu pencereyi açar.
     /// "Güncelle" yeni sürümü indirip kurar, "Sonra" pencereyi kapatır; bir
@@ -120,19 +123,7 @@ public partial class SetupWindow : Window
 
         if (mode == SetupMode.Install)
         {
-            bool update = Installer.IsInstalled;
-
-            Title = update ? "Kalender güncelleniyor" : "Kalender kurulumu";
-            HeadingText.Text = update ? "Kalender güncellenecek" : "Kalender bu bilgisayara kurulacak";
-            BodyText.Text = update
-                ? $"Kurulu sürümün üzerine {Installer.Version} sürümü yazılacak. Ayarlarınıza dokunulmaz."
-                : "Kalender yalnızca sizin kullanıcı hesabınıza kurulur. Yönetici hakkı istenmez, "
-                  + "sistem klasörlerine dosya yazılmaz.";
-
-            NoteText.Text = "Kurulumdan sonra Başlat menüsüne kısayol eklenir ve Kalender "
-                + "Windows açılışında kendiliğinden başlar. İkisini de Ayarlar'dan kapatabilirsiniz.";
-
-            PrimaryButton.Content = update ? "Güncelle" : "Kur";
+            ShowInstall(Installer.IsInstalled, Installer.InstalledVersion);
         }
         else
         {
@@ -149,6 +140,65 @@ public partial class SetupWindow : Window
         }
     }
 
+    /// <summary>
+    /// Kurulum kipinin yazıları: ilk kurulum, güncelleme ya da aynı sürümü
+    /// yeniden kurma. Kurulu sürüm bu dosyanınkinden yeniyse kurulum yapılmaz
+    /// (bkz. <see cref="Installer.NewerInstalledVersion"/>); pencere kurulu
+    /// Kalender'i açmayı ya da kapatmayı önerir.
+    /// </summary>
+    /// <param name="installed">Kalender kurulu mu?</param>
+    /// <param name="installedVersion">Kurulu sürüm; okunamadıysa null.</param>
+    private void ShowInstall(bool installed, Version? installedVersion)
+    {
+        _newerInstalled = installedVersion is not null && installedVersion > UpdateService.CurrentVersion;
+        if (_newerInstalled)
+        {
+            Title = "Kalender kurulumu";
+            HeadingText.Text = $"Bu bilgisayarda daha yeni bir sürüm ({Installer.VersionText(installedVersion!)}) kurulu";
+            BodyText.Text = $"Bu dosya Kalender'in eski bir sürümü ({Installer.Version}). Eski sürüm, yeni "
+                + "sürümün ayarlarını okuyamayabileceği için kurulum yapılmaz.";
+            NoteText.Text = "Kurulu Kalender'i açabilir ya da bu pencereyi kapatabilirsiniz.";
+            PathBox.Visibility = Visibility.Collapsed;
+            PrimaryButton.Content = "Kalender'i aç";
+            CancelButton.Content = "Kapat";
+            return;
+        }
+
+        if (!installed)
+        {
+            Title = "Kalender kurulumu";
+            HeadingText.Text = "Kalender bu bilgisayara kurulacak";
+            BodyText.Text = "Kalender yalnızca sizin kullanıcı hesabınıza kurulur. Yönetici hakkı istenmez, "
+                + "sistem klasörlerine dosya yazılmaz.";
+            PrimaryButton.Content = "Kur";
+        }
+        else if (installedVersion == UpdateService.CurrentVersion)
+        {
+            Title = "Kalender kurulumu";
+            HeadingText.Text = $"Kalender {Installer.Version} zaten kurulu";
+            BodyText.Text = "Bu bilgisayarda aynı sürüm kurulu. Yeniden kurarsanız program dosyası yeniden "
+                + "yazılır; ayarlarınıza dokunulmaz.";
+            PrimaryButton.Content = "Yeniden kur";
+        }
+        else
+        {
+            // Kurulu sürüm daha eski ya da okunamadı.
+            Title = "Kalender güncelleniyor";
+            HeadingText.Text = "Kalender güncellenecek";
+            BodyText.Text = installedVersion is null
+                ? $"Kurulu sürümün üzerine {Installer.Version} sürümü yazılacak. Ayarlarınıza dokunulmaz."
+                : $"Kurulu {Installer.VersionText(installedVersion)} sürümünün üzerine {Installer.Version} "
+                  + "sürümü yazılacak. Ayarlarınıza dokunulmaz.";
+            PrimaryButton.Content = "Güncelle";
+        }
+
+        NoteText.Text = "Kurulumdan sonra Başlat menüsüne kısayol eklenir ve Kalender "
+            + "Windows açılışında kendiliğinden başlar. İkisini de Ayarlar'dan kapatabilirsiniz.";
+
+        PathBox.Visibility = Visibility.Visible;
+        CancelButton.Content = "Vazgeç";
+    }
+
     private async void OnPrimary(object sender, RoutedEventArgs e)
     {
         if (_mode == SetupMode.Update)
@@ -160,6 +210,14 @@ public partial class SetupWindow : Window
 
         if (_done)
         {
+            Close();
+            return;
+        }
+
+        if (_newerInstalled)
+        {
+            // Eskiye dönülmez; kurulu (daha yeni) Kalender açılır.
+            Installer.LaunchInstalled();
             Close();
             return;
         }

@@ -120,6 +120,15 @@ public partial class App : Application
         Log.Level = LogLevel.Info;
         WaitForCaller(args);
 
+        // Bu arada daha yeni bir sürüm kurulduysa eskiye dönülmez; kurulu olan açılır.
+        if (Core.Installer.NewerInstalledVersion is Version newer)
+        {
+            Log.Info($"Kurulu sürüm ({Core.Installer.VersionText(newer)}) bu güncellemeden yeni; o açılıyor.");
+            Core.Installer.LaunchInstalled();
+            Shutdown();
+            return true;
+        }
+
         SetupResult result = Core.Installer.Install();
         if (result.Success)
         {

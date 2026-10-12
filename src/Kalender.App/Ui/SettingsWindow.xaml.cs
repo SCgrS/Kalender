@@ -1315,7 +1315,7 @@ public partial class SettingsWindow : Window
 
         bool enabled = StartupBox.IsChecked == true;
         S.StartWithWindows = enabled;
-        StartupManager.Apply(enabled);
+        StartupManager.ApplyByUser(enabled);
 
         UpdateStartupNote();
         ScheduleApply();
