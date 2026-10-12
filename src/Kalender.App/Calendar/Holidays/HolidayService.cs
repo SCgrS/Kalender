@@ -31,6 +31,14 @@ internal sealed class HolidayCacheFile
 
     public string? LastModified { get; set; }
 
+    /// <summary>
+    /// Liste akıştaki bütün tatilleri tutuyor. 1.12 ve önceki sürümlerin
+    /// dosyasında yok (false): onlar yalnız indirme ayının bir ay öncesinden
+    /// başlayan 14 ayı saklıyordu. Böyle bir dosya varsa liste beklemeden ve
+    /// koşulsuz istekle yeniden indirilir; 304 yanıtı eksik listeyi tamamlamazdı.
+    /// </summary>
+    public bool FullFeed { get; set; }
+
     public List<StoredHoliday> Days { get; set; } = new();
 }
 
@@ -51,9 +59,6 @@ internal sealed class HolidayService : IDisposable
 
     /// <summary>Bu süre geçmeden yeniden indirilmez.</summary>
     private static readonly TimeSpan RefreshAfter = TimeSpan.FromDays(30);
-
-    /// <summary>Önbellekte tutulacak ileri dönem.</summary>
-    private const int KeepMonthsAhead = 13;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -133,7 +138,11 @@ internal sealed class HolidayService : IDisposable
 
         try
         {
-            if (!force && _cache is not null
+            // 1.12 ve önceki sürümlerin dosyası akışın yalnız 14 ayını tutuyor
+            // (FullFeed yok): süresi beklenmeden ve koşulsuz istekle yeniden
+            // indiriliyor; koşullu istekte sunucu 304 der, eksik liste hiç
+            // tamamlanmazdı.
+            if (!force && _cache is { FullFeed: true }
                 && DateTimeOffset.UtcNow - _cache.FetchedUtc < RefreshAfter
                 && _days.Count > 0)
             {
@@ -143,7 +152,7 @@ internal sealed class HolidayService : IDisposable
 
             using var request = new HttpRequestMessage(HttpMethod.Get, FeedUrl);
 
-            if (_cache is not null && _days.Count > 0)
+            if (_cache is { FullFeed: true } && _days.Count > 0)
             {
                 if (!string.IsNullOrWhiteSpace(_cache.ETag))
                 {
@@ -183,6 +192,7 @@ internal sealed class HolidayService : IDisposable
                 FetchedUtc = DateTimeOffset.UtcNow,
                 ETag = response.Headers.ETag?.ToString(),
                 LastModified = response.Content.Headers.LastModified?.ToString("R"),
+                FullFeed = true,
                 Days = days,
             };
 
@@ -251,12 +261,14 @@ internal sealed class HolidayService : IDisposable
     /// Akışta üç tür kayıt var: "Resmi tatil", yarım günlük tatiller ve
     /// "Kutlama" (Anneler Günü gibi anma günleri). Kutlamalar kırmızıya
     /// boyanmamalı, o yüzden dışarıda bırakılıyor.
+    ///
+    /// Akıştaki bütün yıllar saklanıyor (2026-10'da akış 2021–2031'i veriyor,
+    /// 200 kadar gün). Önceden yalnız indirme ayının bir ay öncesinden
+    /// başlayan 14 ay tutuluyordu; ay düğmeleriyle bu aralığın dışına
+    /// gidilince hiçbir tatil kırmızı görünmüyordu.
     /// </summary>
     private static List<StoredHoliday> Extract(IReadOnlyList<IcsEvent> events)
     {
-        DateOnly from = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
-        DateOnly to = from.AddMonths(KeepMonthsAhead + 1);
-
         var result = new Dictionary<DateOnly, StoredHoliday>();
         int celebrations = 0;
         int unknown = 0;
@@ -294,11 +306,6 @@ internal sealed class HolidayService : IDisposable
 
             for (DateOnly day = e.Start; day < e.EndExclusive; day = day.AddDays(1))
             {
-                if (day < from || day >= to)
-                {
-                    continue;
-                }
-
                 var record = new StoredHoliday
                 {
                     Date = day,

@@ -235,6 +235,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             // Gün değiştiyse gezinilen ay artık geçerli değil; bu aya dönüyoruz.
             GoToCurrentMonth();
         };
+        _dayWatcher.TimeZoneChanged += OnTimeZoneChanged;
 
         _calendarData.Changed += snapshot =>
         {
@@ -974,6 +975,17 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         // Uyandıktan sonra tek seferlik yenileme; zamanlayıcı uykuda durmuştu.
         _poller?.Start();
+    }
+
+    /// <summary>
+    /// Windows'un saat dilimi değişti. Google etkinliklerinin saati alınırken
+    /// yerel saate çevriliyor; eski dilimle çevrilenler gün kutusunda saat
+    /// farkı kadar kaymış görünmesin diye görünen ay yeni dilimle baştan alınır.
+    /// </summary>
+    private void OnTimeZoneChanged()
+    {
+        _google?.SaatDilimiDegisti();
+        _ = _poller?.RefreshAsync(force: true);
     }
 
     private void OnSuspending()

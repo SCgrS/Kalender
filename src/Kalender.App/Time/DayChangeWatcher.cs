@@ -8,8 +8,8 @@ namespace Kalender.Time;
 /// kalan süre kadar bekler; sürekli yoklama yapılmaz, bu yüzden boştaki
 /// işlemci kullanımı sıfırdır.
 ///
-/// Sistem saatinin değişmesi ya da uykudan uyanma gibi durumlarda dışarıdan
-/// <see cref="Recheck"/> çağrılır; hesap yeniden yapılır.
+/// Sistem saatinin ya da saat diliminin değişmesi, uykudan uyanma gibi
+/// durumlarda dışarıdan <see cref="Recheck"/> çağrılır; hesap yeniden yapılır.
 /// </summary>
 internal sealed class DayChangeWatcher : IDisposable
 {
@@ -30,11 +30,31 @@ internal sealed class DayChangeWatcher : IDisposable
     /// <summary>Gün değiştiğinde yeni tarihle tetiklenir.</summary>
     public event Action<DateOnly>? DayChanged;
 
+    /// <summary>
+    /// Windows'un saat dilimi (ya da yaz saati kuralı) değişti. Gün de
+    /// değiştiyse <see cref="DayChanged"/>'den sonra tetiklenir.
+    /// </summary>
+    public event Action? TimeZoneChanged;
+
     public DateOnly Today => _current;
 
     /// <summary>Tarihi yeniden okur; değiştiyse haber verir ve zamanlayıcıyı kurar.</summary>
     public void Recheck()
     {
+        // .NET yerel saat dilimini ilk kullanımda önbelleğe alıyor ve kendiliğinden
+        // tazelemiyor: Windows'ta dilim değişince DateTime.Now uygulama yeniden
+        // açılana dek eski dilimin farkıyla dönüyor, gün ve gece yarısı
+        // zamanlayıcısı saat farkı kadar geç (ya da erken) dönüyordu. Önbellek
+        // her yeniden hesapta temizleniyor; dilim Windows'tan yeniden okunur.
+        TimeZoneInfo onceki = TimeZoneInfo.Local;
+        TimeZoneInfo.ClearCachedData();
+        TimeZoneInfo simdiki = TimeZoneInfo.Local;
+        bool dilimDegisti = onceki.Id != simdiki.Id || !onceki.HasSameRules(simdiki);
+        if (dilimDegisti)
+        {
+            Log.Info($"Saat dilimi değişti: {onceki.Id} → {simdiki.Id}");
+        }
+
         DateOnly now = DateOnly.FromDateTime(DateTime.Now);
         if (now != _current)
         {
@@ -44,6 +64,11 @@ internal sealed class DayChangeWatcher : IDisposable
         }
 
         Arm();
+
+        if (dilimDegisti)
+        {
+            TimeZoneChanged?.Invoke();
+        }
     }
 
     private void Arm()

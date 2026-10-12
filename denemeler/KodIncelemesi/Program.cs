@@ -1,10 +1,13 @@
 using System.Collections;
 using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -52,6 +55,10 @@ using DRectangleF = System.Drawing.RectangleF;
 //      hâli ayarlar.json.yedek olur; okunamayan dosya ayarlar.bozuk-<tarih>.json
 //      adıyla kenara alınır (üstüne yazılmaz), yerine yedek okunur; 1.10'dan
 //      kalan düz metin gizli anahtar yedekte de kalmaz.
+//  18. Tatil listesi akıştaki bütün yılları saklar (yalnız 14 ayı değil); ‹ ›
+//      ile uzak aylara gidince de tatiller kırmızı. 1.12'nin önbelleği okunur,
+//      30 gün beklenmeden koşulsuz istekle yeniden indirilir; yeni dosyayı eski
+//      sürüm de okuyabilir. Google'ın akışı yerine bu programdaki sahtesi.
 //  19. Ayarlardan açılan "Windows ile başlat", Windows'un başlangıç
 //      listesindeki kapalı işaretini kaldırır; açılıştaki eşitleme kaldırmaz.
 //  20. Esc ya da × ile kapatınca istemci kimliği ve gizli anahtar kaydedilir.
@@ -73,6 +80,10 @@ using DRectangleF = System.Drawing.RectangleF;
 //      penceresini kapatmak ancak bekleyen bir değişiklik varsa uygular.
 //  32. Ayarlar penceresi açıkken ayar başka yerden değişince duvar kâğıdı
 //      anahtarı ona eşitlenir.
+//  34. Saat değişiminde (WM_TIMECHANGE) .NET'in saat dilimi önbelleği atılır:
+//      gün ve gece yarısı zamanlayıcısı yeni dilime göre, dilim değişimi
+//      bildirilir; uygulama Google verisini yeni dilimle baştan alır. Windows'un
+//      dilimi değiştirilmez: .NET'in önbelleğine sahte bir dilim konur.
 //  36. Windows'un sessizce söktüğü fare kancası anlaşılır (imleç oynadığı
 //      hâlde kanca çağrılmadı) ve yeniden takılır. Fare kancası hiç takılmaz;
 //      yapay olaylar doğrudan kancanın işleyicisine verilir.
@@ -356,6 +367,8 @@ internal static class Program
             Bolum(Madde23);
             Bolum(Madde24);
             Bolum(Madde36);
+            Bolum(Madde18);
+            Bolum(Madde34);
 
             string fotograflar = Path.Combine(gecici, "fotoğraflar");
             Directory.CreateDirectory(fotograflar);
@@ -2253,6 +2266,273 @@ internal static class Program
         Denetle("yoklama imleç oynayınca önceki okumanın anını bildiriyor, yeni anı saklıyor",
             gelen.SequenceEqual(new[] { 12345L }) && (long)AlanOku(izleyici, "_lastPointAt") >= once,
             string.Join(",", gelen));
+    }
+
+    // ------------------------------------------------------------------ 18. madde
+
+    /// <summary>
+    /// Google'ın tatil akışının sahtesi: gövdeyi ya da "değişmedi" (304)
+    /// yanıtını bu program verir, ağa çıkılmaz. İsteklerin koşul başlıkları
+    /// (If-None-Match, If-Modified-Since) kaydedilir.
+    /// </summary>
+    private sealed class SahteTatilAkisi : HttpMessageHandler
+    {
+        public string Govde = string.Empty;
+        public bool Degismedi;
+        public readonly List<string> Kosullar = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage istek, CancellationToken iptal)
+        {
+            Kosullar.Add(string.Join(";", istek.Headers
+                .Where(b => b.Key is "If-None-Match" or "If-Modified-Since")
+                .Select(b => b.Key + "=" + string.Join(",", b.Value))));
+
+            if (Degismedi)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotModified));
+            }
+
+            var yanit = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(Govde, Encoding.UTF8, "text/calendar"),
+            };
+            yanit.Headers.TryAddWithoutValidation("ETag", "\"yeni\"");
+            return Task.FromResult(yanit);
+        }
+    }
+
+    /// <summary>1.12'nin yazdığı tatil önbelleğinin biçimi; yeni dosyanın eski sürümce okunabildiğini sınamak için.</summary>
+    private sealed class EskiTatilOnbellegi
+    {
+        public DateTimeOffset FetchedUtc { get; set; }
+
+        public string? ETag { get; set; }
+
+        public string? LastModified { get; set; }
+
+        public List<EskiTatil> Days { get; set; } = new();
+    }
+
+    private sealed class EskiTatil
+    {
+        public DateOnly Date { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public string Kind { get; set; } = string.Empty;
+
+        public bool DateUncertain { get; set; }
+    }
+
+    /// <summary>Tüm gün kayıtlardan bir ICS metni (bitiş günü dâhil değil).</summary>
+    private static string TatilAkisi(params (string Bas, string Son, string Ad, string Aciklama)[] kayitlar)
+    {
+        var sb = new StringBuilder("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n");
+        foreach ((string bas, string son, string ad, string aciklama) in kayitlar)
+        {
+            sb.Append("BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:").Append(bas)
+                .Append("\r\nDTEND;VALUE=DATE:").Append(son)
+                .Append("\r\nSUMMARY:").Append(ad)
+                .Append("\r\nDESCRIPTION:").Append(aciklama)
+                .Append("\r\nEND:VEVENT\r\n");
+        }
+
+        return sb.Append("END:VCALENDAR\r\n").ToString();
+    }
+
+    private static void Madde18()
+    {
+        Console.WriteLine("18) Ay düğmeleriyle uzak aylara gidince de akıştaki tatiller kırmızı");
+        Type servisTipi = Tip("Kalender.Calendar.Holidays.HolidayService");
+
+        // Açıklamalar Google'ın akışındaki gibi (ICS kaçışlarıyla).
+        string akis = TatilAkisi(
+            ("20210715", "20210716", "Demokrasi ve Millî Birlik Günü", "Resmi tatil"),
+            ("20260526", "20260527", "Kurban Bayramı Arifesi", @"Resmi tatil\nBu\, yarım günlük bir tatildir."),
+            ("20260527", "20260531", "Kurban Bayramı", "Resmi tatil"),
+            ("20260510", "20260511", "Anneler Günü", @"Kutlama\nKutlama günlerini gizlemek için Google Takvim Ayarları"),
+            ("20311029", "20311030", "Cumhuriyet Bayramı", @"Resmi tatil\nTarih\, geçicidir ve değişebilir."));
+
+        // Süzme indirme ayına bakmıyor: bugünden yıllarca önceki ve sonraki günler de kalıyor.
+        object kayitlar = Statik(Tip("Kalender.Calendar.Holidays.IcsParser"), "Parse", akis)!;
+        Dictionary<DateOnly, object> gunler = ((IEnumerable)Statik(servisTipi, "Extract", kayitlar)!).Cast<object>()
+            .ToDictionary(g => (DateOnly)Oku(g, "Date")!);
+        Denetle("2021'deki tatil saklanıyor", gunler.ContainsKey(new DateOnly(2021, 7, 15)));
+        Denetle("2031'deki tatil saklanıyor", gunler.ContainsKey(new DateOnly(2031, 10, 29)));
+        Denetle("çok günlük bayramın her günü saklanıyor, bitiş günü dâhil değil",
+            Enumerable.Range(27, 4).All(g => gunler.ContainsKey(new DateOnly(2026, 5, g)))
+            && !gunler.ContainsKey(new DateOnly(2026, 5, 31)));
+        Denetle("kutlama günü yine dışarıda", !gunler.ContainsKey(new DateOnly(2026, 5, 10)));
+        Denetle("arife yarım gün, geçici tarih işaretli, toplam 7 gün",
+            gunler.Count == 7
+            && Oku(gunler[new DateOnly(2026, 5, 26)], "Kind")!.ToString() == "HalfDay"
+            && (bool)Oku(gunler[new DateOnly(2031, 10, 29)], "DateUncertain")!,
+            gunler.Count + " gün");
+
+        // 1.12'nin önbelleği: yalnız 14 aylık pencere, FullFeed alanı yok, 5 gün önce alınmış.
+        string onbellek = Path.Combine(
+            (string)Tip("Kalender.Core.Paths").GetProperty("CacheFolder", Hepsi)!.GetValue(null)!, "tatiller.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(onbellek)!);
+        File.WriteAllText(onbellek,
+            $$"""{"FetchedUtc":"{{DateTimeOffset.UtcNow.AddDays(-5):O}}","ETag":"\"eski\"","Days":[{"Date":"2026-10-29","Name":"Cumhuriyet Bayramı","Kind":"Full","DateUncertain":false}]}""",
+            new UTF8Encoding(false));
+
+        object servis = Activator.CreateInstance(servisTipi, true)!;
+        var sahte = new SahteTatilAkisi { Govde = akis };
+        ((IDisposable)AlanOku(servis, "_http")).Dispose();
+        AlanAta(servis, "_http", new HttpClient(sahte));
+        object servis2 = Activator.CreateInstance(servisTipi, true)!;
+        try
+        {
+            void Yenile() => ((Task)Cagir(servis, "RefreshAsync", false, CancellationToken.None)!).GetAwaiter().GetResult();
+            bool Var(object s, DateOnly gun) => ((IDictionary)Oku(s, "Days")!).Contains(gun);
+
+            Cagir(servis, "LoadCache");
+            Denetle("eski sürümün önbelleği okunuyor, tatili hemen görünüyor",
+                (int)Oku(servis, "Count")! == 1 && Var(servis, new DateOnly(2026, 10, 29)));
+
+            Yenile();
+            Denetle("eski önbellek 30 gün beklenmeden yeniden indiriliyor", sahte.Kosullar.Count == 1, sahte.Kosullar.Count + " istek");
+            Denetle("eski önbellek için koşulsuz istek (304 eksik listeyi bırakmasın)",
+                sahte.Kosullar.Count == 1 && sahte.Kosullar[0].Length == 0, string.Join(" | ", sahte.Kosullar));
+            Denetle("akıştaki bütün tatiller bellekte",
+                (int)Oku(servis, "Count")! == 7 && Var(servis, new DateOnly(2021, 7, 15)) && Var(servis, new DateOnly(2031, 10, 29)));
+
+            string yazilan = File.ReadAllText(onbellek);
+            Denetle("yeni önbellek bütün akışı tuttuğunu yazıyor", yazilan.Contains("\"FullFeed\":true", StringComparison.Ordinal));
+            EskiTatilOnbellegi? eskiOkuma = JsonSerializer.Deserialize<EskiTatilOnbellegi>(yazilan);
+            Denetle("yeni dosyayı eski sürüm de okuyabiliyor (tanımadığı alan atlanır)",
+                eskiOkuma is { ETag: "\"yeni\"", Days.Count: 7 } && eskiOkuma.Days.Any(d => d.Date == new DateOnly(2021, 7, 15)));
+
+            sahte.Kosullar.Clear();
+            Yenile();
+            Denetle("tam önbellek 30 gün dolmadan yeniden indirilmiyor", sahte.Kosullar.Count == 0, sahte.Kosullar.Count + " istek");
+
+            object kayit = AlanOku(servis, "_cache");
+            Yaz(kayit, "FetchedUtc", DateTimeOffset.UtcNow.AddDays(-31));
+            sahte.Degismedi = true;
+            Yenile();
+            Denetle("süresi dolunca koşullu istek atılıyor",
+                sahte.Kosullar.Count == 1 && sahte.Kosullar[0] == "If-None-Match=\"yeni\"", string.Join(" | ", sahte.Kosullar));
+            Denetle("304'te bütün liste korunuyor, alınma tarihi ileri alınıyor",
+                (int)Oku(servis, "Count")! == 7 && (DateTimeOffset)Oku(kayit, "FetchedUtc")! > DateTimeOffset.UtcNow.AddMinutes(-1));
+
+            // Takvimin gördüğü: yeni önbellekle açılışta, ‹ › ile uzak aylara gidilince.
+            Cagir(servis2, "LoadCache");
+            Denetle("yeni önbellek açılışta okunuyor, tam olduğu biliniyor",
+                (int)Oku(servis2, "Count")! == 7 && (bool)Oku(AlanOku(servis2, "_cache"), "FullFeed")!);
+            object depo = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"), true)!;
+            object veri = Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataService"), servis2, null, depo)!;
+            bool Kirmizi(DateOnly gun)
+            {
+                Cagir(veri, "SetViewMonth", new DateOnly(gun.Year, gun.Month, 1));
+                object? icerik = Cagir(Oku(veri, "Current")!, "For", gun);
+                return icerik is not null && (bool)Oku(icerik, "IsHoliday")!;
+            }
+
+            Denetle("‹ ile Temmuz 2021'e gidilince 15 Temmuz kırmızı", Kirmizi(new DateOnly(2021, 7, 15)));
+            Denetle("‹ ile Mayıs 2026'ya gidilince Kurban Bayramı kırmızı", Kirmizi(new DateOnly(2026, 5, 27)));
+            Denetle("› ile Ekim 2031'e gidilince 29 Ekim kırmızı", Kirmizi(new DateOnly(2031, 10, 29)));
+        }
+        finally
+        {
+            ((IDisposable)servis).Dispose();
+            ((IDisposable)servis2).Dispose();
+        }
+    }
+
+    // ------------------------------------------------------------------ 34. madde
+
+    /// <summary>
+    /// Süreç saat dilimini önbelleğe almış, Windows'ta dilim sonradan değişmiş
+    /// gibi yapar: .NET'in dilim önbelleğine (TimeZoneInfo.s_cachedData) verilen
+    /// farkla sahte bir dilim konur. Windows'un ayarına dokunulmaz;
+    /// TimeZoneInfo.ClearCachedData önbelleği atınca gerçek dilim geri gelir.
+    /// </summary>
+    private static void SahteDilimKoy(TimeSpan fark)
+    {
+        FieldInfo alan = typeof(TimeZoneInfo).GetField("s_cachedData", Hepsi)!;
+        object onbellek = Activator.CreateInstance(alan.FieldType, nonPublic: true)!;
+        alan.FieldType.GetField("_localTimeZone", Hepsi)!.SetValue(onbellek,
+            TimeZoneInfo.CreateCustomTimeZone("Sahte Dilim", fark, "Sahte Dilim", "Sahte Dilim"));
+
+        // DateTime.Now, Windows'ta dilimden ayrı olarak bu yılın farkını da önbelleğe alıyor.
+        Type yilinFarki = typeof(TimeZoneInfo).GetNestedType("OffsetAndRule", BindingFlags.NonPublic)!;
+        alan.FieldType.GetField("_oneYearLocalFromUtc", Hepsi)!.SetValue(onbellek,
+            Activator.CreateInstance(yilinFarki, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                new object?[] { DateTime.UtcNow.Year, fark, null }, null));
+        alan.SetValue(null, onbellek);
+    }
+
+    private static void Madde34()
+    {
+        Console.WriteLine("34) Saat dilimi değişince gün ve gece yarısı yeni dilime göre");
+        Type tip = Tip("Kalender.Time.DayChangeWatcher");
+
+        TimeZoneInfo.ClearCachedData();
+        DateTime utc = DateTime.UtcNow;
+        DateOnly gercekGun = DateOnly.FromDateTime(DateTime.Now);
+        TimeSpan gercekFark = TimeZoneInfo.Local.GetUtcOffset(utc);
+
+        // Sahte dilim başka bir günde olsun: UTC−12 ile UTC+14 hep ayrı günlerde.
+        TimeSpan fark = DateOnly.FromDateTime(utc.AddHours(-12)) != gercekGun ? TimeSpan.FromHours(-12) : TimeSpan.FromHours(14);
+        object? izleyici = null;
+        try
+        {
+            SahteDilimKoy(fark);
+            Denetle("sınama düzeni: süreç başka bir dilimi önbelleğe almış (Windows'un ayarı değişmedi)",
+                TimeZoneInfo.Local.Id == "Sahte Dilim" && DateTimeOffset.Now.Offset == fark, DateTimeOffset.Now.Offset.ToString());
+
+            izleyici = Activator.CreateInstance(tip, true)!;
+            DateOnly eskiGun = (DateOnly)Oku(izleyici, "Today")!;
+            var sira = new List<string>();
+            tip.GetEvent("DayChanged")!.AddEventHandler(izleyici, new Action<DateOnly>(g => sira.Add("gün " + g.ToString("yyyy-MM-dd"))));
+            tip.GetEvent("TimeZoneChanged")!.AddEventHandler(izleyici, new Action(() => sira.Add("dilim")));
+
+            // WM_TIMECHANGE gelince uygulama Recheck'i çağırıyor.
+            Cagir(izleyici, "Recheck");
+            DateOnly yeniGun = (DateOnly)Oku(izleyici, "Today")!;
+            Denetle("saat değişiminde dilim Windows'tan yeniden okunuyor",
+                TimeZoneInfo.Local.Id != "Sahte Dilim" && DateTimeOffset.Now.Offset == gercekFark, DateTimeOffset.Now.Offset.ToString());
+            Denetle("bugün yeni dilime göre (eski dilimde başka gündü)", eskiGun != gercekGun && yeniGun == gercekGun,
+                $"{eskiGun:yyyy-MM-dd} → {yeniGun:yyyy-MM-dd}");
+            Denetle("önce gün değişimi, sonra bir kez dilim değişimi bildiriliyor",
+                sira.SequenceEqual(new[] { "gün " + gercekGun.ToString("yyyy-MM-dd"), "dilim" }), string.Join(", ", sira));
+
+            DateTime simdi = DateTime.Now;
+            TimeSpan beklenen = simdi.Date.AddDays(1).AddSeconds(2) - simdi;
+            if (beklenen > TimeSpan.FromHours(6))
+            {
+                beklenen = TimeSpan.FromHours(6);
+            }
+
+            TimeSpan aralik = ((DispatcherTimer)AlanOku(izleyici, "_timer")).Interval;
+            Denetle("gece yarısı zamanlayıcısı yeni dilimin gece yarısına kuruluyor",
+                (aralik - beklenen).Duration() < TimeSpan.FromSeconds(5), $"{aralik.TotalSeconds:0} / {beklenen.TotalSeconds:0} sn");
+
+            sira.Clear();
+            Cagir(izleyici, "Recheck");
+            Denetle("dilim değişmeyince yeniden bildirilmiyor", sira.Count == 0, string.Join(", ", sira));
+        }
+        finally
+        {
+            TimeZoneInfo.ClearCachedData();
+            (izleyici as IDisposable)?.Dispose();
+        }
+
+        // Dilim değişince Google etkinlikleri yeni dilimle baştan alınıyor
+        // (eşitlemenin kendisi GoogleEsitleme sınamasında).
+        Type host = Tip("Kalender.Core.AppHost");
+        List<Komut> basla = Komutlar(host.GetMethod("Start", Hepsi)!);
+        int abone = Bul(basla, x => Cagri(x, tip, "add_TimeZoneChanged"));
+        Denetle("uygulama dilim değişimine abone oluyor",
+            abone > 0 && basla.Take(abone).LastOrDefault(x => x.Kod == OpCodes.Ldftn)?.Uye is MethodBase m && m.Name == "OnTimeZoneChanged");
+
+        List<Komut> isle = Komutlar(host.GetMethod("OnTimeZoneChanged", Hepsi)!);
+        int birak = Bul(isle, x => Cagri(x, Tip("Kalender.Google.GoogleCalendarProvider"), "SaatDilimiDegisti"));
+        int yenile = Bul(isle, x => Cagri(x, Tip("Kalender.Google.GooglePoller"), "RefreshAsync"));
+        Denetle("önce eldeki eski dilimli veri bırakılıyor, sonra görünen ay zorlanmış yenilemeyle alınıyor",
+            birak >= 0 && yenile > birak && isle[yenile - 1].Kod == OpCodes.Ldc_I4_1, $"{birak} / {yenile}");
     }
 
     // ------------------------------------------------------------------ 12. madde

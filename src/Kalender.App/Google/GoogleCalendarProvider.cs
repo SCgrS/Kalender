@@ -283,6 +283,22 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         };
     }
 
+    /// <summary>
+    /// Windows'un saat dilimi değişti. Saatli etkinlikler alınırken yerel saate
+    /// çevrilip öyle saklanıyor; eldekiler eski dilime göre çevrilmiş, gün
+    /// kutusunda saat farkı kadar kaymış görünürler. Bellekteki öbür aylar
+    /// atılır, sıradaki eşitleme (zorlanmasa da) tam yapılır: ağ yoksa ilk
+    /// tutan eşitleme görünen ayı yeni dilimle baştan alır.
+    /// </summary>
+    public void SaatDilimiDegisti()
+    {
+        lock (_veriKilidi)
+        {
+            _gecmis.Clear();
+            Data.FullSyncUtc = null;
+        }
+    }
+
     /// <summary>Yerinden edilen ayın verisini geçmişe ekler; en eskisi düşer. Kilit içinde çağrılır.</summary>
     private void Gecmise(ProviderBundle bundle)
     {

@@ -29,6 +29,9 @@ using System.Text;
 //  16. "Takvimde aç" adresine bağlı hesabın e-postası (authuser) eklenir.
 //  17. Ay belleği birleştirmesinde görev kimliğe göre elenir; elde aynı kaydın
 //      iki kopyası olsa da eşitleme düşmez.
+//  34. Saat dilimi değişince ay belleği atılır, sıradaki eşitleme (zorlanmasa
+//      da) tam yapılır; saatli etkinlik yeni dilimin saatiyle saklanır. Windows'un
+//      dilimi değiştirilmez: .NET'in önbelleğine sahte bir dilim konur.
 //  38. Artımlı yoklamanın sınır anı son yoklamadan 2 dakika geriden sorulur.
 //
 // Google yerine bu programın içindeki sahte bir HTTP işleyicisi yanıt verir;
@@ -397,6 +400,7 @@ internal static class Program
             });
             await Bolum(Madde17);
             await Bolum(Madde38);
+            await Bolum(Madde34);
         }
         finally
         {
@@ -1157,5 +1161,89 @@ internal static class Program
         Denetle("sonraki yoklamanın sınırı yine bu eşitlemenin başladığı an (pay yalnız soruda)",
             (DateTimeOffset?)Oku(Oku(saglayici, "Data")!, "LastSyncUtc") > son.AddSeconds(30));
         Cagir(saglayici, "ClearCache");
+    }
+
+    // 34 ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Süreç saat dilimini önbelleğe almış, Windows'ta dilim sonradan değişmiş
+    /// gibi yapar: .NET'in dilim önbelleğine (TimeZoneInfo.s_cachedData) verilen
+    /// farkla sahte bir dilim konur. Windows'un ayarına dokunulmaz;
+    /// TimeZoneInfo.ClearCachedData önbelleği atınca gerçek dilim geri gelir.
+    /// </summary>
+    private static void SahteDilimKoy(TimeSpan fark)
+    {
+        FieldInfo alan = typeof(TimeZoneInfo).GetField("s_cachedData", Hepsi)!;
+        object onbellek = Activator.CreateInstance(alan.FieldType, nonPublic: true)!;
+        alan.FieldType.GetField("_localTimeZone", Hepsi)!.SetValue(onbellek,
+            TimeZoneInfo.CreateCustomTimeZone("Sahte Dilim", fark, "Sahte Dilim", "Sahte Dilim"));
+
+        // DateTime.Now, Windows'ta dilimden ayrı olarak bu yılın farkını da önbelleğe alıyor.
+        Type yilinFarki = typeof(TimeZoneInfo).GetNestedType("OffsetAndRule", BindingFlags.NonPublic)!;
+        alan.FieldType.GetField("_oneYearLocalFromUtc", Hepsi)!.SetValue(onbellek,
+            Activator.CreateInstance(yilinFarki, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+                new object?[] { DateTime.UtcNow.Year, fark, null }, null));
+        alan.SetValue(null, onbellek);
+    }
+
+    private static async Task Madde34()
+    {
+        Console.WriteLine();
+        Console.WriteLine("34) Saat dilimi değişince gün kutusundaki saatler yeni dilime göre");
+
+        TimeZoneInfo.ClearCachedData();
+        var an = new DateTime(2026, 10, 14, 7, 0, 0, DateTimeKind.Utc);
+        TimeSpan gercekFark = TimeZoneInfo.Local.GetUtcOffset(an);
+        TimeSpan sahteFark = gercekFark == TimeSpan.FromHours(9) ? TimeSpan.FromHours(-5) : TimeSpan.FromHours(9);
+        TimeOnly Saat(TimeSpan fark) => TimeOnly.FromDateTime(an + fark);
+
+        var (_, saglayici, google) = Bagli();
+        google.EtkinlikYaniti = "{\"items\":[" + Saatli("durusma", "2026-10-14T07:00:00Z", "2026-10-14T08:00:00Z") + "]}";
+        TimeOnly? Baslangic() => EtkinlikBul(saglayici, "durusma") is object e ? (TimeOnly?)Oku(e, "StartTime") : null;
+
+        try
+        {
+            // Süreç eski dilimdeyken alınan etkinlik o dilimin saatiyle saklanıyor.
+            SahteDilimKoy(sahteFark);
+            bool ilk = await Esitle(saglayici);
+            Denetle("sınama düzeni: etkinlik eski dilimin saatiyle saklandı", ilk && Baslangic() == Saat(sahteFark),
+                $"{Baslangic()} (eski dilimde {Saat(sahteFark)})");
+
+            // Ay belleğinde eski dilimle çevrilmiş başka bir ay da var.
+            ((IList)Oku(saglayici, "_gecmis")!).Add(Paket(new DateOnly(2026, 8, 31), new DateOnly(2026, 10, 11),
+                DateTimeOffset.UtcNow, "takvim@deneme", Array.Empty<object>()));
+
+            // Windows'ta dilim değişti: gün izleyicisi .NET'in önbelleğini atıyor,
+            // uygulama sağlayıcıya haber veriyor.
+            TimeZoneInfo.ClearCachedData();
+            Cagir(saglayici, "SaatDilimiDegisti");
+            Denetle("ay belleğindeki eski dilimli aylar atılıyor", ((IList)Oku(saglayici, "_gecmis")!).Count == 0);
+
+            int once;
+            lock (google.Adresler)
+            {
+                once = google.Adresler.Count;
+            }
+
+            // Zorlanmamış bir yoklama da (ör. zorlanmış yenileme ağ yokken düştüyse) tam yapılıyor.
+            bool ikinci = await Esitle(saglayici, tam: false);
+            List<string> sorulan;
+            lock (google.Adresler)
+            {
+                sorulan = google.Adresler.Skip(once).ToList();
+            }
+
+            Denetle("sıradaki eşitleme zorlanmasa da tam (etkinlikler baştan alınıyor)",
+                ikinci && sorulan.Any(a => a.Contains("/events", StringComparison.Ordinal))
+                && !sorulan.Any(a => a.Contains("updatedMin=", StringComparison.Ordinal)),
+                $"{sorulan.Count} istek");
+            Denetle("gün kutusundaki saat yeni dilime göre", Baslangic() == Saat(gercekFark),
+                $"{Baslangic()} (beklenen {Saat(gercekFark)})");
+        }
+        finally
+        {
+            TimeZoneInfo.ClearCachedData();
+            Cagir(saglayici, "ClearCache");
+        }
     }
 }
