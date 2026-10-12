@@ -52,6 +52,9 @@ internal sealed class HoverWatcher : IDisposable
     /// <summary>İmlecin bir önceki turdaki yeri; takvimde gezinmeyi anlamak için.</summary>
     private Point _lastPoint;
 
+    /// <summary><see cref="_lastPoint"/>'in okunduğu an (<see cref="Environment.TickCount64"/>).</summary>
+    private long _lastPointAt;
+
     /// <summary>Üstünde masaüstü simgesi bulunan, kutusu bu yüzden açılmayan gün.</summary>
     private DateOnly? _simgeliGun;
 
@@ -83,6 +86,15 @@ internal sealed class HoverWatcher : IDisposable
     /// kullanıcının önünden ay kaçmasın.
     /// </summary>
     public event Action? CalendarActivity;
+
+    /// <summary>
+    /// İmleç bir önceki turdan bu yana yer değiştirdi (takvimin üstünde olsun
+    /// olmasın). Değer, önceki turda imlecin okunduğu an
+    /// (<see cref="Environment.TickCount64"/>). Fare kancası takılıysa bu hareketi
+    /// görmüş olmalıydı; görmediyse Windows onu sessizce sökmüştür
+    /// (bkz. CalendarMouseHook.Sokulmus).
+    /// </summary>
+    public event Action<long>? ImlecOynadi;
 
     public void Start() => _timer.Start();
 
@@ -121,6 +133,7 @@ internal sealed class HoverWatcher : IDisposable
     {
         try
         {
+            long okuma = Environment.TickCount64;
             if (!NativeMethods.GetCursorPos(out NativeMethods.POINT cursor))
             {
                 return;
@@ -134,7 +147,9 @@ internal sealed class HoverWatcher : IDisposable
 
             // Fare kancası tuş basılıyken de takılı kalmalı: karar basma
             // anında verilir, bırakma anında uygulanır. Bu yüzden blok
-            // denetimi tuş denetiminden önce yapılıyor.
+            // denetimi tuş denetiminden önce yapılıyor. İmleç tuş basılıyken
+            // takvimden çıkarsa kanca, yuttuğu basışın bırakışını alana dek
+            // yine takılı kalır (AppHost.UpdateMouseHook).
             bool takvimde = masaustuGorunuyor && _layer.HitTestBlock(point) is not null;
             SetCalendarHover(takvimde);
 
@@ -143,7 +158,13 @@ internal sealed class HoverWatcher : IDisposable
                 CalendarActivity?.Invoke();
             }
 
+            if (point != _lastPoint)
+            {
+                ImlecOynadi?.Invoke(_lastPointAt);
+            }
+
             _lastPoint = point;
+            _lastPointAt = okuma;
 
             if (!masaustuGorunuyor || NativeMethods.IsMouseButtonDown())
             {

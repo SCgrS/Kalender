@@ -26,6 +26,10 @@ namespace Kalender.Desktop;
 /// çalışırken sistemin fare girdisine hiç dokunmuyoruz. Kanca takılıyken de
 /// yapılan iş yalnızca "hangi tuş?" ve "hangi dikdörtgenin içinde?"
 /// sorularından ibaret.
+///
+/// Windows, geri çağırması süreyi aşan alt düzey kancayı haber vermeden söker
+/// (Windows 7'den beri). Bunu <see cref="Sokulmus"/> ile anlıyoruz: imleç
+/// oynadığı hâlde kanca hiç çağrılmadıysa kanca yeniden takılır (bkz. AppHost).
 /// </summary>
 internal sealed class CalendarMouseHook : IDisposable
 {
@@ -43,6 +47,15 @@ internal sealed class CalendarMouseHook : IDisposable
     /// <summary>Ay düğmesine basıldı ve iş görüldü; bırakma da kabuktan saklanmalı.</summary>
     private bool _swallowingLeftUp;
 
+    /// <summary>Son sağ basışın noktası; basış yutulduysa menü bu noktada (bu günde) açılır.</summary>
+    private Point _rightDownPoint;
+
+    /// <summary>Kancanın son çağrıldığı an (<see cref="Environment.TickCount64"/>).</summary>
+    private long _lastCallAt;
+
+    /// <summary>Kancanın takıldığı an (<see cref="Environment.TickCount64"/>).</summary>
+    private long _armedAt;
+
     private bool _disposed;
 
     /// <param name="dispatcher">Olayların iletileceği arayüz iş parçacığı.</param>
@@ -56,13 +69,31 @@ internal sealed class CalendarMouseHook : IDisposable
         _proc = OnMouse;
     }
 
-    /// <summary>Takvimin üzerinde sağ tıklandı (ekran koordinatı).</summary>
+    /// <summary>
+    /// Takvimin üzerinde sağ tıklandı. Nokta, tuşun basıldığı yer (ekran
+    /// koordinatı): karar basışta verildi, imleç bırakmadan önce takvimin
+    /// dışına kaymış olabilir.
+    /// </summary>
     public event Action<Point>? RightClicked;
 
     /// <summary>Ay düğmelerinden birine basıldı.</summary>
     public event Action<NavButton>? NavClicked;
 
+    /// <summary>
+    /// Yutulan bir basışın bırakışı geldi. Bırakış beklenirken kanca
+    /// sökülmediği için (<see cref="BirakisBekleniyor"/>) takılı kalıp
+    /// kalmayacağına yeniden bakılmalı.
+    /// </summary>
+    public event Action? BirakisGeldi;
+
     public bool IsArmed => _hook != IntPtr.Zero;
+
+    /// <summary>
+    /// Kanca yuttuğu bir basışın bırakışını mı bekliyor? Bu sürede imleç
+    /// takvimden çıksa da sökülmemeli: bırakış kabuğa giderse kabuk basışını
+    /// görmediği bir bırakış alır, sağ tıkta menü de hiç açılmaz.
+    /// </summary>
+    public bool BirakisBekleniyor => _hook != IntPtr.Zero && (_swallowingUp || _swallowingLeftUp);
 
     /// <summary>Kancayı takar. Zaten takılıysa hiçbir şey yapmaz.</summary>
     public void Arm()
@@ -78,8 +109,22 @@ internal sealed class CalendarMouseHook : IDisposable
         if (_hook == IntPtr.Zero)
         {
             Log.Debug("Fare kancası takılamadı; takvimde sağ tık menüsü ve ay düğmeleri çalışmayacak.");
+            return;
         }
+
+        _armedAt = Environment.TickCount64;
     }
+
+    /// <summary>
+    /// Windows kancayı sessizce sökmüş mü? İmleç, <paramref name="oncekiOkuma"/>
+    /// anında okunan yerinden bu yana oynamıştır (bkz. HoverWatcher). Takılı bir
+    /// alt düzey kanca her hareketi imleç yer değiştirmeden önce görür; kanca o andan
+    /// önce takılmış olduğu hâlde o andan beri hiç çağrılmadıysa Windows onu
+    /// geri çağırması gecikti diye haber vermeden sökmüştür.
+    /// </summary>
+    /// <param name="oncekiOkuma">İmlecin bir önceki okunduğu an (<see cref="Environment.TickCount64"/>).</param>
+    public bool Sokulmus(long oncekiOkuma)
+        => _hook != IntPtr.Zero && _armedAt < oncekiOkuma && _lastCallAt < oncekiOkuma;
 
     /// <summary>Kancayı söker.</summary>
     public void Disarm()
@@ -97,6 +142,8 @@ internal sealed class CalendarMouseHook : IDisposable
 
     private IntPtr OnMouse(int nCode, IntPtr wParam, IntPtr lParam)
     {
+        _lastCallAt = Environment.TickCount64;
+
         // nCode < 0 iken kancanın olayı incelemesi yasak; doğrudan zincire ver.
         if (nCode < 0)
         {
@@ -135,6 +182,7 @@ internal sealed class CalendarMouseHook : IDisposable
             // olsa bile aynı kararı uyguluyoruz ki kabuğa yarım bir
             // olay çifti gitmesin.
             _swallowingUp = _isOverCalendar(point);
+            _rightDownPoint = point;
             return _swallowingUp ? new IntPtr(1) : NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
         }
 
@@ -147,7 +195,9 @@ internal sealed class CalendarMouseHook : IDisposable
 
         // Menü kancanın içinde açılamaz: kanca çağrısı hızlı
         // dönmeli, yoksa Windows kancayı devre dışı bırakır.
-        _dispatcher.BeginInvoke(() => RightClicked?.Invoke(point));
+        Point basilan = _rightDownPoint;
+        _dispatcher.BeginInvoke(() => RightClicked?.Invoke(basilan));
+        _dispatcher.BeginInvoke(() => BirakisGeldi?.Invoke());
         return new IntPtr(1);
     }
 
@@ -179,6 +229,7 @@ internal sealed class CalendarMouseHook : IDisposable
         }
 
         _swallowingLeftUp = false;
+        _dispatcher.BeginInvoke(() => BirakisGeldi?.Invoke());
         return new IntPtr(1);
     }
 

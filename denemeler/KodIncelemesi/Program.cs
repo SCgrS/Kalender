@@ -40,6 +40,10 @@ using DRectangleF = System.Drawing.RectangleF;
 //      ve yüzeyin DPI'ı etkilemez); Döşe de piksel boyutuyla.
 //   8. Fotoğrafın EXIF yön etiketi uygulanır (büyük ve küçük sonlu), etiket
 //      kalkar, ön bellekte döndürülmüş hâli durur.
+//  12. Gün kutusu ölçeği farklı ekranda da hücrenin altında açılır: boyutu
+//      hücrenin ekranının ölçeğiyle hesaplanır, ölçek değişiminden sonra yeri
+//      WPF'in taşımasından sonra yeniden konur; kapalı kutu görünür olmaz
+//      (görünmeyen ayrı bir Windows masaüstünde, programın ikinci kopyasında).
 //  13. Ayar dosyası önce geçici dosyaya yazılıp diske boşaltılır, önceki
 //      hâli ayarlar.json.yedek olur; okunamayan dosya ayarlar.bozuk-<tarih>.json
 //      adıyla kenara alınır (üstüne yazılmaz), yerine yedek okunur; 1.10'dan
@@ -47,6 +51,10 @@ using DRectangleF = System.Drawing.RectangleF;
 //  19. Ayarlardan açılan "Windows ile başlat", Windows'un başlangıç
 //      listesindeki kapalı işaretini kaldırır; açılıştaki eşitleme kaldırmaz.
 //  20. Esc ya da × ile kapatınca istemci kimliği ve gizli anahtar kaydedilir.
+//  23. Menü açıkken ay okuna basılınca önce menü kapanır, ay sonra değişir.
+//  24. Tuş basılıyken imleç takvimden çıkarsa fare kancası yuttuğu basışın
+//      bırakışını bekler (bırakış kabuğa gitmez, sağ tıkta menü basılan noktada
+//      açılır), sonra sökülür; ay değişirken yine hemen sökülür.
 //  25. Yazma yeniden açılınca sıkıştırma kalitesi yeniden denetlenir.
 //  26. Duvar kâğıdına yazımlar durunca, bekleme süresi dolduğunda eski zemin
 //      dosyaları silinir; ekranda duran dosyaya dokunulmaz.
@@ -61,6 +69,9 @@ using DRectangleF = System.Drawing.RectangleF;
 //      penceresini kapatmak ancak bekleyen bir değişiklik varsa uygular.
 //  32. Ayarlar penceresi açıkken ayar başka yerden değişince duvar kâğıdı
 //      anahtarı ona eşitlenir.
+//  36. Windows'un sessizce söktüğü fare kancası anlaşılır (imleç oynadığı
+//      hâlde kanca çağrılmadı) ve yeniden takılır. Fare kancası hiç takılmaz;
+//      yapay olaylar doğrudan kancanın işleyicisine verilir.
 //  37. Ayarlar penceresi ekran satırlarını kurarken ayarlara kayıt açmaz;
 //      kayıt, kullanıcı satırda bir şey değiştirince açılır.
 //
@@ -303,9 +314,13 @@ internal static class Program
     private static string? DosyaOku(string yol) => File.Exists(yol) ? Convert.ToHexString(File.ReadAllBytes(yol)) : null;
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+        if (args.Length == 2 && args[0] == "--gun-kutusu")
+        {
+            return GunKutusuKopyasi(args[1]);
+        }
 
         PropertyInfo kok = Tip("Kalender.Core.Paths").GetProperty("RootFolder", Hepsi)!;
         string gercekKok = (string)kok.GetValue(null)!;
@@ -332,6 +347,10 @@ internal static class Program
             Bolum(() => Madde20(gecici));
             Bolum(Madde31);
             Bolum(Madde37);
+            Bolum(() => Madde12(gecici));
+            Bolum(Madde23);
+            Bolum(Madde24);
+            Bolum(Madde36);
 
             string fotograflar = Path.Combine(gecici, "fotoğraflar");
             Directory.CreateDirectory(fotograflar);
@@ -1889,6 +1908,528 @@ internal static class Program
             && Bul(Komutlar(tik), x => Cagri(x, typeof(DispatcherTimer), "Stop")) >= 0
             && Bul(Komutlar(tik), x => Cagri(x, tuval, "CleanUnusedFiles")) >= 0);
     }
+
+    // ------------------------------------------------ fare kancası (23, 24, 36)
+
+    private static readonly List<DPoint> _menuNoktalari = new();
+    private static readonly List<string> _dugmeler = new();
+
+    /// <summary>MSLLHOOKSTRUCT: alt düzey fare kancasının olay bilgisi.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FareOlayi
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr Extra;
+    }
+
+    /// <summary>
+    /// Takvimin fare kancası; takvim x &lt; 1000, önceki ay oku 500-532. Kanca
+    /// hiç takılmaz, gerçek fareye dokunulmaz: "takılı" görünsün diye tanıtıcısına
+    /// sahte bir değer yazılır; kapatılmış sayıldığı için Arm gerçek kanca takmaz.
+    /// Olaylar doğrudan işleyiciye verilir (<see cref="Gonder"/>).
+    /// </summary>
+    private static object Kanca()
+    {
+        Type t = Tip("Kalender.Desktop.CalendarMouseHook");
+        Type dugmeTipi = Tip("Kalender.Calendar.NavButton");
+        Func<DPoint, bool> takvimde = p => p.X < 1000;
+        Delegate dugme = Delegate.CreateDelegate(typeof(Func<,>).MakeGenericType(typeof(DPoint), dugmeTipi),
+            typeof(Program).GetMethod(nameof(DugmeBul), Hepsi)!.MakeGenericMethod(dugmeTipi));
+        object kanca = Activator.CreateInstance(t, Dispatcher.CurrentDispatcher, takvimde, dugme)!;
+
+        AlanAta(kanca, "_disposed", true);
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        t.GetEvent("RightClicked")!.AddEventHandler(kanca, new Action<DPoint>(_menuNoktalari.Add));
+        t.GetEvent("NavClicked")!.AddEventHandler(kanca, Delegate.CreateDelegate(typeof(Action<>).MakeGenericType(dugmeTipi),
+            typeof(Program).GetMethod(nameof(DugmeKaydet), Hepsi)!.MakeGenericMethod(dugmeTipi)));
+        return kanca;
+    }
+
+    private static T DugmeBul<T>(DPoint p) where T : struct, Enum
+        => Enum.Parse<T>(p.X is >= 500 and < 533 ? "Previous" : "None");
+
+    private static void DugmeKaydet<T>(T dugme) => _dugmeler.Add(dugme!.ToString()!);
+
+    /// <summary>Kancaya yapay bir fare olayı verir; olay yutulduysa true.</summary>
+    private static bool Gonder(object kanca, uint ileti, int x)
+    {
+        IntPtr bellek = Marshal.AllocHGlobal(Marshal.SizeOf<FareOlayi>());
+        try
+        {
+            Marshal.StructureToPtr(new FareOlayi { X = x, Y = 10 }, bellek, false);
+            return (IntPtr)Cagir(kanca, "OnMouse", 0, (IntPtr)ileti, bellek)! == (IntPtr)1;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(bellek);
+        }
+    }
+
+    private static bool Takili(object kanca) => (IntPtr)AlanOku(kanca, "_hook") != IntPtr.Zero;
+
+    /// <summary>
+    /// Kurucusu çalıştırılmamış uygulama nesnesi: yalnızca fare kancası ve imleç
+    /// takvimin üstünde. Kancanın bırakış olayı uygulamadaki gibi
+    /// UpdateMouseHook'a bağlanır; sağ tık menüye bağlanmaz (menü açılmaz).
+    /// </summary>
+    private static object Uygulama(object kanca)
+    {
+        object host = RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Core.AppHost"));
+        AlanAta(host, "_mouseHook", kanca);
+        AlanAta(host, "_hoverInside", true);
+        kanca.GetType().GetEvent("BirakisGeldi")!.AddEventHandler(kanca, new Action(() => Cagir(host, "UpdateMouseHook")));
+        return host;
+    }
+
+    /// <summary>Açılışta (Start) olaya verilen yöntem: add_ çağrısından önceki ldftn.</summary>
+    private static string? Abone(Type kaynak, string olay)
+    {
+        List<Komut> acilis = Komutlar(Tip("Kalender.Core.AppHost").GetMethod("Start", Hepsi)!);
+        int ekle = Bul(acilis, x => Cagri(x, kaynak, "add_" + olay));
+        return ekle > 1 && acilis[ekle - 2].Kod == OpCodes.Ldftn ? acilis[ekle - 2].Uye?.Name : null;
+    }
+
+    // ------------------------------------------------------------------ 23. madde
+
+    private static void Madde23()
+    {
+        Console.WriteLine("23) Menü açıkken ay okuna basılınca önce menü kapanıyor, ay sonra değişiyor");
+        Type hostTipi = Tip("Kalender.Core.AppHost");
+        object sonraki = Enum.Parse(Tip("Kalender.Calendar.NavButton"), "Next");
+        var ay = new DateOnly(2030, 3, 1);
+
+        // Uygulamanın kendisi kurulmadan: katman, veri ve Google yok, ay yalnız bellekte değişir.
+        object host = RuntimeHelpers.GetUninitializedObject(hostTipi);
+        AlanAta(host, "_viewMonth", ay);
+        AlanAta(host, "_menuOpen", true);
+        Cagir(host, "OnNavClicked", sonraki);
+        Denetle("menü açıkken ay değişmiyor; düğme, menü kapanınca uygulanmak üzere bekliyor",
+            (DateOnly)AlanOku(host, "_viewMonth") == ay && Equals(AlanOku(host, "_pendingNav"), sonraki));
+
+        AlanAta(host, "_menuOpen", false);
+        AlanAta(host, "_pendingNav", null);
+        Cagir(host, "OnNavClicked", sonraki);
+        Denetle("menü kapalıyken ok ayı hemen değiştiriyor", (DateOnly)AlanOku(host, "_viewMonth") == ay.AddMonths(1));
+
+        List<Komut> ok = Komutlar(hostTipi.GetMethod("OnNavClicked", Hepsi)!);
+        int acikMi = Bul(ok, x => AlanKomutu(x, OpCodes.Ldfld, "_menuOpen"));
+        int kapat = Bul(ok, x => Cagri(x, Tip("Kalender.Interop.NativeMethods"), "EndMenu"), acikMi);
+        Denetle("menü açıksa ok önce menüyü kapatıyor (EndMenu)", acikMi >= 0 && kapat > acikMi);
+
+        // Menü kapanınca (finally'den sonra) bekleyen düğme silinip uygulanıyor.
+        MethodInfo sagTik = hostTipi.GetMethod("OnCalendarRightClick", Hepsi)!;
+        List<Komut> k = Komutlar(sagTik);
+        int show = Bul(k, x => Cagri(x, Tip("Kalender.Interop.PopupMenu"), "Show"));
+        ExceptionHandlingClause? sonunda = show >= 0 ? Finally(sagTik, k[show].Yer) : null;
+        int sonrasi = sonunda is null ? -1 : Bul(k, x => x.Yer >= sonunda.HandlerOffset + sonunda.HandlerLength);
+        int bekleyen = sonrasi < 0 ? -1
+            : Bul(k, x => AlanKomutu(x, OpCodes.Ldfld, "_pendingNav") || AlanKomutu(x, OpCodes.Ldflda, "_pendingNav"), sonrasi);
+        // Boş değer atanan Nullable alan: ldflda + initobj.
+        int sil = -1;
+        for (int i = bekleyen + 1; bekleyen >= 0 && i < k.Count - 1 && sil < 0; i++)
+        {
+            if (AlanKomutu(k[i], OpCodes.Stfld, "_pendingNav")
+                || (AlanKomutu(k[i], OpCodes.Ldflda, "_pendingNav") && k[i + 1].Kod == OpCodes.Initobj))
+            {
+                sil = i;
+            }
+        }
+
+        int uygula = sil < 0 ? -1 : Bul(k, x => Cagri(x, hostTipi, "OnNavClicked"), sil);
+        Denetle("menü kapanınca bekleyen düğme silinip uygulanıyor",
+            sonrasi >= 0 && bekleyen >= sonrasi && sil > bekleyen && uygula > sil, $"{bekleyen} / {sil} / {uygula}");
+    }
+
+    // ------------------------------------------------------------------ 24. madde
+
+    private static void Madde24()
+    {
+        Console.WriteLine("24) Tuş basılıyken imleç takvimden çıkınca kanca bırakışı bekliyor (kanca takılmaz)");
+        const uint LDown = 0x0201, LUp = 0x0202, RDown = 0x0204, RUp = 0x0205;
+        _menuNoktalari.Clear();
+        _dugmeler.Clear();
+        object kanca = Kanca();
+        object host = Uygulama(kanca);
+
+        // Sağ tık: takvimde basılıyor, imleç takvimden çıkıyor (HoverWatcher bildirir), dışarıda bırakılıyor.
+        bool basis = Gonder(kanca, RDown, 100);
+        AlanAta(host, "_hoverInside", false);
+        Cagir(host, "UpdateMouseHook");
+        Denetle("sağ tuş basılıyken imleç takvimden çıkınca kanca takılı kalıyor",
+            basis && Takili(kanca) && (bool)Oku(kanca, "BirakisBekleniyor")!);
+        bool birakis = Gonder(kanca, RUp, 1500);
+        Bosalt();
+        Denetle("dışarıda bırakılan tuş kabuğa gitmiyor, menü basılan noktada açılıyor",
+            birakis && _menuNoktalari.SequenceEqual(new[] { new DPoint(100, 10) }), string.Join(" ", _menuNoktalari));
+        Denetle("bırakıştan sonra kanca sökülüyor", !Takili(kanca));
+
+        // Sol tık: ay okuna basılıyor, imleç çıkıyor, dışarıda bırakılıyor.
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(host, "_hoverInside", true);
+        basis = Gonder(kanca, LDown, 520);
+        AlanAta(host, "_hoverInside", false);
+        Cagir(host, "UpdateMouseHook");
+        bool bekledi = Takili(kanca);
+        birakis = Gonder(kanca, LUp, 1500);
+        Bosalt();
+        Denetle("sol tuşta da: ok basılıyken çıkınca kanca bırakışı bekliyor, bırakış saklanıyor, sonra sökülüyor",
+            basis && bekledi && birakis && !Takili(kanca) && _dugmeler.SequenceEqual(new[] { "Previous" }), string.Join(",", _dugmeler));
+
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        Cagir(host, "UpdateMouseHook");
+        Denetle("bekleyen bırakış yoksa imleç çıkınca kanca hemen sökülüyor", !Takili(kanca));
+
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(host, "_hoverInside", true);
+        _menuNoktalari.Clear();
+        bool icerde = Gonder(kanca, RDown, 300) && Gonder(kanca, RUp, 302);
+        Bosalt();
+        Denetle("takvimin içinde sağ tık menüyü açıyor, kanca takılı kalıyor",
+            icerde && _menuNoktalari.SequenceEqual(new[] { new DPoint(300, 10) }) && Takili(kanca));
+
+        // Ay değişirken (ChangeMonth) kanca, bekleyen bırakışa bakılmadan sökülüyor.
+        AlanAta(host, "_hoverInside", false);
+        Gonder(kanca, RDown, 100);
+        Cagir(host, "ChangeMonth", new Action(() => { }));
+        Denetle("ay değişirken kanca bekleyen bırakış olsa da sökülüyor",
+            !Takili(kanca) && !(bool)AlanOku(kanca, "_swallowingUp"));
+
+        Denetle("açılışta bırakış olayı UpdateMouseHook'a bağlanıyor",
+            Abone(kanca.GetType(), "BirakisGeldi") == "UpdateMouseHook");
+    }
+
+    // ------------------------------------------------------------------ 36. madde
+
+    private static void Madde36()
+    {
+        Console.WriteLine("36) Windows'un sessizce söktüğü fare kancası yeniden takılıyor (kanca takılmaz)");
+        const uint Hareket = 0x0200;
+        object kanca = Kanca();
+        long simdi = Environment.TickCount64;
+        bool Sokulmus(long onceki) => (bool)Cagir(kanca, "Sokulmus", onceki)!;
+
+        AlanAta(kanca, "_armedAt", simdi - 5000);
+        AlanAta(kanca, "_lastCallAt", simdi - 3000);
+        Denetle("imleç oynadığı hâlde takılı kanca hiç çağrılmadıysa sökülmüş sayılıyor", Sokulmus(simdi - 1000));
+
+        Gonder(kanca, Hareket, 1500);
+        Denetle("hareket kancadan geçtiyse sökülmüş sayılmıyor", !Sokulmus(simdi - 1000));
+
+        AlanAta(kanca, "_lastCallAt", 0L);
+        AlanAta(kanca, "_armedAt", simdi);
+        Denetle("önceki okumadan sonra takılan kanca için karar verilmiyor", !Sokulmus(simdi - 1000));
+
+        AlanAta(kanca, "_armedAt", simdi - 5000);
+        AlanAta(kanca, "_hook", IntPtr.Zero);
+        Denetle("takılı olmayan kanca sökülmüş sayılmıyor", !Sokulmus(simdi - 1000));
+
+        // Uygulama: Windows'un söktüğü kanca sökülüp (durumu sıfırlanır) yeniden takılır.
+        Type hostTipi = Tip("Kalender.Core.AppHost");
+        object host = Uygulama(kanca);
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(kanca, "_swallowingUp", true);
+        Cagir(host, "KancayiDenetle", simdi - 1000);
+        Denetle("ölü kanca sökülüyor, bekleyen bırakışı unutuluyor",
+            !Takili(kanca) && !(bool)AlanOku(kanca, "_swallowingUp"));
+
+        List<Komut> d = Komutlar(hostTipi.GetMethod("KancayiDenetle", Hepsi)!);
+        int takiliMi = Bul(d, x => Cagri(x, kanca.GetType(), "get_IsArmed"));
+        int sor = Bul(d, x => Cagri(x, kanca.GetType(), "Sokulmus"), takiliMi);
+        int sok = Bul(d, x => Cagri(x, kanca.GetType(), "Disarm"), sor);
+        int tak = Bul(d, x => Cagri(x, hostTipi, "UpdateMouseHook"), sok);
+        Denetle("söküldükten sonra UpdateMouseHook ile yeniden takılıyor", sor >= 0 && sok > sor && tak > sok);
+        Denetle("sökülü kanca (ör. ay çizilirken) burada takılmıyor", takiliMi >= 0 && takiliMi < sor);
+
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        Gonder(kanca, Hareket, 300);
+        Cagir(host, "KancayiDenetle", simdi - 1000);
+        Denetle("çalışan kancaya dokunulmuyor", Takili(kanca));
+
+        // Bırakışı beklenen basış artık beklenmiyorsa imleç dışarıdayken kanca kalmıyor.
+        AlanAta(host, "_hoverInside", false);
+        Cagir(host, "KancayiDenetle", simdi - 1000);
+        Denetle("imleç takvimin dışındayken kanca her harekette yeniden değerlendiriliyor", !Takili(kanca));
+
+        Denetle("açılışta imleç hareketi KancayiDenetle'ye bağlanıyor",
+            Abone(Tip("Kalender.Desktop.HoverWatcher"), "ImlecOynadi") == "KancayiDenetle");
+
+        // Yoklama, imleç yer değiştirince önceki okumanın anını bildiriyor.
+        Type izleyiciTipi = Tip("Kalender.Desktop.HoverWatcher");
+        object izleyici = RuntimeHelpers.GetUninitializedObject(izleyiciTipi);
+        AlanAta(izleyici, "_layer", Yonetici());
+        AlanAta(izleyici, "_lastPoint", new DPoint(int.MinValue, int.MinValue));
+        AlanAta(izleyici, "_lastPointAt", 12345L);
+        var gelen = new List<long>();
+        izleyiciTipi.GetEvent("ImlecOynadi")!.AddEventHandler(izleyici, new Action<long>(gelen.Add));
+        long once = Environment.TickCount64;
+        Cagir(izleyici, "Tick");
+        Denetle("yoklama imleç oynayınca önceki okumanın anını bildiriyor, yeni anı saklıyor",
+            gelen.SequenceEqual(new[] { 12345L }) && (long)AlanOku(izleyici, "_lastPointAt") >= once,
+            string.Join(",", gelen));
+    }
+
+    // ------------------------------------------------------------------ 12. madde
+
+    private const string AyriMasaustu = "KalenderKodIncelemesi";
+
+    /// <summary>
+    /// Gün kutusu gerçek bir pencere olduğu için bu bölüm görünmeyen ayrı bir
+    /// Windows masaüstünde, bu programın ikinci bir kopyasında çalışır (Lite'taki
+    /// CokluEkran sınamasının yolu); kullanıcının ekranına pencere açılmaz.
+    /// Ölçeği farklı ekrana geçişte Windows'un gönderdiği WM_DPICHANGED elle
+    /// gönderilir; tek ekranlı bilgisayarda da çalışır.
+    /// </summary>
+    private static void Madde12(string gecici)
+    {
+        Console.WriteLine("12) Gün kutusu ölçeği farklı ekranda da hücrenin altında açılıyor (görünmeyen ayrı masaüstünde)");
+        IntPtr masa = CreateDesktop(AyriMasaustu, IntPtr.Zero, IntPtr.Zero, 0, 0x10000000 /*GENERIC_ALL*/, IntPtr.Zero);
+        if (masa == IntPtr.Zero)
+        {
+            Denetle("görünmeyen masaüstü açıldı", false, $"hata {Marshal.GetLastWin32Error()}");
+            return;
+        }
+
+        try
+        {
+            string cikti = Path.Combine(gecici, "gun-kutusu.txt");
+            var si = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>(), lpDesktop = AyriMasaustu };
+            string komut = $"\"{Environment.ProcessPath}\" --gun-kutusu \"{cikti}\"";
+            if (!CreateProcess(null, komut, IntPtr.Zero, IntPtr.Zero, false, 0x08000000 /*CREATE_NO_WINDOW*/,
+                    IntPtr.Zero, null, ref si, out PROCESS_INFORMATION pi))
+            {
+                Denetle("ikinci kopya başlatıldı", false, $"hata {Marshal.GetLastWin32Error()}");
+                return;
+            }
+
+            bool bitti = WaitForSingleObject(pi.hProcess, 120_000) == 0;
+            if (!bitti)
+            {
+                TerminateProcess(pi.hProcess, 5);
+            }
+
+            GetExitCodeProcess(pi.hProcess, out int kod);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+
+            string[] satirlar = File.Exists(cikti) ? File.ReadAllLines(cikti) : Array.Empty<string>();
+            int kalan = 0;
+            foreach (string satir in satirlar)
+            {
+                Console.WriteLine(satir);
+                string s = satir.TrimStart();
+                if (s.StartsWith("GEÇTİ:", StringComparison.Ordinal))
+                {
+                    _gecen++;
+                }
+                else if (s.StartsWith("KALDI:", StringComparison.Ordinal) || s.StartsWith("BEKLENMEYEN", StringComparison.Ordinal))
+                {
+                    _hata++;
+                    kalan++;
+                }
+            }
+
+            if (!bitti || satirlar.Length == 0 || (kod != 0 && kalan == 0))
+            {
+                Denetle("ikinci kopya bitti ve sonucunu yazdı", false, $"bitti: {bitti}, çıkış kodu {kod}");
+            }
+        }
+        finally
+        {
+            CloseDesktop(masa);
+        }
+    }
+
+    /// <summary>Görünmeyen masaüstündeki ikinci kopya: yalnızca gün kutusu bölümü.</summary>
+    private static int GunKutusuKopyasi(string cikti)
+    {
+        using var yazici = new StreamWriter(cikti) { AutoFlush = true };
+        Console.SetOut(yazici);
+        try
+        {
+            // WPF ölçek değişimini yalnızca ekran başına ölçek bilen süreçte
+            // işler (uygulamanın kendisi app.manifest ile öyle).
+            SetProcessDpiAwarenessContext(new IntPtr(-4) /*PER_MONITOR_AWARE_V2*/);
+            GunKutusu();
+        }
+        catch (Exception ex)
+        {
+            _hata++;
+            Console.WriteLine("   BEKLENMEYEN HATA: " + ex);
+        }
+
+        return _hata == 0 ? 0 : 1;
+    }
+
+    private static void GunKutusu()
+    {
+        Type pencereTipi = Tip("Kalender.Ui.DayPopupWindow");
+        var kutu = (System.Windows.Window)Activator.CreateInstance(pencereTipi)!;
+        object icerik = GunIcerigi();
+
+        var calisma = (DRectangle)Statik(Tip("Kalender.Interop.MonitorEnumerator"), "WorkAreaAt", new DPoint(0, 0))!;
+        var hucre = new DRectangle(calisma.X + (calisma.Width / 2) - 40, calisma.Y + (calisma.Height / 2) - 30, 80, 60);
+        double olcek = (double)Statik(pencereTipi, "EkranOlcegi", new DPoint(hucre.X + 40, hucre.Y + 30))!;
+        uint ekranDpi = (uint)Math.Round(olcek * 96);
+        Denetle("hücrenin bulunduğu ekranın ölçeği okunuyor", olcek > 0, $"%{olcek * 100:0}");
+
+        IntPtr hwnd = IntPtr.Zero;
+        DPoint Yer()
+        {
+            GetWindowRect(hwnd, out RECT r);
+            return new DPoint(r.Left, r.Top);
+        }
+
+        // Reposition'ın hesabı: hücrenin altında ortalı, boyut hücrenin ekranının ölçeğiyle.
+        DPoint Beklenen()
+        {
+            int genislik = (int)Math.Round(kutu.ActualWidth * olcek);
+            return new DPoint(hucre.X + (hucre.Width / 2) - (genislik / 2), hucre.Bottom - (int)Math.Round(10 * olcek));
+        }
+
+        static bool Yakin(DPoint a, DPoint b) => Math.Abs(a.X - b.X) <= 1 && Math.Abs(a.Y - b.Y) <= 1;
+
+        Cagir(kutu, "ShowFor", icerik, hucre);
+        hwnd = new System.Windows.Interop.WindowInteropHelper(kutu).Handle;
+        Bekle(300);
+        Denetle("kutu hücrenin altında, ortalı açılıyor", Yakin(Yer(), Beklenen()), $"{Yer()}, beklenen {Beklenen()}");
+
+        // Windows'un ölçeği farklı ekrana geçişte gönderdiği ileti: yeni ölçek
+        // ve "şuraya taşın" önerisi (burada çalışma alanının sol üst köşesi).
+        uint yeniDpi = ekranDpi == 144 ? 96u : 144u;
+        DpiIletisi(hwnd, yeniDpi, calisma.X, calisma.Y);
+        Bekle(500);
+        double pencereOlcegi = System.Windows.Media.VisualTreeHelper.GetDpi(kutu).DpiScaleX;
+        Denetle("deneme geçerli: WPF ölçek değişimini işledi", Math.Abs(pencereOlcegi - (yeniDpi / 96.0)) < 0.01,
+            $"pencere %{pencereOlcegi * 100:0}");
+        Denetle("ölçek değişiminden sonra kutu yine hücrenin altında (WPF'in taşıması ezmiyor)",
+            Yakin(Yer(), Beklenen()), $"{Yer()}, beklenen {Beklenen()}, öneri ({calisma.X},{calisma.Y})");
+
+        Cagir(kutu, "HidePopup");
+        DpiIletisi(hwnd, ekranDpi, calisma.X + 50, calisma.Y + 50);
+        Bekle(300);
+        Denetle("kapalı kutu ölçek değişiminde görünür olmuyor", !IsWindowVisible(hwnd));
+
+        Cagir(kutu, "ShowFor", icerik, hucre);
+        Bekle(300);
+        Denetle("yeniden açılınca yine hücrenin altında", Yakin(Yer(), Beklenen()), $"{Yer()}, beklenen {Beklenen()}");
+        kutu.Close();
+    }
+
+    /// <summary>Bir saatli kayıt içeren gün.</summary>
+    private static object GunIcerigi()
+    {
+        Type girdiTipi = Tip("Kalender.Calendar.DayEntry");
+        object girdi = Activator.CreateInstance(girdiTipi, true)!;
+        Yaz(girdi, "Kind", Enum.Parse(Tip("Kalender.Calendar.EntryKind"), "Timed"));
+        Yaz(girdi, "Title", "Deneme toplantısı");
+        Yaz(girdi, "Start", new TimeOnly(10, 30));
+        Yaz(girdi, "DotColor", DColor.SteelBlue);
+        Array girdiler = Array.CreateInstance(girdiTipi, 1);
+        girdiler.SetValue(girdi, 0);
+
+        object icerik = Activator.CreateInstance(Tip("Kalender.Calendar.DayContent"), true)!;
+        Yaz(icerik, "Date", new DateOnly(2026, 10, 12));
+        Yaz(icerik, "Entries", girdiler);
+        return icerik;
+    }
+
+    /// <summary>Pencereye WM_DPICHANGED gönderir; önerilen dikdörtgen verilen köşede, boyutu aynı.</summary>
+    private static void DpiIletisi(IntPtr hwnd, uint dpi, int x, int y)
+    {
+        GetWindowRect(hwnd, out RECT r);
+        var oneri = new RECT { Left = x, Top = y, Right = x + (r.Right - r.Left), Bottom = y + (r.Bottom - r.Top) };
+        IntPtr p = Marshal.AllocHGlobal(Marshal.SizeOf<RECT>());
+        try
+        {
+            Marshal.StructureToPtr(oneri, p, false);
+            SendMessage(hwnd, 0x02E0 /*WM_DPICHANGED*/, (IntPtr)((dpi << 16) | dpi), p);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(p);
+        }
+    }
+
+    /// <summary>Dağıtıcıyı verilen süre boyunca çalıştırır.</summary>
+    private static void Bekle(int ms)
+    {
+        var cerceve = new DispatcherFrame();
+        var zaman = new DispatcherTimer(TimeSpan.FromMilliseconds(ms), DispatcherPriority.Background,
+            (s, _) =>
+            {
+                ((DispatcherTimer)s!).Stop();
+                cerceve.Continue = false;
+            },
+            Dispatcher.CurrentDispatcher);
+        zaman.Start();
+        Dispatcher.PushFrame(cerceve);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public string? lpReserved;
+        public string? lpDesktop;
+        public string? lpTitle;
+        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+        public short wShowWindow, cbReserved2;
+        public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess, hThread;
+        public int dwProcessId, dwThreadId;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateDesktop(string ad, IntPtr aygit, IntPtr kip, int bayraklar, uint erisim, IntPtr guvenlik);
+
+    [DllImport("user32.dll")]
+    private static extern bool CloseDesktop(IntPtr masa);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateProcess(string? uygulama, string komut, IntPtr sg, IntPtr ig, bool miras, uint bayraklar,
+        IntPtr ortam, string? klasor, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint WaitForSingleObject(IntPtr h, uint ms);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool TerminateProcess(IntPtr h, uint kod);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetExitCodeProcess(IntPtr h, out int kod);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr h);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr h, uint ileti, IntPtr w, IntPtr l);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr h, out RECT r);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr h);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr baglam);
 }
 
 /// <summary>

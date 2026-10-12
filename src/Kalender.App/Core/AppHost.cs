@@ -72,6 +72,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>Açık menü kapanır kapanmaz bu noktada yeni menü açılacak.</summary>
     private System.Drawing.Point? _pendingMenuPoint;
+
+    /// <summary>Menü açıkken basılan ay düğmesi; menü kapanınca uygulanır.</summary>
+    private NavButton? _pendingNav;
     private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private bool _layerWarningShown;
 
@@ -262,12 +265,14 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                     : NavButton.None);
         _mouseHook.RightClicked += OnCalendarRightClick;
         _mouseHook.NavClicked += OnNavClicked;
+        _mouseHook.BirakisGeldi += UpdateMouseHook;
         _hover.CalendarHoverChanged += inside =>
         {
             _hoverInside = inside;
             UpdateMouseHook();
         };
         _hover.CalendarActivity += RestartViewResetTimer;
+        _hover.ImlecOynadi += KancayiDenetle;
 
         _hover.Start();
 
@@ -416,6 +421,14 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                 UpdateMouseHook();
             }
 
+            if (_pendingNav is NavButton dugme)
+            {
+                // Menü bir ay düğmesine basıldığı için kapandı; ay şimdi değişir.
+                _pendingNav = null;
+                secim = 0;
+                OnNavClicked(dugme);
+            }
+
             if (_pendingMenuPoint is System.Drawing.Point sonraki)
             {
                 _pendingMenuPoint = null;
@@ -456,7 +469,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// Fare kancası takılı mı olmalı? İmleç takvimin üzerindeyken ya da
     /// bizim menümüz açıkken evet, başka her durumda hayır. Menü açıkken
     /// sökülürse sonraki sağ tık kabuğa gidiyor ve Windows'un masaüstü menüsü
-    /// bizimkinin üstüne biniyor.
+    /// bizimkinin üstüne biniyor. Kanca yuttuğu bir basışın bırakışını
+    /// beklerken de sökülmez (imleç tuş basılıyken takvimden çıkmış olabilir);
+    /// bırakış gelince (BirakisGeldi) buraya yeniden gelinir.
     /// </summary>
     private void UpdateMouseHook()
     {
@@ -469,15 +484,51 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             _mouseHook.Arm();
         }
-        else
+        else if (!_mouseHook.BirakisBekleniyor)
         {
             _mouseHook.Disarm();
         }
     }
 
+    /// <summary>
+    /// İmleç oynadı. Windows fare kancasını sessizce sökmüşse kanca yeniden
+    /// takılır: Windows, geri çağırması gecikmiş alt düzey kancayı (ör. Explorer
+    /// meşgulken simge sorusu uzayınca) haber vermeden söker; o zaman takvimdeki
+    /// sağ tık Windows'un masaüstü menüsünü açar, ay düğmeleri çalışmaz. Takılı
+    /// kancanın kalıp kalmayacağına da yeniden bakılır: bırakışı beklenen basış
+    /// artık beklenmiyorsa kanca takvimin dışında takılı kalmasın. Sökülü kanca
+    /// burada takılmaz (ör. ay çizilirken bilerek sökülü tutulur).
+    /// </summary>
+    private void KancayiDenetle(long oncekiOkuma)
+    {
+        if (_mouseHook is null || !_mouseHook.IsArmed)
+        {
+            return;
+        }
+
+        if (_mouseHook.Sokulmus(oncekiOkuma))
+        {
+            Log.Debug("Fare kancası Windows tarafından sökülmüş; yeniden takılıyor.");
+            _mouseHook.Disarm();
+        }
+
+        UpdateMouseHook();
+    }
+
     /// <summary>Ay düğmelerinden birine basıldı: önceki ay, sonraki ay ya da bu aya dönüş.</summary>
     private void OnNavClicked(NavButton dugme)
     {
+        if (_menuOpen)
+        {
+            // Menü açıkken ay düğmesine basıldı. Kanca basışı yuttuğu için menü
+            // dışına tıklandığını görmüyor, kendiliğinden kapanmıyordu; ay menünün
+            // altında değişiyor, satırlar eski aya göre kalıyordu. Önce menü
+            // kapatılıyor; ay, menü kapanınca değişir (OnCalendarRightClick).
+            _pendingNav = dugme;
+            NativeMethods.EndMenu();
+            return;
+        }
+
         switch (dugme)
         {
             case NavButton.Previous:

@@ -94,7 +94,21 @@ public partial class DayPopupWindow : Window
         SeparatorBrush.Freeze();
 
         SourceInitialized += OnSourceInitialized;
-        DpiChanged += (_, _) => Reposition();
+
+        // Ölçeği farklı ekrana geçince WPF bu olayın ardından pencereyi
+        // Windows'un önerdiği dikdörtgene taşır; olayın içinde konan yeri o
+        // taşıma eziyordu. Yer, o iş bitince yeniden konur (bkz.
+        // PlacementOverlayWindow). Kutu o arada kapandıysa konmaz: Reposition
+        // pencereyi görünür de yapar.
+        DpiChanged += (_, _) => _ = Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Background,
+            () =>
+            {
+                if (IsVisible)
+                {
+                    Reposition();
+                }
+            });
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -412,7 +426,19 @@ public partial class DayPopupWindow : Window
 
         try
         {
-            double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            var center = new System.Drawing.Point(
+                _anchor.X + (_anchor.Width / 2),
+                _anchor.Y + (_anchor.Height / 2));
+
+            // Boyut, kutunun açılacağı ekranın ölçeğiyle hesaplanır. Pencere
+            // başka bir ekrandan geliyorsa kendi ölçeği taşınana dek eski
+            // ekranınkidir; onunla hesaplanan yer ortadan kayıyordu.
+            double scale = EkranOlcegi(center);
+            if (scale <= 0)
+            {
+                scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            }
+
             if (scale <= 0)
             {
                 scale = 1;
@@ -422,10 +448,7 @@ public partial class DayPopupWindow : Window
             int height = (int)Math.Round(ActualHeight * scale);
             int margin = (int)Math.Round(ShadowMargin * scale);
 
-            System.Drawing.Rectangle work = MonitorEnumerator.WorkAreaAt(
-                new System.Drawing.Point(
-                    _anchor.X + (_anchor.Width / 2),
-                    _anchor.Y + (_anchor.Height / 2)));
+            System.Drawing.Rectangle work = MonitorEnumerator.WorkAreaAt(center);
 
             int x = _anchor.X + (_anchor.Width / 2) - (width / 2);
             int y = _anchor.Bottom - margin;
@@ -446,5 +469,21 @@ public partial class DayPopupWindow : Window
         {
             Log.Debug("Gün kutusu yerleştirilemedi: " + ex.Message);
         }
+    }
+
+    /// <summary>Noktanın bulunduğu ekranın ölçeği (1 = %100); okunamazsa 0.</summary>
+    internal static double EkranOlcegi(System.Drawing.Point point)
+    {
+        IntPtr monitor = NativeMethods.MonitorFromPoint(
+            new NativeMethods.POINT { X = point.X, Y = point.Y }, NativeMethods.MONITOR_DEFAULTTONEAREST);
+
+        if (monitor != IntPtr.Zero
+            && NativeMethods.GetDpiForMonitor(monitor, NativeMethods.MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0
+            && dpiX > 0)
+        {
+            return dpiX / 96.0;
+        }
+
+        return 0;
     }
 }
