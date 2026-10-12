@@ -147,6 +147,10 @@ public partial class SettingsWindow : Window
         _host.MonitorsChanged += OnMonitorsChanged;
         _host.GoogleStateChanged += OnGoogleStateChanged;
 
+        // Tepsideki "Eski duvar kâğıdıma dön" duvar kâğıdına yazmayı kapatıyor;
+        // açık pencerede anahtar açık görünmeye devam etmesin.
+        _host.Settings.Changed += OnSettingsChanged;
+
         _host.Updates.Changed += RefreshUpdateUi;
         RefreshUpdateUi();
     }
@@ -241,6 +245,14 @@ public partial class SettingsWindow : Window
             LoadFromSettings();
         });
     }
+
+    /// <summary>
+    /// Ayarlar kaydedildi; değişiklik bu pencereden gelmemiş olabilir (tepsi
+    /// menüsü). Duvar kâğıdı anahtarı ayara eşitlenir. Öteki denetimlere
+    /// dokunulmaz: kullanıcının o sırada yazmakta olduğu değer silinmesin.
+    /// </summary>
+    private void OnSettingsChanged(AppSettings ayarlar)
+        => Dispatcher.BeginInvoke(() => Silently(() => WallpaperSyncBox.IsChecked = ayarlar.SyncSystemWallpaper));
 
     private AppSettings S => _host.Settings.Current;
 
@@ -1489,6 +1501,7 @@ public partial class SettingsWindow : Window
     {
         _host.MonitorsChanged -= OnMonitorsChanged;
         _host.GoogleStateChanged -= OnGoogleStateChanged;
+        _host.Settings.Changed -= OnSettingsChanged;
         _host.Updates.Changed -= RefreshUpdateUi;
         _applyTimer.Stop();
 

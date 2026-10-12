@@ -877,8 +877,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// </summary>
     private void RestoreWallpaper()
     {
-        bool ok = WallpaperService.Restore();
+        // Önce yazma kapatılır: geri yükleme sürerken gelen bir çizim takvimi
+        // yeniden yazmasın. Katman yedeği olmayan ya da geri yüklenemeyen
+        // ekrana takvimsiz zemin yazar; önceden orada takvim donmuş kalıyordu.
         _settings.Update(s => s.SyncSystemWallpaper = false);
+        bool ok = _layer?.DuvarKagidiniGeriYukle() ?? WallpaperService.Restore();
 
         _tray?.ShowBalloon(
             "Kalender",

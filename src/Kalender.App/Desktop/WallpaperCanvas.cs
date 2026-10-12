@@ -51,21 +51,50 @@ internal sealed class WallpaperCanvas
 
     private bool _qualityChecked;
 
-    /// <summary>Bu süreç duvar kağıdına hiç yazdı mı? Kapanış temizliği buna bakar.</summary>
+    /// <summary>
+    /// Bu süreç duvar kâğıdına yazdı mı (ve o zamandan beri önceki duvar
+    /// kâğıdı geri yüklenmedi mi)? Kapanış temizliği ve yazmanın kapatılması
+    /// buna bakar.
+    /// </summary>
     public bool HasPainted { get; private set; }
 
     /// <summary>
     /// Bir sonraki turda her şeyin yeniden yazılmasını sağlar. "Yeniden çiz"
-    /// menüsü ve ekran yapılandırması değişimi bunu kullanır.
+    /// menüsü ve ekran yapılandırması değişimi bunu kullanır. Sıkıştırma
+    /// kalitesi de yeniden denetlenir: "Eski duvar kâğıdıma dön" onu eski
+    /// değerine döndürür; yazma aynı oturumda yeniden açılınca takvim yeniden
+    /// başlatılana dek bulanık kalıyordu.
     /// </summary>
-    public void Forget() => _hashes.Clear();
+    public void Forget()
+    {
+        _hashes.Clear();
+        _qualityChecked = false;
+    }
+
+    /// <summary>
+    /// Takvim duvar kâğıdından kaldırıldı, önceki duvar kâğıdı geri yüklendi:
+    /// ekranda bu sürecin tuttuğu bir görüntü yok. Kapanışta zemin yazılmaz;
+    /// yazma yeniden açılınca her şey baştan yazılır.
+    /// </summary>
+    public void Birak()
+    {
+        Forget();
+        _sonYazilanlar.Clear();
+        HasPainted = false;
+    }
 
     /// <summary>
     /// Verilen görüntüleri duvar kağıdı olarak uygular. Yalnızca içeriği
     /// değişen ekranlar yeniden yazılır; aynı görüntüyü tekrar yazmak
     /// masaüstünü boşuna sarsıyor ve diske yazıyor.
     /// </summary>
-    public CanvasResult Apply(IReadOnlyList<CanvasScreen> screens)
+    /// <param name="kaldirirken">
+    /// Takvim duvar kâğıdından kaldırılırken (kapanış, geri yükleme) yazılan
+    /// takvimsiz zemin mi? Öyleyse önceki duvar kâğıdı yedeklenmez, sıkıştırma
+    /// kalitesine dokunulmaz: geri yüklemenin hemen ardından yeni bir yedek
+    /// açılır ya da kalite yeniden 100'e çekilirdi.
+    /// </param>
+    public CanvasResult Apply(IReadOnlyList<CanvasScreen> screens, bool kaldirirken = false)
     {
         if (screens.Count == 0)
         {
@@ -105,8 +134,11 @@ internal sealed class WallpaperCanvas
             bool tamYol = _hashes.Count == 0;
 
             var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
-            WallpaperService.EnsureBackup(wallpaper);
-            EnsureImportQuality();
+            if (!kaldirirken)
+            {
+                WallpaperService.EnsureBackup(wallpaper);
+                EnsureImportQuality();
+            }
 
             // Görüntüler ekranın tam piksel ölçüsünde üretiliyor; "Doldur"
             // yerleşimiyle bire bir oturuyorlar. Zaten öyleyse dokunulmuyor.
@@ -219,6 +251,51 @@ internal sealed class WallpaperCanvas
             Log.Debug("Ekrandaki duvar kâğıdı okunamadı: " + ex.Message);
             return true;
         }
+    }
+
+    /// <summary>
+    /// Bu sürecin en son yazdığı görüntü hâlâ hangi ekranlarda duruyor?
+    /// Takvim duvar kâğıdından kaldırılırken (kapanış, geri yükleme) takvimsiz
+    /// zemin yalnız bu ekranlara yazılır: önceki duvar kâğıdı geri gelen ya da
+    /// kullanıcının başka bir duvar kâğıdı seçtiği ekrana dokunulmaz. Okunamayan
+    /// ekran sayılmaz; emin olamadığımız yere yazmıyoruz.
+    /// </summary>
+    /// <returns>Monitör kimlikleri.</returns>
+    public HashSet<string> EkrandaDuranlar()
+    {
+        var duranlar = new HashSet<string>(StringComparer.Ordinal);
+        if (_sonYazilanlar.Count == 0)
+        {
+            return duranlar;
+        }
+
+        try
+        {
+            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+
+            foreach (KeyValuePair<string, (string? Aygit, string Dosya)> kayit in _sonYazilanlar)
+            {
+                try
+                {
+                    // Aygıt yolu olmadan yalnız tek ekranda yazılıyor; ortak yol o ekranınki.
+                    string gorunen = wallpaper.GetWallpaper(kayit.Value.Aygit) ?? string.Empty;
+                    if (string.Equals(gorunen, kayit.Value.Dosya, StringComparison.OrdinalIgnoreCase))
+                    {
+                        duranlar.Add(kayit.Key);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug($"Ekrandaki duvar kâğıdı okunamadı ({kayit.Key}): {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Ekrandaki duvar kâğıdı okunamadı: " + ex.Message);
+        }
+
+        return duranlar;
     }
 
     // --------------------------------------------------------------- dosyalar

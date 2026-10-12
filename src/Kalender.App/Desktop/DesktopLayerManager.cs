@@ -93,8 +93,20 @@ internal sealed class DesktopLayerManager : IDisposable
 
     private int _nobetSayaci;
 
+    /// <summary>Takvim duvar kâğıdından kaldırılıyor; bu sırada gelen çizim yeniden kaldırmaya kalkmasın.</summary>
+    private bool _geriYukleniyor;
+
     /// <summary>Kimliği okunamayan bir ekran yüzünden çizim şu an erteleniyor mu?</summary>
     private bool Beklemede => _kimlikBeklemeBasi is not null && !_aygitAdiylaCiziliyor;
+
+    /// <summary>
+    /// Takvim masaüstünde görünüyor mu? Duvar kâğıdına yazma kapalıyken
+    /// (tepsideki "Eski duvar kâğıdıma dön" ya da ayarlardaki anahtar) takvimin
+    /// eski yeri boş masaüstüdür: sağ tık, ok tıklaması ve gün kutusu orada
+    /// çalışmamalı. Yazma açıkken ama duvar kâğıdına yazılamadığında isabet
+    /// yine verilir (bkz. <see cref="RefreshOnce"/>).
+    /// </summary>
+    private bool TakvimGorunuyor => _settings.Current.SyncSystemWallpaper;
 
     public DesktopLayerManager(SettingsStore settings)
     {
@@ -382,6 +394,16 @@ internal sealed class DesktopLayerManager : IDisposable
         {
             s.Surface.Dispose();
         }
+
+        // "Takvimi Windows duvar kâğıdına işle" bu süreç takvimi yazdıktan sonra
+        // kapatıldı. Yalnız yazmayı bırakmak yetmiyordu: son yazılan takvim
+        // duvar kâğıdında, uygulama kapansa da donmuş kalıyordu. Tepsideki "Eski
+        // duvar kâğıdıma dön" gibi önceki duvar kâğıdı geri konur; anahtar
+        // yeniden açılınca takvim baştan yazılır.
+        if (!settings.SyncSystemWallpaper && _canvas.HasPainted && !_geriYukleniyor)
+        {
+            DuvarKagidiniGeriYukle();
+        }
     }
 
     /// <summary>
@@ -577,10 +599,15 @@ internal sealed class DesktopLayerManager : IDisposable
 
     /// <summary>
     /// Ekran koordinatındaki noktanın hangi güne denk geldiğini bulur.
-    /// Gün kutusu bunu kullanır.
+    /// Gün kutusu bunu kullanır. Takvim masaüstünde değilken isabet verilmez.
     /// </summary>
     public DayHit? HitTest(Point screenPoint)
     {
+        if (!TakvimGorunuyor)
+        {
+            return null;
+        }
+
         foreach (EkrandakiTakvim screen in _screens)
         {
             if (!screen.Monitor.Bounds.Contains(screenPoint))
@@ -615,10 +642,16 @@ internal sealed class DesktopLayerManager : IDisposable
     /// <summary>
     /// Ekran koordinatındaki nokta takvim bloğunun (ay adı, gün adları ve
     /// ızgara) üzerinde mi? Sağ tık menüsü bunu kullanır: menü blok üzerinde
-    /// açılır, masaüstünün geri kalanı Windows'a bırakılır.
+    /// açılır, masaüstünün geri kalanı Windows'a bırakılır. Takvim masaüstünde
+    /// değilken isabet verilmez.
     /// </summary>
     public CalendarBlockHit? HitTestBlock(Point screenPoint)
     {
+        if (!TakvimGorunuyor)
+        {
+            return null;
+        }
+
         foreach (EkrandakiTakvim screen in _screens)
         {
             if (!screen.Monitor.Bounds.Contains(screenPoint))
@@ -644,9 +677,17 @@ internal sealed class DesktopLayerManager : IDisposable
         return null;
     }
 
-    /// <summary>Ekran koordinatındaki nokta hangi ay düğmesinin üzerinde?</summary>
+    /// <summary>
+    /// Ekran koordinatındaki nokta hangi ay düğmesinin üzerinde? Takvim
+    /// masaüstünde değilken isabet verilmez.
+    /// </summary>
     public NavButton HitTestNav(Point screenPoint)
     {
+        if (!TakvimGorunuyor)
+        {
+            return NavButton.None;
+        }
+
         foreach (EkrandakiTakvim screen in _screens)
         {
             if (screen.Monitor.Bounds.Contains(screenPoint))
@@ -697,18 +738,53 @@ internal sealed class DesktopLayerManager : IDisposable
     }
 
     /// <summary>
-    /// Takvimsiz zemini duvar kağıdına yazar. Kapanışta çağrılıyor: takvim
-    /// duvar kağıdının parçası olduğu için, uygulama kapandıktan sonra ekranda
-    /// donmuş bir takvim kalmasın.
+    /// Takvimi duvar kâğıdından kaldırır: kullanıcının önceki duvar kâğıdı geri
+    /// yüklenir. Tepsideki "Eski duvar kâğıdıma dön" ve ayarlarda "Takvimi
+    /// Windows duvar kâğıdına işle"nin kapatılması bunu kullanır. Yedek yoksa ya
+    /// da bir ekran geri yüklenemediyse (fotoğrafı silinmiş) o ekrana takvimsiz
+    /// zemin yazılır; ekranda donmuş bir takvim kalmasın. Çağırmadan önce yazma
+    /// kapatılmış olmalı, yoksa bir sonraki çizim takvimi yeniden yazar.
     /// </summary>
-    private void PaintPlainBackground()
+    /// <returns>Önceki duvar kâğıdı geri yüklendiyse true.</returns>
+    public bool DuvarKagidiniGeriYukle()
+    {
+        _geriYukleniyor = true;
+        try
+        {
+            bool yuklendi = WallpaperService.Restore(out bool eksikKaldi);
+
+            if (eksikKaldi && _canvas.HasPainted)
+            {
+                HashSet<string> duranlar = _canvas.EkrandaDuranlar();
+                if (duranlar.Count > 0)
+                {
+                    PaintPlainBackground(duranlar);
+                }
+            }
+
+            _canvas.Birak();
+            return yuklendi;
+        }
+        finally
+        {
+            _geriYukleniyor = false;
+        }
+    }
+
+    /// <summary>
+    /// Takvimsiz zemini duvar kâğıdına yazar. Kapanışta ve takvim duvar
+    /// kâğıdından kaldırılırken çağrılıyor: takvim duvar kâğıdının parçası
+    /// olduğu için, uygulama kapandıktan sonra ekranda donmuş bir takvim kalmasın.
+    /// </summary>
+    /// <param name="ekranlar">Yazılacak ekranların kimlikleri (hâlâ takvimi gösterenler).</param>
+    private void PaintPlainBackground(HashSet<string> ekranlar)
     {
         try
         {
             AppSettings settings = _settings.Current;
             var plain = new List<ScreenSurface>();
 
-            foreach (EkrandakiTakvim screen in _screens)
+            foreach (EkrandakiTakvim screen in _screens.Where(s => ekranlar.Contains(s.Monitor.StableId)))
             {
                 if (!settings.Monitors.TryGetValue(screen.Monitor.StableId, out MonitorPlacement? placement))
                 {
@@ -722,7 +798,7 @@ internal sealed class DesktopLayerManager : IDisposable
                 plain.Add(new ScreenSurface(screen.Monitor, surface));
             }
 
-            _canvas.Apply(plain.Select(s => new CanvasScreen(s.Monitor, s.Surface.Image)).ToList());
+            _canvas.Apply(plain.Select(s => new CanvasScreen(s.Monitor, s.Surface.Image)).ToList(), kaldirirken: true);
 
             foreach (ScreenSurface s in plain)
             {
@@ -731,7 +807,7 @@ internal sealed class DesktopLayerManager : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Warn("Kapanışta zemin yazılamadı.", ex);
+            Log.Warn("Takvimsiz zemin yazılamadı.", ex);
         }
     }
 
@@ -750,10 +826,16 @@ internal sealed class DesktopLayerManager : IDisposable
         _tazelemeTimer.Stop();
 
         // Takvimi duvar kağıdından siliyoruz; yoksa yarın da bugünün takvimi
-        // ekranda asılı kalır.
-        if (!KeepWallpaperOnExit && _canvas.HasPainted && _settings.Current.SyncSystemWallpaper)
+        // ekranda asılı kalır. Ayara değil ekrana bakılıyor: yazma kapatılınca
+        // önceden takvim hiç silinmiyordu. Önceki duvar kâğıdı geri gelen ya da
+        // kullanıcının başka bir duvar kâğıdı seçtiği ekrana dokunulmaz.
+        if (!KeepWallpaperOnExit && _canvas.HasPainted)
         {
-            PaintPlainBackground();
+            HashSet<string> duranlar = _canvas.EkrandaDuranlar();
+            if (duranlar.Count > 0)
+            {
+                PaintPlainBackground(duranlar);
+            }
         }
 
         _screens.Clear();
