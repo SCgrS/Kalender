@@ -59,7 +59,7 @@ internal sealed class CalendarDataService
         (DateOnly first, DateOnly last) = VisibleRange;
 
         var days = new Dictionary<DateOnly, List<DayEntry>>();
-        var holidayNames = new Dictionary<DateOnly, HolidayInfo>();
+        var holidayNames = new Dictionary<DateOnly, IReadOnlyList<HolidayInfo>>();
 
         AddHolidays(first, last, days, holidayNames);
         AddEvents(first, last, days);
@@ -70,16 +70,17 @@ internal sealed class CalendarDataService
         foreach ((DateOnly day, List<DayEntry> entries) in days)
         {
             MergeDuplicateTasks(entries);
-            entries.Sort((a, b) => a.SortKey.CompareTo(b.SortKey));
 
-            holidayNames.TryGetValue(day, out HolidayInfo? holiday);
+            // Kararlı sıralama: aynı güne düşen iki tatil hep aynı sırada kalır.
+            List<DayEntry> sirali = entries.OrderBy(e => e.SortKey).ToList();
+
+            holidayNames.TryGetValue(day, out IReadOnlyList<HolidayInfo>? tatiller);
 
             result[day] = new DayContent
             {
                 Date = day,
-                HolidayName = holiday?.Name,
-                IsHalfDayHoliday = holiday?.Kind == HolidayKind.HalfDay,
-                Entries = entries,
+                Tatiller = tatiller ?? Array.Empty<HolidayInfo>(),
+                Entries = sirali,
             };
         }
 
@@ -88,7 +89,7 @@ internal sealed class CalendarDataService
     }
 
     private void AddHolidays(DateOnly first, DateOnly last,
-        Dictionary<DateOnly, List<DayEntry>> days, Dictionary<DateOnly, HolidayInfo> holidayNames)
+        Dictionary<DateOnly, List<DayEntry>> days, Dictionary<DateOnly, IReadOnlyList<HolidayInfo>> holidayNames)
     {
         if (!_settings.Current.Holidays.Enabled)
         {
@@ -97,17 +98,22 @@ internal sealed class CalendarDataService
 
         for (DateOnly day = first; day <= last; day = day.AddDays(1))
         {
-            if (!_holidays.Days.TryGetValue(day, out HolidayInfo? holiday))
+            if (!_holidays.Days.TryGetValue(day, out IReadOnlyList<HolidayInfo>? tatiller))
             {
                 continue;
             }
 
-            holidayNames[day] = holiday;
-            Bucket(days, day).Add(new DayEntry
+            // Aynı güne düşen her tatil gün kutusunda ayrı satır.
+            holidayNames[day] = tatiller;
+            foreach (HolidayInfo holiday in tatiller)
             {
-                Kind = EntryKind.Holiday,
-                Title = holiday.Name,
-            });
+                Bucket(days, day).Add(new DayEntry
+                {
+                    Kind = EntryKind.Holiday,
+                    Title = holiday.Name,
+                    YarimGun = holiday.Kind == HolidayKind.HalfDay,
+                });
+            }
         }
     }
 

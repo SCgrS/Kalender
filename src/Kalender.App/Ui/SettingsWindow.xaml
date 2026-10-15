@@ -458,7 +458,7 @@
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SatirBasligi}" Text="Resmî tatilleri kırmızı göster" />
                                         <TextBlock Style="{StaticResource SatirAciklamasi}"
-                                                   Text="Liste, Google'ın Türkiye resmî tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
+                                                   Text="Liste, Google'ın Türkiye resmî tatil takviminden alınır ve bilgisayarınızda saklanır; ayda bir yenilenir. Ramazan ve Kurban bayramlarının tarihleri 2035'e kadar Diyanet'in listesine göre gösterilir. İnternet olmadığında en son indirilen liste kullanılır. Arifeler (yarım günler) kırmızı gösterilmez." />
                                     </StackPanel>
                                 </DockPanel>
                                 <Border Style="{StaticResource UyariKutusu}" Margin="16,0,16,16">

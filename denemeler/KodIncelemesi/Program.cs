@@ -2605,16 +2605,20 @@ internal static class Program
             void Yenile() => ((Task)Cagir(servis, "RefreshAsync", false, CancellationToken.None)!).GetAwaiter().GetResult();
             bool Var(object s, DateOnly gun) => ((IDictionary)Oku(s, "Days")!).Contains(gun);
 
+            // İkinci incelemenin 1. maddesinden beri akışın kapsadığı yıllara
+            // Diyanet'in Ramazan ve Kurban bayramları da konuyor (arifeleriyle
+            // 2026'da 9 gün); sayılar bu yüzden 1 → 10 ve 7 → 20 oldu (2026 ve
+            // 2031'de 9'ar gün; akıştaki 2026 Kurban kayıtlarının yerine tablodaki).
             Cagir(servis, "LoadCache");
             Denetle("eski sürümün önbelleği okunuyor, tatili hemen görünüyor",
-                (int)Oku(servis, "Count")! == 1 && Var(servis, new DateOnly(2026, 10, 29)));
+                (int)Oku(servis, "Count")! == 10 && Var(servis, new DateOnly(2026, 10, 29)));
 
             Yenile();
             Denetle("eski önbellek 30 gün beklenmeden yeniden indiriliyor", sahte.Kosullar.Count == 1, sahte.Kosullar.Count + " istek");
             Denetle("eski önbellek için koşulsuz istek (304 eksik listeyi bırakmasın)",
                 sahte.Kosullar.Count == 1 && sahte.Kosullar[0].Length == 0, string.Join(" | ", sahte.Kosullar));
             Denetle("akıştaki bütün tatiller bellekte",
-                (int)Oku(servis, "Count")! == 7 && Var(servis, new DateOnly(2021, 7, 15)) && Var(servis, new DateOnly(2031, 10, 29)));
+                (int)Oku(servis, "Count")! == 20 && Var(servis, new DateOnly(2021, 7, 15)) && Var(servis, new DateOnly(2031, 10, 29)));
 
             string yazilan = File.ReadAllText(onbellek);
             Denetle("yeni önbellek bütün akışı tuttuğunu yazıyor", yazilan.Contains("\"FullFeed\":true", StringComparison.Ordinal));
@@ -2633,12 +2637,12 @@ internal static class Program
             Denetle("süresi dolunca koşullu istek atılıyor",
                 sahte.Kosullar.Count == 1 && sahte.Kosullar[0] == "If-None-Match=\"yeni\"", string.Join(" | ", sahte.Kosullar));
             Denetle("304'te bütün liste korunuyor, alınma tarihi ileri alınıyor",
-                (int)Oku(servis, "Count")! == 7 && (DateTimeOffset)Oku(kayit, "FetchedUtc")! > DateTimeOffset.UtcNow.AddMinutes(-1));
+                (int)Oku(servis, "Count")! == 20 && (DateTimeOffset)Oku(kayit, "FetchedUtc")! > DateTimeOffset.UtcNow.AddMinutes(-1));
 
             // Takvimin gördüğü: yeni önbellekle açılışta, ‹ › ile uzak aylara gidilince.
             Cagir(servis2, "LoadCache");
             Denetle("yeni önbellek açılışta okunuyor, tam olduğu biliniyor",
-                (int)Oku(servis2, "Count")! == 7 && (bool)Oku(AlanOku(servis2, "_cache"), "FullFeed")!);
+                (int)Oku(servis2, "Count")! == 20 && (bool)Oku(AlanOku(servis2, "_cache"), "FullFeed")!);
             object depo = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"), true)!;
             object veri = Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataService"), servis2, null, depo)!;
             bool Kirmizi(DateOnly gun)

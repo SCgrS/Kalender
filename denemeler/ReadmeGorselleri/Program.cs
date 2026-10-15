@@ -153,12 +153,11 @@ internal static class Program
             .Invoke(tatiller, new object[] { true, CancellationToken.None })!;
         gorev.GetAwaiter().GetResult();
 
-        var tatilAdi = new Dictionary<DateOnly, (string Ad, bool Yarim)>();
+        // Güne düşen tatiller (bir günde birden çok olabilir; tam günler önce).
+        var tatilAdi = new Dictionary<DateOnly, IList>();
         foreach (object cift in (IEnumerable)Oku(tatiller, "Days")!)
         {
-            var gun = (DateOnly)Oku(cift, "Key")!;
-            object bilgi = Oku(cift, "Value")!;
-            tatilAdi[gun] = ((string)Oku(bilgi, "Name")!, (int)Oku(bilgi, "Kind")! != 0);
+            tatilAdi[(DateOnly)Oku(cift, "Key")!] = (IList)Oku(cift, "Value")!;
         }
 
         Console.WriteLine($"Tatil günü: {tatilAdi.Count}");
@@ -181,11 +180,12 @@ internal static class Program
             }
 
             var liste = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(girdiT))!;
-            if (tatil)
+            foreach (object bilgi in t ?? new List<object>())
             {
                 object g = Activator.CreateInstance(girdiT)!;
                 Yaz(g, "Kind", Enum.ToObject(turT, 0));
-                Yaz(g, "Title", t.Ad);
+                Yaz(g, "Title", Oku(bilgi, "Name"));
+                Yaz(g, "YarimGun", (int)Oku(bilgi, "Kind")! != 0);
                 liste.Add(g);
             }
 
@@ -203,8 +203,11 @@ internal static class Program
 
             object icerik = Activator.CreateInstance(icerikT)!;
             Yaz(icerik, "Date", d);
-            Yaz(icerik, "HolidayName", tatil ? t.Ad : null);
-            Yaz(icerik, "IsHalfDayHoliday", tatil && t.Yarim);
+            if (tatil)
+            {
+                Yaz(icerik, "Tatiller", t);
+            }
+
             Yaz(icerik, "Entries", liste);
             gunler[d] = icerik;
         }

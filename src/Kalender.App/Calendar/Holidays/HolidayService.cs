@@ -44,7 +44,9 @@ internal sealed class HolidayCacheFile
 
 /// <summary>
 /// Türkiye resmi tatillerini Google'ın herkese açık ICS akışından indirir,
-/// yerel olarak saklar ve gün bazında sorgulanabilir hâle getirir.
+/// yerel olarak saklar ve gün bazında sorgulanabilir hâle getirir. Ramazan ve
+/// Kurban bayramlarının tarihleri, tablonun kapsadığı yıllarda akıştan değil
+/// Diyanet'in tablosundan gelir (<see cref="DiniBayramlar"/>).
 ///
 /// Veri kullanımı bilinçli olarak düşük tutuldu: dosya ayda bir kez, sıkıştırılmış
 /// olarak indiriliyor; sunucu sürüm etiketi verirse koşullu istek atılıyor ve
@@ -70,7 +72,7 @@ internal sealed class HolidayService : IDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _http;
 
-    private Dictionary<DateOnly, HolidayInfo> _days = new();
+    private Dictionary<DateOnly, IReadOnlyList<HolidayInfo>> _days = new();
     private HolidayCacheFile? _cache;
 
     public HolidayService()
@@ -88,8 +90,11 @@ internal sealed class HolidayService : IDisposable
     /// <remarks>Arka plan iş parçacığından tetiklenebilir.</remarks>
     public event Action? Updated;
 
-    /// <summary>Günden tatile bakış. Değiştirilemez; her yenilemede yenisiyle değişir.</summary>
-    public IReadOnlyDictionary<DateOnly, HolidayInfo> Days => _days;
+    /// <summary>
+    /// Günden tatillere bakış; aynı güne birden çok tatil düşebilir, tam
+    /// günler önce. Değiştirilemez; her yenilemede yenisiyle değişir.
+    /// </summary>
+    public IReadOnlyDictionary<DateOnly, IReadOnlyList<HolidayInfo>> Days => _days;
 
     public DateTimeOffset? LastFetchUtc => _cache?.FetchedUtc;
 
@@ -266,10 +271,16 @@ internal sealed class HolidayService : IDisposable
     /// 200 kadar gün). Önceden yalnız indirme ayının bir ay öncesinden
     /// başlayan 14 ay tutuluyordu; ay düğmeleriyle bu aralığın dışına
     /// gidilince hiçbir tatil kırmızı görünmüyordu.
+    ///
+    /// Kayıtlar akıştaki gibi saklanıyor; Ramazan ve Kurban bayramlarının
+    /// Diyanet'e göre düzeltilmesi ve adların Türkçeleştirilmesi belleğe
+    /// alınırken yapılıyor (<see cref="Build"/>). Böylece önceki sürümün
+    /// dosyası da yeniden indirilmeden düzelmiş görünüyor.
     /// </summary>
     private static List<StoredHoliday> Extract(IReadOnlyList<IcsEvent> events)
     {
-        var result = new Dictionary<DateOnly, StoredHoliday>();
+        var result = new List<StoredHoliday>();
+        var gorulen = new Dictionary<(DateOnly Gun, string Ad), StoredHoliday>();
         int celebrations = 0;
         int unknown = 0;
 
@@ -314,29 +325,90 @@ internal sealed class HolidayService : IDisposable
                     DateUncertain = uncertain,
                 };
 
-                // Aynı güne birden çok kayıt düşerse tam gün olan kazanır.
-                if (!result.TryGetValue(day, out StoredHoliday? existing)
-                    || (existing.Kind == HolidayKind.HalfDay && kind == HolidayKind.Full))
+                // Aynı güne başka bir tatil de düşebilir (19 Mayıs 2027 hem
+                // Kurban Bayramı'nın 4. günü hem 19 Mayıs); ikisi de saklanır.
+                // Aynı ad aynı güne iki kez gelirse tam gün olan kalır.
+                if (gorulen.TryGetValue((day, record.Name), out StoredHoliday? existing))
                 {
-                    result[day] = record;
+                    if (existing.Kind == HolidayKind.HalfDay && kind == HolidayKind.Full)
+                    {
+                        existing.Kind = kind;
+                        existing.DateUncertain = uncertain;
+                    }
+
+                    continue;
                 }
+
+                gorulen[(day, record.Name)] = record;
+                result.Add(record);
             }
         }
 
-        Log.Debug($"Tatil süzgeci: {result.Count} gün, {celebrations} kutlama atlandı, {unknown} tanınmayan kayıt.");
-        return result.Values.OrderBy(d => d.Date).ToList();
+        Log.Debug($"Tatil süzgeci: {result.Count} kayıt, {celebrations} kutlama atlandı, {unknown} tanınmayan kayıt.");
+
+        // Aynı gündeki kayıtlarda yarım günler önce: 1.13 bu dosyayı okursa
+        // güne yalnız sonuncuyu koyar; tam gün olan kalsın, gün kırmızı olsun.
+        return result.OrderBy(d => d.Date).ThenByDescending(d => d.Kind).ToList();
     }
 
-    private static Dictionary<DateOnly, HolidayInfo> Build(IEnumerable<StoredHoliday> days)
+    /// <summary>
+    /// Saklanan akıştan günlük tatil listesini kurar.
+    ///
+    /// Tablonun kapsadığı yıllarda akıştaki Ramazan ve Kurban Bayramı kayıtları
+    /// (arifeleri ve bayrama eklenen idari izin günleri dâhil) atılır, yerlerine
+    /// Diyanet'in tarihleri konur. Tablodaki bayramlar yalnız akışın da
+    /// kapsadığı yıllara konur: akışın ötesindeki yıllarda sabit tatiller de
+    /// bilinmiyor; yalnız bayramlar kırmızı olsaydı liste eksiksiz sanılırdı.
+    /// Akıştaki öbür kayıtların dinî bayram adları Türkçeleştirilir.
+    /// </summary>
+    private static Dictionary<DateOnly, IReadOnlyList<HolidayInfo>> Build(IEnumerable<StoredHoliday> days)
     {
-        var map = new Dictionary<DateOnly, HolidayInfo>();
+        var map = new Dictionary<DateOnly, List<HolidayInfo>>();
+        var akisinYillari = new HashSet<int>();
 
         foreach (StoredHoliday d in days)
         {
-            map[d.Date] = new HolidayInfo(d.Date, d.Name, d.Kind, d.DateUncertain);
+            akisinYillari.Add(d.Date.Year);
+
+            if (DiniBayramlar.TablodakiBayramMi(d.Name, d.Date))
+            {
+                continue;
+            }
+
+            Ekle(new HolidayInfo(d.Date, DiniBayramlar.AdiDuzelt(d.Name), d.Kind, d.DateUncertain));
         }
 
-        return map;
+        foreach (HolidayInfo gun in DiniBayramlar.Gunler)
+        {
+            if (akisinYillari.Contains(gun.Date.Year))
+            {
+                Ekle(gun);
+            }
+        }
+
+        // Gün kırmızıysa kutuda da önce tam gün tatil okunsun; aynı türdekiler geldiği sırada.
+        return map.ToDictionary(
+            p => p.Key,
+            p => (IReadOnlyList<HolidayInfo>)p.Value.OrderBy(h => h.Kind).ToList());
+
+        void Ekle(HolidayInfo tatil)
+        {
+            if (!map.TryGetValue(tatil.Date, out List<HolidayInfo>? liste))
+            {
+                liste = new List<HolidayInfo>();
+                map[tatil.Date] = liste;
+            }
+
+            int ayni = liste.FindIndex(h => h.Name == tatil.Name);
+            if (ayni < 0)
+            {
+                liste.Add(tatil);
+            }
+            else if (liste[ayni].Kind == HolidayKind.HalfDay && tatil.Kind == HolidayKind.Full)
+            {
+                liste[ayni] = tatil;
+            }
+        }
     }
 
     public void Dispose()

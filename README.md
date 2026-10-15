@@ -136,8 +136,9 @@ Takvimin üstündeki masaüstü simgelerine tıklamak simgeye gider.
 
 ## Resmî tatiller
 
-Tatil listesi Google'ın Türkiye resmî tatil takviminden alınır ve 30 günde bir yenilenir. Tam
-gün tatiller kırmızıdır. Arifelerin adı yalnızca gün kutusunda görünür. Listeyi hemen yenilemek
+Tatil listesi Google'ın Türkiye resmî tatil takviminden alınır ve 30 günde bir yenilenir. Ramazan
+ve Kurban bayramlarının tarihleri 2035'e kadar Diyanet'in listesine göre gösterilir. Tam gün
+tatiller kırmızıdır. Arifelerin adı yalnızca gün kutusunda görünür. Listeyi hemen yenilemek
 için tepsi menüsündeki **Şimdi yenile**'ye basın.
 
 > Dinî bayram tarihleri idari kararla değişebilir. Lütfen resmî kaynaklardan teyit ediniz.

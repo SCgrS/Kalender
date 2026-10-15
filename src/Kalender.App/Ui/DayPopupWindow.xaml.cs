@@ -224,7 +224,7 @@ public partial class DayPopupWindow : Window
             }
 
             ilk = false;
-            Lines.Children.Add(BuildLine(entry, content));
+            Lines.Children.Add(BuildLine(entry));
         }
     }
 
@@ -241,18 +241,19 @@ public partial class DayPopupWindow : Window
     /// noktacıklarla eşleştirebilsin. Tamamlanmış görevlerde renk yerine gri
     /// kullanılır.
     /// </summary>
-    private UIElement BuildLine(DayEntry entry, DayContent content)
+    private UIElement BuildLine(DayEntry entry)
     {
         if (entry.Kind == EntryKind.Holiday)
         {
             // Tam gün tatil kırmızı, arife normal renkte; takvimdeki renkle aynı mantık.
+            // Aynı güne iki tatil düşünce her biri kendi satırında, kendi renginde.
             return new TextBlock
             {
                 Text = Temizle(entry.Title),
                 FontSize = TitleFontSize,
                 Margin = new Thickness(0, 2, 0, 2),
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = content.IsHoliday ? HolidayBrush : TitleBrush,
+                Foreground = entry.YarimGun ? TitleBrush : HolidayBrush,
                 FontWeight = FontWeights.SemiBold,
             };
         }

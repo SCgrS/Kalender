@@ -1,4 +1,5 @@
 using System.Drawing;
+using Kalender.Calendar.Holidays;
 
 namespace Kalender.Calendar;
 
@@ -38,6 +39,12 @@ internal sealed class DayEntry
     public bool Completed { get; init; }
 
     /// <summary>
+    /// Tatil satırında: yarım günlük tatil (arife) mi? Gün kutusunda tam gün
+    /// tatiller kırmızı, arifeler olağan renkte yazılır.
+    /// </summary>
+    public bool YarimGun { get; init; }
+
+    /// <summary>
     /// Aynı gün içinde sıralama anahtarı. Saati bilinen bir görev, "en altta"
     /// değil saatli kayıtların arasında doğru yerinde durur; kutuya bakan kişi
     /// günü baştan sona saat sırasıyla okuyabilsin.
@@ -52,22 +59,23 @@ internal sealed class DayContent
 {
     public required DateOnly Date { get; init; }
 
-    /// <summary>Resmi tatil adı; tatil değilse null.</summary>
-    public string? HolidayName { get; init; }
-
     /// <summary>
-    /// Yarım günlük tatil (arife) mi? Şartname gereği arifeler özel renk almaz;
-    /// adı yalnızca gün kutusunda görünür.
+    /// Güne düşen resmî tatiller; tatil değilse boş. Aynı güne iki tatil
+    /// düşebilir (19 Mayıs 2027 hem Kurban Bayramı hem 19 Mayıs); tam günler önce.
     /// </summary>
-    public bool IsHalfDayHoliday { get; init; }
+    public IReadOnlyList<HolidayInfo> Tatiller { get; init; } = Array.Empty<HolidayInfo>();
 
     public IReadOnlyList<DayEntry> Entries { get; init; } = Array.Empty<DayEntry>();
 
-    /// <summary>Gün kırmızı yazılmalı mı? Yalnızca tam gün resmi tatillerde.</summary>
-    public bool IsHoliday => HolidayName is not null && !IsHalfDayHoliday;
+    /// <summary>
+    /// Gün kırmızı yazılmalı mı? Yalnızca tam gün resmi tatillerde. Şartname
+    /// gereği arifeler (yarım gün) özel renk almaz, adları yalnızca gün
+    /// kutusunda görünür; aynı güne tam gün bir tatil de düşerse gün kırmızı.
+    /// </summary>
+    public bool IsHoliday => Tatiller.Any(t => t.Kind == HolidayKind.Full);
 
     /// <summary>Popup açılmasını gerektiren bir şey var mı?</summary>
-    public bool HasAnything => HolidayName is not null || Entries.Count > 0;
+    public bool HasAnything => Tatiller.Count > 0 || Entries.Count > 0;
 }
 
 /// <summary>
