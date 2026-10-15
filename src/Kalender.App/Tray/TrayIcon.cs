@@ -38,6 +38,12 @@ internal sealed class TrayIcon : IDisposable
     /// <summary>Simgeye sol tıklandı.</summary>
     public event Action? Clicked;
 
+    /// <summary>
+    /// Menü kapandı (seçilen satır bundan sonra bildirilir). Menü açıkken
+    /// takvime tıklandıysa menü bu yüzden kapatılmıştır; tıklama şimdi işlenir.
+    /// </summary>
+    public event Action? MenuKapandi;
+
     public void Show(string tooltip)
     {
         _tooltip = tooltip;
@@ -143,6 +149,8 @@ internal sealed class TrayIcon : IDisposable
         {
             _menuOpen = false;
         }
+
+        MenuKapandi?.Invoke();
 
         if (secim != 0)
         {

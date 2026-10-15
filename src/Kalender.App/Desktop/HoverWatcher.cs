@@ -38,6 +38,17 @@ internal sealed class HoverWatcher : IDisposable
         "SysListView32",
     };
 
+    /// <summary>
+    /// Masaüstünün kök pencereleri. Zincirin alt sınıfları masaüstüne özgü
+    /// değil: Kayıt Defteri, Hizmetler, 7-Zip gibi programların listeleri de
+    /// SysListView32.
+    /// </summary>
+    private static readonly string[] DesktopRootClasses =
+    {
+        "Progman",
+        "WorkerW",
+    };
+
     private readonly DesktopLayerManager _layer;
     private readonly Func<CalendarDataSnapshot> _data;
     private readonly DispatcherTimer _timer;
@@ -143,7 +154,7 @@ internal sealed class HoverWatcher : IDisposable
 
             bool masaustuGorunuyor = PointerIsOnDesktop(cursor)
                 && !ForegroundCovers(point)
-                && NotificationsAllowed();
+                && NotificationsAllowed(cursor);
 
             // Fare kancası tuş basılıyken de takılı kalmalı: karar basma
             // anında verilir, bırakma anında uygulanır. Bu yüzden blok
@@ -307,20 +318,34 @@ internal sealed class HoverWatcher : IDisposable
     internal static bool IsOnDesktopSurface(Point point)
         => PointerIsOnDesktop(new NativeMethods.POINT { X = point.X, Y = point.Y });
 
-    /// <summary>İmlecin altındaki pencere masaüstü zincirinden mi?</summary>
+    /// <summary>
+    /// İmlecin altındaki pencere masaüstü zincirinden mi? Sınıf adı yetmez,
+    /// pencerenin kökü de masaüstü olmalı: takvimin üstünde duran ama ön planda
+    /// olmayan bir programın listesine sağ tık Kalender'in menüsünü açıyor, ok
+    /// yerine denk gelen sol tık ayı değiştiriyordu.
+    /// </summary>
     private static bool PointerIsOnDesktop(NativeMethods.POINT cursor)
     {
         IntPtr under = NativeMethods.WindowFromPoint(cursor);
-        if (under == IntPtr.Zero)
+        if (under == IntPtr.Zero
+            || !DesktopClasses.Contains(NativeMethods.GetClassNameOf(under), StringComparer.Ordinal))
         {
             return false;
         }
 
-        return DesktopClasses.Contains(NativeMethods.GetClassNameOf(under), StringComparer.Ordinal);
+        IntPtr root = NativeMethods.GetAncestor(under, NativeMethods.GA_ROOT);
+        return root != IntPtr.Zero
+            && DesktopRootClasses.Contains(NativeMethods.GetClassNameOf(root), StringComparer.Ordinal);
     }
 
-    /// <summary>Tam ekran, sunum ya da oyun kipinde kutu açılmaz.</summary>
-    private static bool NotificationsAllowed()
+    /// <summary>
+    /// Tam ekran, sunum ya da oyun kipinde kutu açılmaz; ama yalnız ön plandaki
+    /// pencere imlecin bulunduğu ekrandaysa. Windows bu durumu ekran ayırmadan
+    /// bildiriyor: öbür ekranda tam ekran video oynarken takvimin ekranındaki
+    /// ilk sağ tık Windows'un menüsünü açıyor, ay okları ilk tıklamada
+    /// çalışmıyordu.
+    /// </summary>
+    private static bool NotificationsAllowed(NativeMethods.POINT cursor)
     {
         try
         {
@@ -329,12 +354,29 @@ internal sealed class HoverWatcher : IDisposable
                 return true;
             }
 
-            return state is NativeMethods.QUNS_ACCEPTS_NOTIFICATIONS or NativeMethods.QUNS_QUIET_TIME;
+            return state is NativeMethods.QUNS_ACCEPTS_NOTIFICATIONS or NativeMethods.QUNS_QUIET_TIME
+                || !ImlecinEkraninda(NativeMethods.GetForegroundWindow(), cursor);
         }
         catch
         {
             return true;
         }
+    }
+
+    /// <summary>
+    /// Pencere imlecin bulunduğu ekranda mı? Hiçbir ekranda durmayan pencere
+    /// (ya da pencerenin olmaması) hayır demek.
+    /// </summary>
+    internal static bool ImlecinEkraninda(IntPtr pencere, NativeMethods.POINT imlec)
+    {
+        if (pencere == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr ekran = NativeMethods.MonitorFromWindow(pencere, NativeMethods.MONITOR_DEFAULTTONULL);
+        return ekran != IntPtr.Zero
+            && ekran == NativeMethods.MonitorFromPoint(imlec, NativeMethods.MONITOR_DEFAULTTONEAREST);
     }
 
     public void Dispose()

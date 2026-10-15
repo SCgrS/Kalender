@@ -22,6 +22,17 @@ using System.Windows.Threading;
 //      (bayrama eklenen idari izin günleri dâhil) atılır; sabit tatiller hiç
 //      atılmaz; akışın kapsamadığı yıllara bayram eklenmez. 1.13'ün ön belleği
 //      yeniden indirilmeden düzelir; yeni dosyanın biçimi aynı, 1.13 okuyabilir.
+//   2. İmlecin altındaki liste ancak kökü masaüstüyse (Progman ya da WorkerW)
+//      masaüstü sayılır: takvimin üstünde duran başka bir programın listesi
+//      (düz ya da SHELLDLL_DefView içinde) sayılmaz.
+//   3. Duvar kâğıdı çizilirken fare kancası sökülü: ay değişiminde olduğu gibi
+//      veri değişince (Google, tatil) ve gün dönünce de. Çizim sürerken araya
+//      giren yoklama kancayı takmaz. Kanca yuttuğu sağ basışın bırakışını
+//      bekliyorsa çizim bırakıştan sonraya kalır (bırakış kabuğa gitmez, menü
+//      açılır); bu aya dönüş süresi de o sırada dolarsa ay değişmez.
+//   4. Tepsi menüsü açıkken takvime sağ tık ya da ok tıklaması, takvimin menüsü
+//      açıkkenki gibi: açık menü kapatılır; kapanınca takvimin menüsü tıklanan
+//      noktada açılır ya da ay değişir. Menü açıkken fare kancası takılı kalır.
 //   7. Duvar kâğıdından kaldırılırken önceki duvar kâğıdı geri konamayan
 //      ekrana takvimsiz zemin yazılır; takvimin durduğu ekranlar bu sürecin ne
 //      yazdığına değil ekrana bakılarak bulunur (açılışta eski sürümden donmuş
@@ -52,9 +63,20 @@ using System.Windows.Threading;
 //      yerine taşınır. Okunamayan (boş, yarım, bozuk) yedek "bozuk-<tarih>"
 //      adıyla kenara alınır: geri yükleme yedek yokmuş gibi davranır, yazma
 //      açılınca taze yedek alınır.
+//  30. Tam ekran ya da sunum kipi takvimi yalnız ön plandaki pencere imlecin
+//      ekranındaysa susturur; hiçbir ekranda durmayan pencere ya da ön planda
+//      pencere olmaması susturmaz.
 //  32. Ekranlarda yalnız takvimin görüntüsünün yolu görünse de Windows'ta
 //      resim kipi kapalıysa (düz renk) yedek düz renk olarak alınır; Windows
 //      yolu boş verince ya da resim kipi açıkken eskisi gibi.
+//  33. "Masaüstü simgelerini göster" kapalıyken (liste gizli) gizli simgenin
+//      yeri simge sayılmaz; tıklama takvime gider. Windows'un erişilebilirlik
+//      arayüzü gizli listedeki simgeye de isabet veriyor (ölçülür).
+//
+// 2, 30 ve 33. maddelerin pencereleri görünmeyen ayrı bir Windows masaüstünde
+// kurulur: kullanıcının ekranında görünmez, gerçek masaüstüne bakılmaz. 3 ve 4.
+// maddelerde fare kancası takılmaz, gerçek fareye dokunulmaz, menü açılmaz
+// (KodIncelemesi'ndeki gibi); katmanın ekranı yok, duvar kâğıdına yazılmaz.
 //
 // Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
 // GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
@@ -154,6 +176,11 @@ internal static class Program
             Bolum(Madde7);
             Bolum(Madde29);
             Bolum(Madde32);
+            Bolum(Madde2);
+            Bolum(Madde3);
+            Bolum(Madde4);
+            Bolum(Madde30);
+            Bolum(Madde33);
         }
         finally
         {
@@ -1832,6 +1859,693 @@ internal static class Program
         Denetle("düz renkte yazma yeniden açılınca düz renk yedeği yazılıyor (ikinci geri dönüş düz rengi getirir)",
             yazilan is not null && !(bool)Oku(yazilan, "WallpaperEnabled")!);
         File.Delete(yedekDosyasi);
+    }
+
+    // ---------------------------- fare kancası, sağ tık ve menüler (2, 3, 4, 30, 33)
+
+    private static readonly List<System.Drawing.Point> _menuNoktalari = new();
+
+    /// <summary>MSLLHOOKSTRUCT: alt düzey fare kancasının olay bilgisi.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FareOlayi
+    {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr Extra;
+    }
+
+    /// <summary>
+    /// Takvimin fare kancası (KodIncelemesi'ndeki gibi); takvim x &lt; 1000, ay
+    /// düğmesi yok. Kanca hiç takılmaz, gerçek fareye dokunulmaz: "takılı"
+    /// görünsün diye tanıtıcısına sahte bir değer yazılır; kapatılmış sayıldığı
+    /// için Arm gerçek kanca takmaz. Olaylar doğrudan işleyiciye verilir
+    /// (<see cref="Gonder"/>); sağ tıkın noktası kaydedilir, menü açılmaz.
+    /// </summary>
+    private static object Kanca()
+    {
+        Type t = Tip("Kalender.Desktop.CalendarMouseHook");
+        Type dugmeTipi = Tip("Kalender.Calendar.NavButton");
+        Func<System.Drawing.Point, bool> takvimde = p => p.X < 1000;
+        Delegate dugme = Delegate.CreateDelegate(typeof(Func<,>).MakeGenericType(typeof(System.Drawing.Point), dugmeTipi),
+            typeof(Program).GetMethod(nameof(DugmeYok), Hepsi)!.MakeGenericMethod(dugmeTipi));
+        object kanca = Activator.CreateInstance(t, Dispatcher.CurrentDispatcher, takvimde, dugme)!;
+
+        AlanAta(kanca, "_disposed", true);
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        t.GetEvent("RightClicked")!.AddEventHandler(kanca, new Action<System.Drawing.Point>(_menuNoktalari.Add));
+        return kanca;
+    }
+
+    private static T DugmeYok<T>(System.Drawing.Point p) where T : struct, Enum => Enum.Parse<T>("None");
+
+    /// <summary>Kancaya yapay bir fare olayı verir; olay yutulduysa true.</summary>
+    private static bool Gonder(object kanca, uint ileti, int x)
+    {
+        IntPtr bellek = Marshal.AllocHGlobal(Marshal.SizeOf<FareOlayi>());
+        try
+        {
+            Marshal.StructureToPtr(new FareOlayi { X = x, Y = 10 }, bellek, false);
+            return (IntPtr)Cagir(kanca, "OnMouse", 0, (IntPtr)ileti, bellek)! == (IntPtr)1;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(bellek);
+        }
+    }
+
+    private static bool Takili(object kanca) => (IntPtr)AlanOku(kanca, "_hook") != IntPtr.Zero;
+
+    private static bool Bekliyor(object kanca) => (bool)Oku(kanca, "BirakisBekleniyor")!;
+
+    /// <summary>Dağıtıcıda bekleyen işleri çalıştırır.</summary>
+    private static void Bosalt()
+    {
+        var cerceve = new DispatcherFrame();
+        Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => cerceve.Continue = false));
+        Dispatcher.PushFrame(cerceve);
+    }
+
+    /// <summary>Dağıtıcıyı verilen süre boyunca çalıştırır.</summary>
+    private static void Bekle(int ms)
+    {
+        var cerceve = new DispatcherFrame();
+        var zaman = new DispatcherTimer(TimeSpan.FromMilliseconds(ms), DispatcherPriority.Background,
+            (s, _) =>
+            {
+                ((DispatcherTimer)s!).Stop();
+                cerceve.Continue = false;
+            },
+            Dispatcher.CurrentDispatcher);
+        zaman.Start();
+        Dispatcher.PushFrame(cerceve);
+    }
+
+    /// <summary>
+    /// Kurucusu çalıştırılmamış masaüstü katmanı: ekran yok, yani çizim hemen
+    /// biter; duvar kâğıdına ve ayar dosyasına hiçbir şey yazılmaz.
+    /// </summary>
+    private static object Katman()
+    {
+        object katman = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
+            Tip("Kalender.Desktop.DesktopLayerManager"));
+        AlanAta(katman, "_monitors", Array.CreateInstance(Tip("Kalender.Interop.MonitorTarget"), 0));
+        return katman;
+    }
+
+    /// <summary>
+    /// Kurucusu çalıştırılmamış uygulama: fare kancası, imleç takvimin üstünde.
+    /// Bırakış olayı ve (verildiyse) katmanın çizim kancaları açılıştaki
+    /// (Start) gibi bağlanır; sağ tık menüye bağlanmaz (menü açılmaz).
+    /// </summary>
+    private static object Uygulama(object kanca, object? katman = null)
+    {
+        object host = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Core.AppHost"));
+        AlanAta(host, "_mouseHook", kanca);
+        AlanAta(host, "_hoverInside", true);
+        kanca.GetType().GetEvent("BirakisGeldi")!.AddEventHandler(kanca, new Action(() => Cagir(host, "UpdateMouseHook")));
+
+        if (katman is not null)
+        {
+            AlanAta(host, "_layer", katman);
+            Yaz(katman, "CizimeBaslarken", new Func<bool>(() => (bool)Cagir(host, "KancayiCizimIcinSok")!));
+            katman.GetType().GetEvent("CizimBitti")!.AddEventHandler(katman, new Action(() => Cagir(host, "KancayiCizimdenSonraTak")));
+        }
+
+        return host;
+    }
+
+    /// <summary>Açılışta (Start) olaya ya da özelliğe verilen yöntem: çağrıdan önceki ldftn.</summary>
+    private static string? BaslangicAbonesi(Type kaynak, string uye)
+    {
+        List<Komut> acilis = Komutlar(Tip("Kalender.Core.AppHost").GetMethod("Start", Hepsi)!);
+        int cagri = Bul(acilis, x => Cagri(x, kaynak, uye));
+        return cagri > 1 && acilis[cagri - 2].Kod == OpCodes.Ldftn ? acilis[cagri - 2].Uye?.Name : null;
+    }
+
+    /// <summary><paramref name="yer"/>'i try bölümünde tutan finally bloğu (yoksa null).</summary>
+    private static ExceptionHandlingClause? Finally(MethodBase yontem, int yer)
+        => yontem.GetMethodBody()!.ExceptionHandlingClauses.FirstOrDefault(c =>
+            c.Flags == ExceptionHandlingClauseOptions.Finally
+            && yer >= c.TryOffset && yer < c.TryOffset + c.TryLength);
+
+    private static bool Icinde(ExceptionHandlingClause? c, int yer)
+        => c is not null && yer >= c.HandlerOffset && yer < c.HandlerOffset + c.HandlerLength;
+
+    // ------------------------------------------------------------------- 3. madde
+
+    private static void Madde3()
+    {
+        Console.WriteLine("3) Duvar kâğıdı çizilirken fare kancası sökülü; yarım tıklamada çizim bırakışa kalıyor (kanca takılmaz)");
+        const uint RDown = 0x0204, RUp = 0x0205;
+        Type hostTipi = Tip("Kalender.Core.AppHost");
+        Type katmanTipi = Tip("Kalender.Desktop.DesktopLayerManager");
+        object veri = Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!;
+
+        object kanca = Kanca();
+        object katman = Katman();
+
+        // Her çizimin sonunda, uygulama kancaya yeniden bakmadan önce: kanca takılı mıydı?
+        var cizimde = new List<bool>();
+        katmanTipi.GetEvent("CizimBitti")!.AddEventHandler(katman, new Action(() => cizimde.Add(Takili(kanca))));
+        object host = Uygulama(kanca, katman);
+
+        // Google verisi ya da tatil güncellemesi (SetData) ve gün dönümü (SetToday)
+        // katmanın Refresh'inden geçiyor.
+        Cagir(katman, "SetData", veri, true);
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        Cagir(katman, "SetToday", new DateOnly(2026, 10, 15));
+        Denetle("veri değişince ve gün dönünce çizim fare kancası sökülüyken yapılıyor",
+            cizimde.SequenceEqual(new[] { false, false }) && (int)AlanOku(host, "_cizimSuruyor") == 0,
+            string.Join(",", cizimde));
+
+        // Çizim sürerken (COM çağrısı mesaj döngüsünü döndürebilir) araya giren yoklama.
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(host, "_hoverInside", false);
+        AlanAta(host, "_cizimSuruyor", 1);
+        Cagir(host, "UpdateMouseHook");
+        bool dokunulmadi = Takili(kanca);
+        AlanAta(host, "_cizimSuruyor", 0);
+        Cagir(host, "UpdateMouseHook");
+        Denetle("çizim sürerken araya giren yoklama kancaya dokunmuyor, çizim bitince kancaya yeniden bakılıyor",
+            dokunulmadi && !Takili(kanca));
+
+        // Yarım tıklama: sağ tuş takvimde basılıyken veri geldi.
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(host, "_hoverInside", true);
+        _menuNoktalari.Clear();
+        cizimde.Clear();
+        bool basis = Gonder(kanca, RDown, 100);
+        Cagir(katman, "SetData", veri, true);
+        Denetle("sağ tuş basılıyken gelen veri hemen çizilmiyor, kanca sökülmüyor (bırakış kabuğa gitmez)",
+            basis && cizimde.Count == 0 && Takili(kanca) && Bekliyor(kanca));
+
+        bool birakis = Gonder(kanca, RUp, 100);
+        Bosalt();
+        Denetle("bırakış kancada kalıyor, menü basılan noktada açılıyor",
+            birakis && _menuNoktalari.SequenceEqual(new[] { new System.Drawing.Point(100, 10) }),
+            string.Join(" ", _menuNoktalari));
+
+        Bekle(300);
+        Denetle("bırakıştan sonra bekletilen çizim bir kez, kanca sökülüyken yapılıyor",
+            cizimde.SequenceEqual(new[] { false }) && (int)AlanOku(host, "_cizimSuruyor") == 0, string.Join(",", cizimde));
+
+        // Bu aya dönüş süresi tuş basılıyken dolarsa ay değişmiyor (ay değişirken kanca sökülürdü).
+        var ay = new DateOnly(2030, 3, 1);
+        var buAy = new DateOnly(DateTime.Now.Year, DateTime.Now.Month, 1);
+        var sayac = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+        sayac.Start();
+        AlanAta(host, "_viewResetTimer", sayac);
+        AlanAta(host, "_viewMonth", ay);
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        Gonder(kanca, RDown, 100);
+        Cagir(host, "AyaDonusSuresiDoldu");
+        bool beklendi = (DateOnly)AlanOku(host, "_viewMonth") == ay && Takili(kanca) && Bekliyor(kanca) && sayac.IsEnabled;
+        Gonder(kanca, RUp, 100);
+        Bosalt();
+        Cagir(host, "AyaDonusSuresiDoldu");
+        sayac.Stop();
+        Denetle("bu aya dönüş süresi tuş basılıyken dolarsa ay değişmiyor, kanca sökülmüyor; bırakıştan sonra dönülüyor",
+            beklendi && (DateOnly)AlanOku(host, "_viewMonth") == buAy);
+
+        Denetle("açılışta katmanın çizimi fare kancasına bağlanıyor (çizimden önce sökme, sonra yeniden bakma)",
+            BaslangicAbonesi(katmanTipi, "set_CizimeBaslarken") == "KancayiCizimIcinSok"
+            && BaslangicAbonesi(katmanTipi, "add_CizimBitti") == "KancayiCizimdenSonraTak");
+
+        bool sayacYeni = false, sayacEski = false;
+        foreach (MethodInfo m in hostTipi.GetMethods(Hepsi | BindingFlags.DeclaredOnly)
+                     .Where(m => m.Name.StartsWith("<Start>", StringComparison.Ordinal)))
+        {
+            List<Komut> k = Komutlar(m);
+            sayacYeni |= Bul(k, x => Cagri(x, hostTipi, "AyaDonusSuresiDoldu")) >= 0;
+            sayacEski |= Bul(k, x => Cagri(x, hostTipi, "ChangeMonth")) >= 0;
+        }
+
+        Denetle("bu aya dönüş sayacı açılışta bırakışı bekleyen yola bağlanıyor", sayacYeni && !sayacEski);
+    }
+
+    // ------------------------------------------------------------------- 4. madde
+
+    private static void Madde4()
+    {
+        Console.WriteLine("4) Tepsi menüsü açıkken takvime sağ tık ya da ok: tepsi menüsü kapanıyor, takvimin menüsü açılıyor ya da ay değişiyor (menü açılmaz)");
+        Type hostTipi = Tip("Kalender.Core.AppHost");
+        Type menuTipi = Tip("Kalender.Interop.PopupMenu");
+        Type tepsiTipi = Tip("Kalender.Tray.TrayIcon");
+        PropertyInfo acik = menuTipi.GetProperty("Acik", Hepsi)!;
+        object sonraki = Enum.Parse(Tip("Kalender.Calendar.NavButton"), "Next");
+        var nokta = new System.Drawing.Point(300, 200);
+        var ay = new DateOnly(2030, 3, 1);
+
+        // Menü yeniden açılırken uygulamanın dağıtıcısı kullanılıyor; pencere açılmaz.
+        if (System.Windows.Application.Current is null)
+        {
+            _ = new System.Windows.Application();
+        }
+
+        object mesajlar = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(
+            Tip("Kalender.Interop.AppMessageWindow"));
+        GC.SuppressFinalize(mesajlar);
+        object host = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(hostTipi);
+        AlanAta(host, "_messages", mesajlar);
+        AlanAta(host, "_layer", Katman());
+        AlanAta(host, "_viewMonth", ay);
+
+        // Tepsi menüsü açık sayılıyor; menünün kendisi açılmaz. Açık menüyü
+        // kapatma isteği (EndMenu) bu iş parçacığında menü olmadığı için bir şey yapmaz.
+        acik.SetValue(null, true);
+        try
+        {
+            Cagir(host, "OnCalendarRightClick", nokta);
+            Denetle("tepsi menüsü açıkken takvime sağ tık bekletiliyor, açık menü kapatılıyor",
+                Equals(AlanOku(host, "_pendingMenuPoint"), nokta));
+
+            Cagir(host, "TepsiMenusuKapandi");
+            bool alindi = AlanOku(host, "_pendingMenuPoint") is null;
+
+            // Yeniden işlenen sağ tık, menü hâlâ açık sayıldığı için yine bekletilir; ekranda menü açılmaz.
+            Bosalt();
+            Denetle("tepsi menüsü kapanınca sağ tık aynı noktada yeniden işleniyor (takvimin menüsü orada açılır)",
+                alindi && Equals(AlanOku(host, "_pendingMenuPoint"), nokta));
+            AlanAta(host, "_pendingMenuPoint", null);
+
+            Cagir(host, "OnNavClicked", sonraki);
+            bool okBekledi = (DateOnly)AlanOku(host, "_viewMonth") == ay && Equals(AlanOku(host, "_pendingNav"), sonraki);
+            acik.SetValue(null, false);
+            Cagir(host, "TepsiMenusuKapandi");
+            Denetle("tepsi menüsü açıkken ok ayı hemen değiştirmiyor, menü kapanınca ay değişiyor",
+                okBekledi && (DateOnly)AlanOku(host, "_viewMonth") == ay.AddMonths(1) && AlanOku(host, "_pendingNav") is null);
+
+            // Fare kancası tepsi menüsü açıkken imleç takvimin dışında da takılı (takvimin menüsündeki gibi).
+            object kanca = Kanca();
+            AlanAta(host, "_mouseHook", kanca);
+            AlanAta(host, "_hoverInside", false);
+            acik.SetValue(null, true);
+            Cagir(host, "UpdateMouseHook");
+            bool takiliKaldi = Takili(kanca);
+            acik.SetValue(null, false);
+            Cagir(host, "TepsiMenusuKapandi");
+            Denetle("tepsi menüsü açıkken fare kancası takılı kalıyor, menü kapanınca sökülüyor",
+                takiliKaldi && !Takili(kanca));
+        }
+        finally
+        {
+            acik.SetValue(null, false);
+        }
+
+        // PopupMenu.Show menüyü açarken "açık" der, kapanınca (hata olsa da) önceki değere döner.
+        MethodInfo goster = menuTipi.GetMethod("Show", Hepsi)!;
+        List<Komut> k = Komutlar(goster);
+        int ac = Bul(k, x => Cagri(x, menuTipi, "set_Acik"));
+        int izle = Bul(k, x => Cagri(x, Tip("Kalender.Interop.NativeMethods"), "TrackPopupMenuEx"), ac);
+        int kapa = Bul(k, x => Cagri(x, menuTipi, "set_Acik"), izle);
+        Denetle("menü açıkken PopupMenu.Acik doğru, kapanınca (hata olsa da) önceki değerine dönüyor",
+            ac >= 0 && izle > ac && kapa > izle && Icinde(Finally(goster, k[izle].Yer), k[kapa].Yer), $"{ac} / {izle} / {kapa}");
+
+        // Tepsi: menü kapanınca, seçilen satır bildirilmeden önce haber veriyor.
+        List<Komut> t = Komutlar(tepsiTipi.GetMethod("ShowMenu", Hepsi)!);
+        int show = Bul(t, x => Cagri(x, menuTipi, "Show"));
+        int kapandi = Bul(t, x => x.Kod == OpCodes.Ldfld && x.Uye is FieldInfo f && f.Name == "MenuKapandi", show);
+        int secildi = Bul(t, x => x.Kod == OpCodes.Ldfld && x.Uye is FieldInfo f && f.Name == "MenuItemClicked", show);
+        Denetle("tepsi menüsü kapanınca haber veriyor (seçilen satırdan önce), açılışta uygulamaya bağlanıyor",
+            show >= 0 && kapandi > show && secildi > kapandi
+            && BaslangicAbonesi(tepsiTipi, "add_MenuKapandi") == "TepsiMenusuKapandi",
+            $"{show} / {kapandi} / {secildi}");
+    }
+
+    // ------------------------------------- görünmeyen ayrı masaüstü (2, 30, 33)
+
+    private const uint WS_VISIBLE = 0x10000000;
+    private const uint WS_POPUP = 0x80000000;
+    private const uint WS_CHILD = 0x40000000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Nokta
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Dortgen
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    /// <summary>WNDCLASSEX.</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct PencereSinifi
+    {
+        public int cbSize;
+        public uint style;
+        public IntPtr lpfnWndProc;
+        public int cbClsExtra;
+        public int cbWndExtra;
+        public IntPtr hInstance;
+        public IntPtr hIcon;
+        public IntPtr hCursor;
+        public IntPtr hbrBackground;
+        public string? lpszMenuName;
+        public string lpszClassName;
+        public IntPtr hIconSm;
+    }
+
+    /// <summary>INITCOMMONCONTROLSEX.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct OrtakDenetimler
+    {
+        public int dwSize;
+        public uint dwICC;
+    }
+
+    /// <summary>LVITEMW.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ListeOgesi
+    {
+        public uint mask;
+        public int iItem;
+        public int iSubItem;
+        public uint state;
+        public uint stateMask;
+        public IntPtr pszText;
+        public int cchTextMax;
+        public int iImage;
+        public IntPtr lParam;
+        public int iIndent;
+        public int iGroupId;
+        public uint cColumns;
+        public IntPtr puColumns;
+        public IntPtr piColFmt;
+        public int iGroup;
+    }
+
+    private delegate IntPtr PencereYordami(IntPtr h, uint ileti, IntPtr w, IntPtr l);
+
+    /// <summary>Sınama pencerelerinin yordamı; çöp toplayıcı toplamasın diye alanda.</summary>
+    private static readonly PencereYordami Yordam = DefWindowProc;
+
+    /// <summary>Masaüstünü taklit eden ve başka programa ait sınama pencerelerinin sınıfları.</summary>
+    private static readonly string[] SinamaSiniflari = { "Progman", "WorkerW", "SHELLDLL_DefView", "KalenderSinamaProgrami" };
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateDesktop(string ad, IntPtr aygit, IntPtr kip, int bayraklar, uint erisim, IntPtr guvenlik);
+
+    [DllImport("user32.dll")]
+    private static extern bool CloseDesktop(IntPtr masa);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetThreadDesktop(IntPtr masa);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern ushort RegisterClassEx(ref PencereSinifi sinif);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool UnregisterClass(string ad, IntPtr ornek);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateWindowEx(uint ekBicem, string sinif, string? ad, uint bicem,
+        int x, int y, int genislik, int yukseklik, IntPtr ust, IntPtr menu, IntPtr ornek, IntPtr veri);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr DefWindowProc(IntPtr h, uint ileti, IntPtr w, IntPtr l);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyWindow(IntPtr h);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr h, int komut);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(IntPtr h, uint ileti, IntPtr w, IntPtr l);
+
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr h, ref Nokta n);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Nokta n);
+
+    [DllImport("comctl32.dll")]
+    private static extern bool InitCommonControlsEx(ref OrtakDenetimler d);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandle(string? ad);
+
+    [DllImport("oleacc.dll")]
+    private static extern int AccessibleObjectFromWindow(IntPtr h, uint kimlik, ref Guid arayuz,
+        [MarshalAs(UnmanagedType.Interface)] out Accessibility.IAccessible? nesne);
+
+    /// <summary>
+    /// İşi görünmeyen ayrı bir Windows masaüstünde, kendi iş parçacığında
+    /// çalıştırır: sınama pencereleri kullanıcının ekranında hiç görünmez;
+    /// WindowFromPoint ve FindWindow da yalnız o masaüstünün pencerelerini görür,
+    /// gerçek masaüstüne bakılmaz. Sınıflar kaydedilir, iş bitince silinir.
+    /// </summary>
+    private static void AyriMasaustunde(Action islem)
+    {
+        IntPtr masa = CreateDesktop("KalenderIkinciInceleme" + Guid.NewGuid().ToString("N"),
+            IntPtr.Zero, IntPtr.Zero, 0, 0x10000000 /*GENERIC_ALL*/, IntPtr.Zero);
+        if (masa == IntPtr.Zero)
+        {
+            Denetle("görünmeyen masaüstü açıldı", false, $"hata {Marshal.GetLastWin32Error()}");
+            return;
+        }
+
+        Exception? hata = null;
+        var parca = new Thread(() =>
+        {
+            IntPtr ornek = GetModuleHandle(null);
+            try
+            {
+                if (!SetThreadDesktop(masa))
+                {
+                    Denetle("iş parçacığı görünmeyen masaüstüne geçti", false, $"hata {Marshal.GetLastWin32Error()}");
+                    return;
+                }
+
+                var ortak = new OrtakDenetimler { dwSize = Marshal.SizeOf<OrtakDenetimler>(), dwICC = 0x1 /*ICC_LISTVIEW_CLASSES*/ };
+                InitCommonControlsEx(ref ortak);
+                foreach (string ad in SinamaSiniflari)
+                {
+                    var sinif = new PencereSinifi
+                    {
+                        cbSize = Marshal.SizeOf<PencereSinifi>(),
+                        lpfnWndProc = Marshal.GetFunctionPointerForDelegate(Yordam),
+                        hInstance = ornek,
+                        lpszClassName = ad,
+                    };
+                    RegisterClassEx(ref sinif);
+                }
+
+                islem();
+            }
+            catch (Exception ex)
+            {
+                hata = ex;
+            }
+            finally
+            {
+                foreach (string ad in SinamaSiniflari)
+                {
+                    UnregisterClass(ad, ornek);
+                }
+            }
+        });
+        parca.SetApartmentState(ApartmentState.STA);
+        parca.Start();
+        parca.Join();
+        CloseDesktop(masa);
+
+        if (hata is not null)
+        {
+            ExceptionDispatchInfo.Capture(hata).Throw();
+        }
+    }
+
+    /// <summary>Sınama penceresi; üst pencere verilirse onun çocuğu.</summary>
+    private static IntPtr Pencere(string sinif, IntPtr ust, int x, int y, int genislik, int yukseklik, bool gorunur = true)
+        => CreateWindowEx(0, sinif, null, (ust == IntPtr.Zero ? WS_POPUP : WS_CHILD) | (gorunur ? WS_VISIBLE : 0),
+            x, y, genislik, yukseklik, ust, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
+
+    /// <summary>Kökü verilen sınıfta, içinde masaüstü listesi duran sınama penceresi; listeyi döndürür.</summary>
+    private static IntPtr ListeliPencere(string kok, bool defView, int x, int y, out IntPtr kokPencere)
+    {
+        kokPencere = Pencere(kok, IntPtr.Zero, x, y, 600, 400);
+        IntPtr ust = defView ? Pencere("SHELLDLL_DefView", kokPencere, 0, 0, 600, 400) : kokPencere;
+        return Pencere("SysListView32", ust, 0, 0, 600, 400);
+    }
+
+    private static Func<System.Drawing.Point, bool> Yontem(Type tip, string ad)
+        => (Func<System.Drawing.Point, bool>)Delegate.CreateDelegate(typeof(Func<System.Drawing.Point, bool>),
+            tip.GetMethod(ad, Hepsi)!);
+
+    // ------------------------------------------------------------------- 2. madde
+
+    private static void Madde2()
+    {
+        Console.WriteLine("2) Takvimin üstündeki başka programın listesi masaüstü sayılmıyor (görünmeyen ayrı masaüstünde)");
+        Func<System.Drawing.Point, bool> masaustu = Yontem(Tip("Kalender.Desktop.HoverWatcher"), "IsOnDesktopSurface");
+
+        AyriMasaustunde(() =>
+        {
+            // Masaüstü (kökü Progman, ikincisi WorkerW) ve takvimin üstünde duran,
+            // ön planda olmayan iki program: Kayıt Defteri gibi düz liste, dosya
+            // penceresi gibi SHELLDLL_DefView içinde liste.
+            IntPtr liste = ListeliPencere("Progman", defView: true, 0, 0, out IntPtr progman);
+            ListeliPencere("WorkerW", defView: true, 0, 500, out IntPtr worker);
+            IntPtr programListesi = ListeliPencere("KalenderSinamaProgrami", defView: false, 1000, 0, out IntPtr program);
+            ListeliPencere("KalenderSinamaProgrami", defView: true, 1000, 500, out IntPtr gezgin);
+            try
+            {
+                Denetle("deneme geçerli: noktadaki pencereler görünmeyen masaüstündeki sınama pencereleri",
+                    WindowFromPoint(new Nokta { X = 100, Y = 100 }) == liste
+                    && WindowFromPoint(new Nokta { X = 1100, Y = 100 }) == programListesi);
+                Denetle("deneme geçerli: masaüstünün listesi (kökü Progman ya da WorkerW) masaüstü sayılıyor",
+                    masaustu(new(100, 100)) && masaustu(new(100, 600)));
+                Denetle("başka programın listesi masaüstü sayılmıyor (takvimin menüsü ve okları ona tıklamayı yutmaz)",
+                    !masaustu(new(1100, 100)));
+                Denetle("başka programda SHELLDLL_DefView içindeki liste de masaüstü sayılmıyor", !masaustu(new(1100, 600)));
+            }
+            finally
+            {
+                foreach (IntPtr p in new[] { progman, worker, program, gezgin })
+                {
+                    DestroyWindow(p);
+                }
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------ 30. madde
+
+    private static void Madde30()
+    {
+        Console.WriteLine("30) Tam ekran yalnız ön plandaki pencere imlecin ekranındaysa takvimi susturuyor (pencere gösterilmez)");
+        Type izleyici = Tip("Kalender.Desktop.HoverWatcher");
+        Type noktaTipi = Tip("Kalender.Interop.NativeMethods+POINT");
+        IList ekranlar = (IList)Statik(Tip("Kalender.Interop.MonitorEnumerator"), "All")!;
+
+        object Imlec(int x, int y)
+        {
+            object n = Activator.CreateInstance(noktaTipi)!;
+            noktaTipi.GetField("X")!.SetValue(n, x);
+            noktaTipi.GetField("Y")!.SetValue(n, y);
+            return n;
+        }
+
+        bool Ekraninda(IntPtr pencere, int x, int y) => (bool)Statik(izleyici, "ImlecinEkraninda", pencere, Imlec(x, y))!;
+
+        AyriMasaustunde(() =>
+        {
+            // Gösterilmeyen pencereler: biri ana ekranın sol üstünde, biri hiçbir ekranın üstünde değil.
+            IntPtr ekranda = Pencere("KalenderSinamaProgrami", IntPtr.Zero, 0, 0, 400, 300, gorunur: false);
+            IntPtr disarida = Pencere("KalenderSinamaProgrami", IntPtr.Zero, 100000, 0, 400, 300, gorunur: false);
+            try
+            {
+                Denetle("ön plandaki pencere imlecin ekranındaysa tam ekranda takvim eskisi gibi dinlenmiyor",
+                    Ekraninda(ekranda, 10, 10));
+                Denetle("ön plandaki pencere imlecin ekranında değilse takvim dinleniyor (ön planda pencere yoksa da)",
+                    !Ekraninda(disarida, 10, 10) && !Ekraninda(IntPtr.Zero, 10, 10));
+
+                if (ekranlar.Count > 1)
+                {
+                    var ikinci = (System.Drawing.Rectangle)Oku(ekranlar[1]!, "Bounds")!;
+                    var birinci = (System.Drawing.Rectangle)Oku(ekranlar[0]!, "Bounds")!;
+                    IntPtr obur = Pencere("KalenderSinamaProgrami", IntPtr.Zero, ikinci.X + 10, ikinci.Y + 10, 400, 300, gorunur: false);
+                    Denetle("öbür ekrandaki pencere imlecin ekranında sayılmıyor",
+                        !Ekraninda(obur, birinci.X + 10, birinci.Y + 10) && Ekraninda(obur, ikinci.X + 20, ikinci.Y + 20));
+                    DestroyWindow(obur);
+                }
+                else
+                {
+                    Console.WriteLine("   (tek ekran: öbür ekrandaki pencere ayrıca sınanamadı)");
+                }
+            }
+            finally
+            {
+                DestroyWindow(ekranda);
+                DestroyWindow(disarida);
+            }
+        });
+
+        // Durum (tam ekran, sunum) Windows'tan okunuyor; sınamada değiştirilemez. Sıra derlenmiş koddan.
+        MethodInfo izin = izleyici.GetMethod("NotificationsAllowed", Hepsi)!;
+        List<Komut> k = Komutlar(izin);
+        Type nm = Tip("Kalender.Interop.NativeMethods");
+        int durum = Bul(k, x => Cagri(x, nm, "SHQueryUserNotificationState"));
+        int onPlan = Bul(k, x => Cagri(x, nm, "GetForegroundWindow"), durum);
+        int ekran = Bul(k, x => Cagri(x, izleyici, "ImlecinEkraninda"), onPlan);
+        Denetle("tam ekran ya da sunum kipinde ön plandaki pencerenin imlecin ekranında olup olmadığına bakılıyor",
+            izin.GetParameters().Length == 1 && durum >= 0 && onPlan > durum && ekran > onPlan, $"{durum} / {onPlan} / {ekran}");
+    }
+
+    // ------------------------------------------------------------------ 33. madde
+
+    private static void Madde33()
+    {
+        Console.WriteLine("33) Masaüstü simgeleri gizliyken gizli simgenin yeri simge sayılmıyor (görünmeyen ayrı masaüstünde)");
+        Type simgeler = Tip("Kalender.Desktop.MasaustuSimgeleri");
+        Func<System.Drawing.Point, bool> ustunde = Yontem(simgeler, "Ustunde");
+
+        AyriMasaustunde(() =>
+        {
+            IntPtr liste = ListeliPencere("Progman", defView: true, 0, 0, out IntPtr progman);
+            IntPtr metin = Marshal.StringToHGlobalUni("Kısayol");
+            IntPtr oge = Marshal.AllocHGlobal(Marshal.SizeOf<ListeOgesi>());
+            IntPtr dortgen = Marshal.AllocHGlobal(Marshal.SizeOf<Dortgen>());
+            try
+            {
+                // Listeye bir simge: LVM_INSERTITEMW, yeri LVM_GETITEMRECT (LVIR_BOUNDS).
+                Marshal.StructureToPtr(new ListeOgesi { mask = 0x1 /*LVIF_TEXT*/, pszText = metin }, oge, false);
+                SendMessage(liste, 0x104D, IntPtr.Zero, oge);
+                Marshal.WriteInt32(dortgen, 0);
+                SendMessage(liste, 0x100E, IntPtr.Zero, dortgen);
+                var d = Marshal.PtrToStructure<Dortgen>(dortgen);
+                var orta = new Nokta { X = (d.Left + d.Right) / 2, Y = (d.Top + d.Bottom) / 2 };
+                ClientToScreen(liste, ref orta);
+                var simge = new System.Drawing.Point(orta.X, orta.Y);
+
+                if ((IntPtr)Statik(simgeler, "Liste")! != liste)
+                {
+                    Denetle("deneme geçerli: masaüstü listesi olarak sınama listesi bulunuyor", false);
+                    return;
+                }
+
+                Denetle("deneme geçerli: görünen simgenin yeri simge sayılıyor, boş yer sayılmıyor",
+                    ustunde(simge) && !ustunde(new(500, 350)), $"simge {simge}");
+
+                // "Masaüstü simgelerini göster" kapalı: liste gizli.
+                ShowWindow(liste, 0 /*SW_HIDE*/);
+                Guid arayuz = new("618736E0-3C3D-11CF-810C-00AA00389B71");
+                object? isabet = null;
+                if (AccessibleObjectFromWindow(liste, 0xFFFFFFFC /*OBJID_CLIENT*/, ref arayuz, out Accessibility.IAccessible? erisim) == 0
+                    && erisim is not null)
+                {
+                    isabet = erisim.accHitTest(simge.X, simge.Y);
+                    Marshal.ReleaseComObject(erisim);
+                }
+
+                Denetle("deneme geçerli: erişilebilirlik arayüzü gizli listedeki simgeye de isabet veriyor (Windows'un davranışı)",
+                    isabet is int kimlik && kimlik > 0, $"{isabet ?? "yok"}");
+
+                bool gizliyken = ustunde(simge);
+                ShowWindow(liste, 8 /*SW_SHOWNA*/);
+                Denetle("simgeler gizliyken gizli simgenin yeri simge sayılmıyor (tıklama takvime gider), gösterilince yine sayılıyor",
+                    !gizliyken && ustunde(simge));
+            }
+            finally
+            {
+                Statik(simgeler, "Birak");
+                Marshal.FreeHGlobal(metin);
+                Marshal.FreeHGlobal(oge);
+                Marshal.FreeHGlobal(dortgen);
+                DestroyWindow(progman);
+            }
+        });
     }
 }
 

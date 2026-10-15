@@ -25,6 +25,13 @@ internal static class PopupMenu
     private const string MenuClassName = "#32768";
 
     /// <summary>
+    /// Bizim menülerimizden biri (takvimin ya da tepsi simgesinin) şu an açık mı?
+    /// Aynı iş parçacığında ikinci menü açılamaz, Windows onu reddeder. Menü
+    /// açıkken takvime tıklanırsa açık menü önce kapatılır (bkz. AppHost).
+    /// </summary>
+    public static bool Acik { get; private set; }
+
+    /// <summary>
     /// Menüyü ekran koordinatında açar ve seçilen satırın kimliğini döndürür.
     /// Hiçbir şey seçilmezse 0 döner.
     /// </summary>
@@ -73,10 +80,20 @@ internal static class PopupMenu
             CloseOtherMenus();
             BringToForeground(owner);
 
-            uint secim = NativeMethods.TrackPopupMenuEx(
-                menu,
-                NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_NONOTIFY,
-                x, y, owner, IntPtr.Zero);
+            uint secim;
+            bool oncedenAcik = Acik;
+            Acik = true;
+            try
+            {
+                secim = NativeMethods.TrackPopupMenuEx(
+                    menu,
+                    NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_NONOTIFY,
+                    x, y, owner, IntPtr.Zero);
+            }
+            finally
+            {
+                Acik = oncedenAcik;
+            }
 
             // Menü kapandıktan sonra sahibi pencere serbest bırakılır.
             NativeMethods.PostMessage(owner, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);

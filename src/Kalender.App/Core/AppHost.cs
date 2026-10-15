@@ -70,6 +70,12 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// <summary>İmleç şu an takvim bloğunun üzerinde mi?</summary>
     private bool _hoverInside;
 
+    /// <summary>
+    /// Duvar kâğıdı çiziliyor ya da ay değişiyor (iç içe olabilir); fare kancası
+    /// bu sürede sökülü tutulur (bkz. <see cref="KancayiCizimIcinSok"/>).
+    /// </summary>
+    private int _cizimSuruyor;
+
     /// <summary>Açık menü kapanır kapanmaz bu noktada yeni menü açılacak.</summary>
     private System.Drawing.Point? _pendingMenuPoint;
 
@@ -214,6 +220,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             MenuBuilder = BuildMenu,
         };
         _tray.MenuItemClicked += OnMenuItemClicked;
+        _tray.MenuKapandi += TepsiMenusuKapandi;
         _tray.Clicked += OpenSettings;
         _tray.Show("Kalender");
 
@@ -267,6 +274,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _mouseHook.RightClicked += OnCalendarRightClick;
         _mouseHook.NavClicked += OnNavClicked;
         _mouseHook.BirakisGeldi += UpdateMouseHook;
+        _layer.CizimeBaslarken = KancayiCizimIcinSok;
+        _layer.CizimBitti += KancayiCizimdenSonraTak;
         _hover.CalendarHoverChanged += inside =>
         {
             _hoverInside = inside;
@@ -282,7 +291,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             Interval = ViewResetDelay,
         };
-        _viewResetTimer.Tick += (_, _) => ChangeMonth(GoToCurrentMonth);
+        _viewResetTimer.Tick += (_, _) => AyaDonusSuresiDoldu();
 
         // Tatil listesi arka planda inebiliyor; arayüz iş parçacığına taşıyoruz.
         _holidays.Updated += OnHolidaysUpdated;
@@ -373,11 +382,13 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                 return;
             }
 
-            if (_menuOpen)
+            if (_menuOpen || PopupMenu.Acik)
             {
                 // Menü zaten açıkken başka bir güne sağ tıklandı. Açık menüyü
-                // kapatıyoruz; kapanınca aşağıdaki kuyruk yenisini o günün
-                // üzerinde açacak. Yoksa ikinci tık hiçbir şey yapmıyordu.
+                // kapatıyoruz; kapanınca aşağıdaki kuyruk (tepsi menüsünde
+                // TepsiMenusuKapandi) yenisini o günün üzerinde açacak. Yoksa
+                // ikinci tık hiçbir şey yapmıyordu; tepsi menüsü açıkken de
+                // yalnız o kapanıyordu.
                 _pendingMenuPoint = screenPoint;
                 NativeMethods.EndMenu();
                 return;
@@ -470,20 +481,21 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>
     /// Fare kancası takılı mı olmalı? İmleç takvimin üzerindeyken ya da
-    /// bizim menümüz açıkken evet, başka her durumda hayır. Menü açıkken
-    /// sökülürse sonraki sağ tık kabuğa gidiyor ve Windows'un masaüstü menüsü
-    /// bizimkinin üstüne biniyor. Kanca yuttuğu bir basışın bırakışını
-    /// beklerken de sökülmez (imleç tuş basılıyken takvimden çıkmış olabilir);
-    /// bırakış gelince (BirakisGeldi) buraya yeniden gelinir.
+    /// bizim bir menümüz (takvimin ya da tepsinin) açıkken evet, başka her
+    /// durumda hayır. Menü açıkken sökülürse sonraki sağ tık kabuğa gidiyor ve
+    /// Windows'un masaüstü menüsü bizimkinin üstüne biniyor. Kanca yuttuğu bir
+    /// basışın bırakışını beklerken de sökülmez (imleç tuş basılıyken takvimden
+    /// çıkmış olabilir); bırakış gelince (BirakisGeldi) buraya yeniden gelinir.
+    /// Çizim sürerken kancaya dokunulmaz; çizim bitince buraya yeniden gelinir.
     /// </summary>
     private void UpdateMouseHook()
     {
-        if (_mouseHook is null)
+        if (_mouseHook is null || _cizimSuruyor > 0)
         {
             return;
         }
 
-        if (_hoverInside || _menuOpen)
+        if (_hoverInside || _menuOpen || PopupMenu.Acik)
         {
             _mouseHook.Arm();
         }
@@ -521,12 +533,13 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// <summary>Ay düğmelerinden birine basıldı: önceki ay, sonraki ay ya da bu aya dönüş.</summary>
     private void OnNavClicked(NavButton dugme)
     {
-        if (_menuOpen)
+        if (_menuOpen || PopupMenu.Acik)
         {
             // Menü açıkken ay düğmesine basıldı. Kanca basışı yuttuğu için menü
             // dışına tıklandığını görmüyor, kendiliğinden kapanmıyordu; ay menünün
             // altında değişiyor, satırlar eski aya göre kalıyordu. Önce menü
-            // kapatılıyor; ay, menü kapanınca değişir (OnCalendarRightClick).
+            // kapatılıyor; ay, menü kapanınca değişir (OnCalendarRightClick,
+            // tepsi menüsünde TepsiMenusuKapandi).
             _pendingNav = dugme;
             NativeMethods.EndMenu();
             return;
@@ -550,14 +563,16 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     /// <summary>
     /// Görünen ayı değiştirir. Yeni ay çizilip duvar kağıdına yazılırken fare
-    /// kancası sökülü tutulur: arayüz iş parçacığı o sırada meşgul ve takılı
-    /// bir alt düzey kanca bütün sistemin fare hareketini bekletirdi. Buraya
-    /// tıklamanın iki yarısı da kancadan geçtikten sonra gelinir; sökmek
-    /// kabuğa yarım bir olay çifti göndermez.
+    /// kancası sökülü tutulur (bkz. <see cref="KancayiCizimIcinSok"/>). Bırakışı
+    /// beklenen basışa burada bakılmaz: buraya sağ tık menüsünden tıklamanın
+    /// iki yarısı da kancadan geçtikten sonra, ay düğmesinin basışından (sol
+    /// bırakışın kabuğa gitmesi zararsız) ya da sayaçtan (bırakış beklenirken
+    /// sayaç bekler, bkz. <see cref="AyaDonusSuresiDoldu"/>) gelinir.
     /// </summary>
     private void ChangeMonth(Action change)
     {
         _mouseHook?.Disarm();
+        _cizimSuruyor++;
         try
         {
             change();
@@ -568,8 +583,81 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
         finally
         {
+            _cizimSuruyor--;
             UpdateMouseHook();
         }
+    }
+
+    /// <summary>
+    /// Duvar kâğıdı çizilmeden hemen önce çağrılır (DesktopLayerManager.Refresh):
+    /// fare kancası çizim boyunca sökülür. Çizim arayüz iş parçacığını meşgul
+    /// eder; takılı bir alt düzey kanca o sürede bütün sistemin fare hareketini
+    /// bekletir, süre aşılırsa tıklama kabuğa gider ve Windows kancayı sessizce
+    /// söker. Önceden yalnız ay değişimi böyle çiziliyordu; Google verisi, tatil
+    /// güncellemesi, gün dönümü ve ayar değişikliği kanca takılıyken çiziliyordu.
+    /// Kanca yuttuğu bir basışın bırakışını bekliyorsa sökülmez (bırakış kabuğa
+    /// gider, sağ tıkta menü açılmazdı): çizim bırakıştan sonraya kalır.
+    /// </summary>
+    /// <returns>Şimdi çizilebilirse true.</returns>
+    private bool KancayiCizimIcinSok()
+    {
+        if (_mouseHook?.BirakisBekleniyor == true)
+        {
+            return false;
+        }
+
+        _cizimSuruyor++;
+        _mouseHook?.Disarm();
+        return true;
+    }
+
+    /// <summary>Çizim bitti; kanca gerekiyorsa yeniden takılır.</summary>
+    private void KancayiCizimdenSonraTak()
+    {
+        _cizimSuruyor = Math.Max(0, _cizimSuruyor - 1);
+        UpdateMouseHook();
+    }
+
+    /// <summary>
+    /// Bu aya dönüş süresi doldu. Kanca yuttuğu bir basışın bırakışını
+    /// bekliyorsa (kullanıcı tam o an takvime basıyor) ay değişmez: ay
+    /// değişirken kanca sökülür, bırakış kabuğa giderdi. Takvime dokunulduğu
+    /// için süre baştan başlar.
+    /// </summary>
+    private void AyaDonusSuresiDoldu()
+    {
+        if (_mouseHook?.BirakisBekleniyor == true)
+        {
+            RestartViewResetTimer();
+            return;
+        }
+
+        ChangeMonth(GoToCurrentMonth);
+    }
+
+    /// <summary>
+    /// Tepsi menüsü kapandı. Menü açıkken takvime sağ tıklandıysa ya da ay
+    /// okuna basıldıysa menü bu yüzden kapatıldı (bkz. OnCalendarRightClick,
+    /// OnNavClicked); tıklama şimdi uygulanır. Önceden tepsi menüsü açıkken
+    /// takvime sağ tık yalnız tepsi menüsünü kapatıyor, takvim menüsü açılmıyordu.
+    /// </summary>
+    private void TepsiMenusuKapandi()
+    {
+        if (_pendingNav is NavButton dugme)
+        {
+            _pendingNav = null;
+            OnNavClicked(dugme);
+        }
+
+        if (_pendingMenuPoint is System.Drawing.Point nokta)
+        {
+            // Menü, tepsi menüsünün döngüsünden çıkılınca açılır.
+            _pendingMenuPoint = null;
+            _ = Application.Current?.Dispatcher.BeginInvoke(() => OnCalendarRightClick(nokta));
+        }
+
+        // Menü açıkken kanca imleç takvimin dışındayken de takılı tutuluyordu.
+        UpdateMouseHook();
     }
 
     private static DateOnly CurrentMonth => new(DateTime.Now.Year, DateTime.Now.Month, 1);

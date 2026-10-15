@@ -40,7 +40,11 @@ internal static class MasaustuSimgeleri
         try
         {
             IAccessible? erisim = Erisim();
-            if (erisim is null)
+
+            // "Masaüstü simgelerini göster" kapalıyken liste gizlidir; simgeler
+            // ve yerleri listede kalır, erişilebilirlik arayüzü de gizli
+            // listedeki simgeye isabet verir. Görünmeyen simge tıklamayı almamalı.
+            if (erisim is null || !NativeMethods.IsWindowVisible(_liste))
             {
                 return false;
             }

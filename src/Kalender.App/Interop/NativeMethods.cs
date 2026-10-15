@@ -196,6 +196,7 @@ internal static class NativeMethods
     public const uint LVM_GETITEMSPACING = 0x1033;
 
     public const uint MONITORINFOF_PRIMARY = 0x00000001;
+    public const uint MONITOR_DEFAULTTONULL = 0x00000000;
     public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
     public const int MDT_EFFECTIVE_DPI = 0;
@@ -375,6 +376,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "EnumDisplayDevicesW")]
     [return: MarshalAs(UnmanagedType.Bool)]

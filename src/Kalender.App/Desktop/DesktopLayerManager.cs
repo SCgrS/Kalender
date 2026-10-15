@@ -139,6 +139,16 @@ internal sealed class DesktopLayerManager : IDisposable
     /// <summary>Ekran listesi değişti (çözünürlük, ölçek, monitör tak/çıkar).</summary>
     public event Action? MonitorsChanged;
 
+    /// <summary>
+    /// Çizime başlamadan sorulur; uygulama burada fare kancasını söker (bkz.
+    /// AppHost.KancayiCizimIcinSok). false dönerse çizim şimdi yapılmaz, kısa
+    /// aralıkla yeniden denenir: kanca yarım bir tıklamanın bırakışını bekliyor.
+    /// </summary>
+    public Func<bool>? CizimeBaslarken { get; set; }
+
+    /// <summary>Çizim bitti; çizim için sökülen fare kancası yeniden takılabilir.</summary>
+    public event Action? CizimBitti;
+
     /// <summary>Şu an takvim çizilen ekranlar var mı?</summary>
     public bool IsActive => _screens.Count > 0;
 
@@ -283,6 +293,12 @@ internal sealed class DesktopLayerManager : IDisposable
     private bool _refreshing;
     private bool _refreshAgain;
 
+    /// <summary>Bekletilen çizimi yeniden deneme aralığı (bkz. <see cref="CizimeBaslarken"/>).</summary>
+    private static readonly TimeSpan BekleyenCizimAraligi = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Bekletilen çizimi yeniden deneyen zamanlayıcı; ilk bekletmede kurulur.</summary>
+    private DispatcherTimer? _bekleyenCizimTimer;
+
     /// <summary>
     /// Görüntüleri yeniden üretir ve değişenleri duvar kağıdına yazar.
     /// Monitör listesi burada yeniden okunmaz.
@@ -292,6 +308,9 @@ internal sealed class DesktopLayerManager : IDisposable
     /// yoklamasının getirdiği yeni veri) buraya yeniden girip kullanılmakta
     /// olan görüntüleri atabilirdi. Arada gelen istek not edilir; iş bitince
     /// en son hâl bir kez daha çizilir.
+    ///
+    /// Bütün çizimler buradan geçer; fare kancası çizim süresince sökülü durur
+    /// (bkz. <see cref="CizimeBaslarken"/>).
     /// </summary>
     public void Refresh()
     {
@@ -301,6 +320,13 @@ internal sealed class DesktopLayerManager : IDisposable
             return;
         }
 
+        if (CizimeBaslarken?.Invoke() == false)
+        {
+            CizimiBeklet();
+            return;
+        }
+
+        _bekleyenCizimTimer?.Stop();
         _refreshing = true;
         try
         {
@@ -314,7 +340,29 @@ internal sealed class DesktopLayerManager : IDisposable
         finally
         {
             _refreshing = false;
+            CizimBitti?.Invoke();
         }
+    }
+
+    /// <summary>Çizimi kısa bir süre sonra yeniden dener.</summary>
+    private void CizimiBeklet()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (_bekleyenCizimTimer is null)
+        {
+            _bekleyenCizimTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = BekleyenCizimAraligi };
+            _bekleyenCizimTimer.Tick += (_, _) =>
+            {
+                _bekleyenCizimTimer.Stop();
+                Refresh();
+            };
+        }
+
+        _bekleyenCizimTimer.Start();
     }
 
     private void RefreshOnce()
@@ -842,6 +890,7 @@ internal sealed class DesktopLayerManager : IDisposable
         _rebuildTimer.Stop();
         _watchdogTimer.Stop();
         _tazelemeTimer.Stop();
+        _bekleyenCizimTimer?.Stop();
 
         // Takvimi duvar kağıdından siliyoruz; yoksa yarın da bugünün takvimi
         // ekranda asılı kalır. Ayara değil ekrana bakılıyor: yazma kapatılınca
