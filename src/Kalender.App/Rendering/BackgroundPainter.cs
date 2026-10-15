@@ -100,7 +100,7 @@ internal sealed class BackgroundPainter : IDisposable
         double scale = Math.Max((double)area.Width / image.Width, (double)area.Height / image.Height);
         int w = (int)Math.Ceiling(image.Width * scale);
         int h = (int)Math.Ceiling(image.Height * scale);
-        g.DrawImage(image, area.X + ((area.Width - w) / 2), area.Y + ((area.Height - h) / 2), w, h);
+        OlcekliCiz(g, image, new Rectangle(area.X + ((area.Width - w) / 2), area.Y + ((area.Height - h) / 2), w, h));
     }
 
     private static void DrawContained(Graphics g, Rectangle area, Image image)
@@ -108,7 +108,21 @@ internal sealed class BackgroundPainter : IDisposable
         double scale = Math.Min((double)area.Width / image.Width, (double)area.Height / image.Height);
         int w = (int)Math.Round(image.Width * scale);
         int h = (int)Math.Round(image.Height * scale);
-        g.DrawImage(image, area.X + ((area.Width - w) / 2), area.Y + ((area.Height - h) / 2), w, h);
+        OlcekliCiz(g, image, new Rectangle(area.X + ((area.Width - w) / 2), area.Y + ((area.Height - h) / 2), w, h));
+    }
+
+    /// <summary>
+    /// Fotoğrafı hedef dikdörtgene ölçekleyerek çizer. GDI+ ölçeklerken
+    /// fotoğrafın dışını saydam sayıyor: kenardaki piksel sırası yarı saydam
+    /// çıkıyor, altındaki düz zemin sızıyordu (açık renkli fotoğrafta ekran
+    /// kenarında ince koyu bir çizgi). Kenarın aynalanarak sürdüğü varsayılınca
+    /// kenar sırası da fotoğrafın kendi renginde kalıyor.
+    /// </summary>
+    private static void OlcekliCiz(Graphics g, Image image, Rectangle hedef)
+    {
+        using var ozellikler = new ImageAttributes();
+        ozellikler.SetWrapMode(WrapMode.TileFlipXY);
+        g.DrawImage(image, hedef, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, ozellikler);
     }
 
     private static void DrawTiled(Graphics g, Rectangle area, Image image)

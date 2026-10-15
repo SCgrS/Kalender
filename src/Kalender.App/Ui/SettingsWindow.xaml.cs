@@ -658,7 +658,9 @@ public partial class SettingsWindow : Window
         S.Appearance.BackgroundMode = BackgroundMode.Photo;
         S.Appearance.PhotoPath = yol;
 
-        if (!ColorTools.IsLight(ColorTools.Parse(S.Appearance.TextColor, System.Drawing.Color.White)))
+        // Hazır fotoğraflar beyaz yazıya göre seçildi; fotoğrafta rahat
+        // okunmayacak yazı beyaza çekilir.
+        if (!ColorTools.FotograftaOkunur(ColorTools.Parse(S.Appearance.TextColor, System.Drawing.Color.White)))
         {
             S.Appearance.TextColor = "#FFFFFF";
         }

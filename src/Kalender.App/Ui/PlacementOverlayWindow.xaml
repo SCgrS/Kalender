@@ -26,6 +26,9 @@
 
             <Image x:Name="BackgroundImage" Canvas.Left="0" Canvas.Top="0" />
 
+            <!-- Fotoğraf zemininde takvimin arkasındaki karartma; takvimle birlikte taşınır. -->
+            <Image x:Name="BackdropImage" />
+
             <Border x:Name="CalendarHost" BorderThickness="2" BorderBrush="#00FFFFFF">
                 <Image x:Name="CalendarImage" />
             </Border>

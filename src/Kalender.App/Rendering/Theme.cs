@@ -68,25 +68,38 @@ internal sealed class Theme
         Color text;
         bool lightSurface;
 
-        if (manual)
+        if (photoMode)
         {
             text = ColorTools.Parse(ayarlar.TextColor, Color.White);
-            // Yazı açıksa zemin koyu kabul edilir; türetilen renkler buna göre ayarlanır.
+            // Fotoğrafın açıklığı bilinmiyor: yazı açıksa zemin koyu kabul
+            // edilir; türetilen renkler buna göre ayarlanır.
             lightSurface = !ColorTools.IsLight(text);
         }
         else
         {
+            // Düz zeminde açıklık, yazı rengi elle seçilmiş olsa da zeminin
+            // kendisinden çıkarılır. Önceden elle seçilen yazıdan çıkarılıyordu:
+            // koyu zeminde orta tonlu bir yazı (yeşil, mavi, turuncu) koyu yazı
+            // sayılıp zemin açık kabul ediliyor, bugünün dairesi zeminden koyu
+            // çiziliyor ve siyah zeminde hiç görünmüyordu.
             lightSurface = ColorTools.IsLight(background);
-            text = lightSurface ? Color.FromArgb(0x1A, 0x1D, 0x21) : Color.White;
+            text = manual
+                ? ColorTools.Parse(ayarlar.TextColor, Color.White)
+                : lightSurface ? Color.FromArgb(0x1A, 0x1D, 0x21) : Color.White;
         }
 
-        // Açık düz zeminde soluk renk zeminin kendisine doğru karıştırılır:
-        // beyaza doğru karıştırmak Kum Taşı gibi koyuca bej bir zeminde soluk
-        // günleri neredeyse görünmez yapıyordu (karşıtlık ~1,2:1). Fotoğrafta
-        // zemin rengi fotoğrafı anlatmadığı için eskisi gibi beyaz kullanılır.
+        // Düz zeminde soluk renk zeminin kendisine doğru karıştırılır. Açık
+        // zeminde beyaza doğru karıştırmak Kum Taşı gibi koyuca bej bir zeminde
+        // soluk günleri neredeyse görünmez yapıyordu (karşıtlık ~1,2:1); koyu
+        // zeminde sabit koyu griye doğru karıştırmak da orta tonlu bir zeminde
+        // soluk günleri zeminle aynı tona getiriyordu. Zemin o griden koyuysa
+        // (hazır koyu renklerin hepsi) eskisi gibi griye doğru karıştırılır:
+        // siyah gibi çok koyu zeminde soluk günler eskisinden koyu çıkmasın.
+        // Fotoğrafta zemin rengi fotoğrafı anlatmadığı için eskisi gibi beyaz
+        // ya da koyu gri kullanılır.
         Color muted = lightSurface
             ? ColorTools.Mix(text, photoMode ? Color.White : background, 0.55)
-            : ColorTools.Mix(text, Color.FromArgb(0x30, 0x34, 0x3A), 0.55);
+            : ColorTools.Mix(text, photoMode ? KoyuGri : AcikOlani(background, KoyuGri), 0.55);
 
         Color holiday = lightSurface
             ? Color.FromArgb(0xC0, 0x2B, 0x2B)
@@ -121,6 +134,13 @@ internal sealed class Theme
 
         return new Theme(background, text, muted, holiday, todayCircle, text);
     }
+
+    /// <summary>Koyu zeminde soluk günlerin yazı renginden karıştırıldığı gri.</summary>
+    private static readonly Color KoyuGri = Color.FromArgb(0x30, 0x34, 0x3A);
+
+    /// <summary>İki renkten açık olanı (bağıl parlaklığa göre).</summary>
+    private static Color AcikOlani(Color a, Color b)
+        => ColorTools.RelativeLuminance(a) >= ColorTools.RelativeLuminance(b) ? a : b;
 
     /// <summary>Ayarda renk varsa onu, yoksa hesaplananı verir.</summary>
     private static Color Override(string? hex, Color hesaplanan)

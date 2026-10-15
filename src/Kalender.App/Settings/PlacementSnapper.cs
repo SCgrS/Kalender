@@ -1,4 +1,5 @@
 using System.Drawing;
+using Kalender.Rendering;
 
 namespace Kalender.Settings;
 
@@ -28,7 +29,8 @@ internal static class PlacementSnapper
     /// <summary>Kenar payı, ekran ölçüsünün oranı olarak.</summary>
     private const double EdgeMarginRatio = 0.06;
 
-    public static PointF Snap(PointF proposed, SizeF block, Size monitor, out SnapEdge edge)
+    /// <param name="scale">Takvimin ölçeği; ekran kenarındaki pay buna göre.</param>
+    public static PointF Snap(PointF proposed, SizeF block, Size monitor, float scale, out SnapEdge edge)
     {
         edge = SnapEdge.None;
 
@@ -80,11 +82,9 @@ internal static class PlacementSnapper
             edge |= SnapEdge.Bottom;
         }
 
-        // Her hâlükârda ekran içinde kalsın.
-        float maxX = Math.Max(0, monitor.Width - block.Width);
-        float maxY = Math.Max(0, monitor.Height - block.Height);
-
-        return new PointF(Math.Clamp(x, 0, maxX), Math.Clamp(y, 0, maxY));
+        // Her hâlükârda ekran içinde, masaüstündeki çizimle aynı kenar payıyla
+        // kalsın; kenara dayanan takvim bu pay çizgisinde durur.
+        return DesktopSurfaceRenderer.KenarPayiIcinde(new PointF(x, y), block, monitor, scale);
     }
 
     private static bool Near(float value, float target) => Math.Abs(value - target) <= Threshold;

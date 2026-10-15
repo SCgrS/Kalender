@@ -43,6 +43,9 @@ public partial class PlacementOverlayWindow : Window
     private System.Drawing.SizeF _blockSize;
     private int _scalePercent;
 
+    /// <summary>Karartma görüntüsünün sol üst köşesinin takvim bloğuna göre yeri.</summary>
+    private System.Drawing.PointF _karartmaKaymasi;
+
     private bool _dragging;
     private System.Windows.Point _grabOffset;
     private int _boundsFixes;
@@ -261,6 +264,29 @@ public partial class PlacementOverlayWindow : Window
         {
             Log.Error("Yerleştirme ekranının takvimi çizilemedi.", ex);
         }
+
+        DrawBackdrop();
+    }
+
+    /// <summary>
+    /// Fotoğraf zemininde takvimin arkasındaki karartma, masaüstündekiyle aynı
+    /// boyut ve renkte; takvimle birlikte taşınır. Önceden çizilmiyordu:
+    /// kullanıcı karartmanın nereye düşeceğini görmeden yerleştiriyordu.
+    /// </summary>
+    private void DrawBackdrop()
+    {
+        try
+        {
+            using Bitmap? bitmap = _renderer.KarartmaYuzeyi(TotalScale, _settings, Result!, out _karartmaKaymasi);
+            BackdropImage.Source = bitmap is null ? null : WpfImaging.ToBitmapSource(bitmap);
+            BackdropImage.Width = bitmap?.Width ?? 0;
+            BackdropImage.Height = bitmap?.Height ?? 0;
+        }
+        catch (Exception ex)
+        {
+            BackdropImage.Source = null;
+            Log.Error("Yerleştirme ekranında takvimin arkasındaki karartma çizilemedi.", ex);
+        }
     }
 
     // -------------------------------------------------------------- etkileşim
@@ -269,23 +295,27 @@ public partial class PlacementOverlayWindow : Window
     {
         SnapEdge edge = SnapEdge.None;
 
+        // Masaüstündeki çizimle aynı sınır: takvim ekran kenarından kenar payı
+        // kadar içeride durur. Önceden burada kenara dek gidiyordu; kaydedilen
+        // yer masaüstünde ve ekran yeniden açılınca içeri kaymış görünüyordu.
         if (snap)
         {
-            point = PlacementSnapper.Snap(point, _blockSize, _monitor.Bounds.Size, out edge);
+            point = PlacementSnapper.Snap(point, _blockSize, _monitor.Bounds.Size, TotalScale, out edge);
         }
         else
         {
-            float maxX = Math.Max(0, _monitor.Bounds.Width - _blockSize.Width);
-            float maxY = Math.Max(0, _monitor.Bounds.Height - _blockSize.Height);
-            point = new System.Drawing.PointF(
-                Math.Clamp(point.X, 0, maxX),
-                Math.Clamp(point.Y, 0, maxY));
+            point = DesktopSurfaceRenderer.KenarPayiIcinde(point, _blockSize, _monitor.Bounds.Size, TotalScale);
         }
 
         _origin = point;
 
         Canvas.SetLeft(CalendarHost, point.X);
         Canvas.SetTop(CalendarHost, point.Y);
+
+        // Takvimin resmi çerçevenin (yapışma vurgusu) içinde duruyor; karartma
+        // masaüstündeki gibi resmin ortasına gelsin.
+        Canvas.SetLeft(BackdropImage, point.X + CalendarHost.BorderThickness.Left + _karartmaKaymasi.X);
+        Canvas.SetTop(BackdropImage, point.Y + CalendarHost.BorderThickness.Top + _karartmaKaymasi.Y);
 
         UpdateGuides(edge);
     }

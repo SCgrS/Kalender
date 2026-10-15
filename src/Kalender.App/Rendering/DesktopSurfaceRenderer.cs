@@ -65,7 +65,7 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
 
                 if (fotograf is not null)
                 {
-                    PaintBackdrop(g, layout, settings.Appearance, scale);
+                    PaintBackdrop(g, layout.Bounds, settings.Appearance, scale);
                 }
 
                 _calendar.Paint(g, layout, theme, settings.Appearance, data, today);
@@ -119,6 +119,41 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     }
 
     /// <summary>
+    /// Fotoğraf zemininde takvimin arkasındaki karartmayı saydam bir yüzeye
+    /// çizer; yerleştirme ekranı onu takvim bloğuyla birlikte gezdirir. Boyutu
+    /// ve rengi masaüstündekinin aynısı. Bu ekranda karartma yoksa (düz renk
+    /// zemin, açılamayan fotoğraf ya da %0) null.
+    /// </summary>
+    /// <param name="kayma">Yüzeyin sol üst köşesinin takvim bloğunun sol üst köşesine göre yeri.</param>
+    public Bitmap? KarartmaYuzeyi(float scale, AppSettings settings, MonitorPlacement placement, out PointF kayma)
+    {
+        kayma = PointF.Empty;
+        AppearanceSettings appearance = settings.Appearance;
+
+        // Masaüstündeki koşulun aynısı: karartma yalnız fotoğraf çizilen ekranda.
+        if (appearance.BackdropDim <= 0 || _background.Fotograf(appearance, FotografYolu(settings, placement)) is null)
+        {
+            return null;
+        }
+
+        var blok = new RectangleF(PointF.Empty, CalendarLayout.MeasureSize(scale));
+        RectangleF kare = KarartmaKaresi(blok, scale);
+        kayma = kare.Location;
+
+        var bitmap = new Bitmap(
+            Math.Max((int)Math.Ceiling(kare.Width), 1),
+            Math.Max((int)Math.Ceiling(kare.Height), 1),
+            PixelFormat.Format32bppPArgb);
+
+        using Graphics g = Graphics.FromImage(bitmap);
+        g.Clear(Color.Transparent);
+        blok.Offset(-kare.X, -kare.Y);
+        PaintBackdrop(g, blok, appearance, scale);
+
+        return bitmap;
+    }
+
+    /// <summary>
     /// Bütün ekranlar çizildikten sonra çağrılır: bu turda hiçbir ekranın
     /// çizmediği fotoğraflar bellekten atılır.
     /// </summary>
@@ -145,16 +180,27 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     /// </summary>
     public static PointF ResolveOrigin(Size pixelSize, float scale, MonitorPlacement placement)
     {
-        SizeF block = CalendarLayout.MeasureSize(scale);
-        float margin = EdgeMargin * scale;
-
-        float maxX = Math.Max(margin, pixelSize.Width - block.Width - margin);
-        float maxY = Math.Max(margin, pixelSize.Height - block.Height - margin);
-
         float x = (float)(placement.XRatio * pixelSize.Width);
         float y = (float)(placement.YRatio * pixelSize.Height);
 
-        return new PointF(Math.Clamp(x, margin, maxX), Math.Clamp(y, margin, maxY));
+        return KenarPayiIcinde(new PointF(x, y), CalendarLayout.MeasureSize(scale), pixelSize, scale);
+    }
+
+    /// <summary>
+    /// Takvim bloğunun sol üst köşesini ekranın içine, kenarlardan
+    /// <see cref="EdgeMargin"/> × ölçek içeride kalacak biçimde sıkıştırır.
+    /// Masaüstündeki çizim ve "Takvimi taşı" ekranı aynı sınırı kullanır; önceden
+    /// taşıma ekranı takvimi kenara dek götürüyor, masaüstünde takvim kenardan
+    /// içeride çıkıyordu.
+    /// </summary>
+    public static PointF KenarPayiIcinde(PointF nokta, SizeF blok, Size ekran, float scale)
+    {
+        float margin = EdgeMargin * scale;
+
+        float maxX = Math.Max(margin, ekran.Width - blok.Width - margin);
+        float maxY = Math.Max(margin, ekran.Height - blok.Height - margin);
+
+        return new PointF(Math.Clamp(nokta.X, margin, maxX), Math.Clamp(nokta.Y, margin, maxY));
     }
 
     /// <summary>Karartma karesinin takvim bloğundan dışarı taşma payı (ölçek 1.0 iken piksel).</summary>
@@ -177,7 +223,8 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     /// yumuşak geçiş daralır. Düşük değerlerde yuvarlak ve yumuşak bir gölgedir;
     /// %100'de keskin kenarlı, köşesiz ve tam opak bir kare olur.
     /// </summary>
-    private static void PaintBackdrop(Graphics g, CalendarLayout layout, AppearanceSettings appearance, float scale)
+    /// <param name="block">Takvim bloğunun bu yüzeydeki yeri.</param>
+    private static void PaintBackdrop(Graphics g, RectangleF block, AppearanceSettings appearance, float scale)
     {
         if (appearance.BackgroundMode != BackgroundMode.Photo || appearance.BackdropDim <= 0)
         {
@@ -188,14 +235,12 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         float t = Math.Clamp(appearance.BackdropDim, 0, 100) / 100f;
         Color dark = Color.FromArgb((int)Math.Round(t * 255), 0, 0, 0);
 
-        // Blok neredeyse kare (7 sütun × 8 satır); uzun kenara göre tam kare yapılır.
-        RectangleF block = layout.Bounds;
-        float side = Math.Max(block.Width, block.Height) + (2f * BackdropPad * scale);
-        var rect = new RectangleF(
-            block.X + ((block.Width - side) / 2f),
-            block.Y + ((block.Height - side) / 2f),
-            side,
-            side);
+        RectangleF rect = KarartmaKaresi(block, scale);
+        float side = rect.Width;
+
+        // Masaüstünde fotoğraf çizimi bu kipi zaten açmış oluyor; taşıma ekranının
+        // ayrı yüzeyinde de aynı olsun ki karartma piksel piksel aynı çıksın.
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
         float softness = 1f - t;
         if (softness <= 0f)
@@ -218,6 +263,21 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
         };
 
         g.FillPath(brush, path);
+    }
+
+    /// <summary>
+    /// Karartma karesi: takvim bloğunu ortalar, bloktan her yana
+    /// <see cref="BackdropPad"/> × ölçek taşar. Blok neredeyse kare (7 sütun ×
+    /// 8 satır); uzun kenara göre tam kare yapılır.
+    /// </summary>
+    private static RectangleF KarartmaKaresi(RectangleF block, float scale)
+    {
+        float side = Math.Max(block.Width, block.Height) + (2f * BackdropPad * scale);
+        return new RectangleF(
+            block.X + ((block.Width - side) / 2f),
+            block.Y + ((block.Height - side) / 2f),
+            side,
+            side);
     }
 
     private static GraphicsPath RoundedRectangle(RectangleF rect, float radius)

@@ -64,8 +64,30 @@ internal static class ColorTools
         return (0.2126 * Kanal(c.R)) + (0.7152 * Kanal(c.G)) + (0.0722 * Kanal(c.B));
     }
 
-    /// <summary>Zemin açık mı? (Açıksa üstüne koyu yazı yazılır.)</summary>
-    public static bool IsLight(Color background) => RelativeLuminance(background) > 0.42;
+    /// <summary>WCAG karşıtlık oranı (1 aynı parlaklık, 21 siyah ile beyaz).</summary>
+    public static double ContrastRatio(Color a, Color b)
+    {
+        double la = RelativeLuminance(a);
+        double lb = RelativeLuminance(b);
+        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+    }
+
+    /// <summary>
+    /// Renk açık mı: üstünde siyah yazı beyazdan daha okunaklı mı? (Açık zemine
+    /// koyu yazı yazılır.) İki karşıtlık bağıl parlaklık ~0,179'da eşitlenir.
+    /// Önceden sabit 0,42 eşiği vardı: orta tonlu zeminler (gri, turuncu, yeşil,
+    /// mavi) koyu sayılıp beyaz yazı alıyordu, oysa koyu yazı daha okunaklıydı.
+    /// </summary>
+    public static bool IsLight(Color background)
+        => ContrastRatio(background, Color.Black) > ContrastRatio(background, Color.White);
+
+    /// <summary>
+    /// Yazı rengi, hazır fotoğraflar gibi koyu bir fotoğrafın üstünde de rahat
+    /// okunacak kadar açık mı? Sınır <see cref="IsLight"/>'tan sıkı (bağıl
+    /// parlaklık 0,42'nin üstü): orta tonlu yazı düz koyu zeminde okunsa da
+    /// fotoğrafın açıklı koyulu yüzeyinde okunmuyor.
+    /// </summary>
+    public static bool FotograftaOkunur(Color text) => RelativeLuminance(text) > 0.42;
 
     /// <summary>İki renk arasında oranla karıştırır. amount=0 -> a, amount=1 -> b.</summary>
     public static Color Mix(Color a, Color b, double amount)

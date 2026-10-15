@@ -13,6 +13,14 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using DBitmap = System.Drawing.Bitmap;
+using DColor = System.Drawing.Color;
+using DGraphics = System.Drawing.Graphics;
+using DPointF = System.Drawing.PointF;
+using DRectangle = System.Drawing.Rectangle;
+using DRectangleF = System.Drawing.RectangleF;
+using DSize = System.Drawing.Size;
+using DSizeF = System.Drawing.SizeF;
 
 // Kalender'de ikinci genel kod incelemesinin (2026-10-15) düzeltmelerinin
 // sınaması (yansımayla). Madde numaraları kalender.md'deki listeden:
@@ -39,6 +47,24 @@ using System.Windows.Threading;
 //      kalan takvim de). Takvimsiz zeminin adı ekli: yeniden yazılmaz, her
 //      açılışta boşuna yazım olmaz. Windows'ta düz renk seçiliyse ekranda
 //      takvim yok sayılır.
+//   8. "Takvimi taşı" ekranı takvimi masaüstündeki çizimle aynı sınırda tutar:
+//      ekran kenarından 12 × ölçek piksel içeride (sürüklerken, yapışırken ve
+//      boyut değişince). Kaydedilen yer yeniden açılınca ve masaüstünde aynı;
+//      kenar yakınındaki yapışma çizgileri (ekranın %6'sı) eskisi gibi.
+//   9. "Takvimi taşı" ekranında fotoğraf zemininde takvimin arkasındaki
+//      karartma çizilir: masaüstündekiyle aynı boyut ve renk, takvimi ortalar,
+//      takvimle birlikte taşınır, boyutla büyür. Düz renk zeminde ve %0'da yok.
+//  10. Düz zeminde yazı rengi elle seçilmiş olsa da zeminin açık mı koyu mu
+//      olduğu zeminden çıkarılır: koyu zeminde orta tonlu (yeşil, mavi,
+//      turuncu) yazıyla bugünün dairesi zeminden açık, tatil koyu zeminin
+//      kırmızısı. Fotoğrafta yazıdan çıkarım sürer, ama 11'deki eşikle.
+//  11. Açık/koyu kararı siyah ve beyaz yazının karşıtlığına göre (eşik bağıl
+//      parlaklık ~0,179, önceden 0,42): orta tonlu zeminde koyu yazı; koyu
+//      zeminde soluk günler zemine doğru karıştırılır (zemin koyu griden
+//      açıksa). Hazır zemin renkleri ve hazır fotoğraflar eski hesabın
+//      kopyasıyla karşılaştırılır: renkleri birebir aynı.
+//  12. Kapla ve Sığdır'da fotoğrafın kenar sırası fotoğrafın renginde; zemin
+//      rengi kenardan sızmaz.
 //  20. Tablonun dışındaki yıllarda İngilizce ya da yanlış yazılmış bayram
 //      adları Türkçe ("Kurban Bayrami Day 2" → "Kurban Bayramı 2. gün",
 //      "Sacrifice Feast Holiday" → "Kurban Bayramı"); "(kesin değil)" eki kalır.
@@ -77,6 +103,8 @@ using System.Windows.Threading;
 // kurulur: kullanıcının ekranında görünmez, gerçek masaüstüne bakılmaz. 3 ve 4.
 // maddelerde fare kancası takılmaz, gerçek fareye dokunulmaz, menü açılmaz
 // (KodIncelemesi'ndeki gibi); katmanın ekranı yok, duvar kâğıdına yazılmaz.
+// 8 ve 9. maddelerde "Takvimi taşı" penceresi kurulur ama gösterilmez (ekrana
+// çıkmaz), ekranı hayalidir; 9'un fotoğrafı geçici klasörde üretilip silinir.
 //
 // Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
 // GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
@@ -176,6 +204,11 @@ internal static class Program
             Bolum(Madde7);
             Bolum(Madde29);
             Bolum(Madde32);
+            Bolum(Madde8);
+            Bolum(Madde9);
+            Bolum(Madde10);
+            Bolum(Madde11);
+            Bolum(Madde12);
             Bolum(Madde2);
             Bolum(Madde3);
             Bolum(Madde4);
@@ -2546,6 +2579,664 @@ internal static class Program
                 DestroyWindow(progman);
             }
         });
+    }
+
+    // --------------------- renkler, fotoğraf kenarı ve "Takvimi taşı" (8–12. maddeler)
+
+    private static readonly DateOnly RenkGunu = new(2026, 10, 15);
+
+    private static object BosVeri() => Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!;
+
+    private static object Secenek(string tur, string ad) => Enum.Parse(Tip("Kalender.Settings." + tur), ad);
+
+    private static string Onaltilik(DColor c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    /// <summary>Görünüm ayarı: düz renk ya da fotoğraf kipi, yazı rengi otomatik ya da elle.</summary>
+    private static object YeniGorunum(string zemin, string yaziKipi = "Auto", string yazi = "#FFFFFF", bool fotograf = false)
+    {
+        object g = Activator.CreateInstance(Tip("Kalender.Settings.AppearanceSettings"), true)!;
+        Yaz(g, "SolidColor", zemin);
+        Yaz(g, "TextColorMode", Secenek("TextColorMode", yaziKipi));
+        Yaz(g, "TextColor", yazi);
+        Yaz(g, "BackgroundMode", Secenek("BackgroundMode", fotograf ? "Photo" : "Solid"));
+        return g;
+    }
+
+    private static readonly string[] TemaRenkleri = { "Background", "Text", "Muted", "Holiday", "TodayCircle", "TodayText" };
+
+    /// <summary>Uygulamanın bugünkü hesabıyla tema renkleri (ARGB), <see cref="TemaRenkleri"/> sırasıyla.</summary>
+    private static int[] YeniTema(object gorunum, bool fotograf, bool otomatikYazi = false)
+    {
+        object tema = Statik(Tip("Kalender.Rendering.Theme"), "ZemineGore", gorunum, fotograf, otomatikYazi)!;
+        return TemaRenkleri.Select(a => ((DColor)Oku(tema, a)!).ToArgb()).ToArray();
+    }
+
+    private static bool UygulamadaAcik(DColor c) => (bool)Statik(Tip("Kalender.Rendering.ColorTools"), "IsLight", c)!;
+
+    private static DColor Renk(int argb) => DColor.FromArgb(argb);
+
+    /// <summary>
+    /// Kalender 1.13'ün ve Lite 1.8'in renk hesabının kopyası (ColorTools ve
+    /// Theme.ZemineGore; ayarlardan tek tek verilen renkler hariç, sınamada hiçbiri
+    /// verilmiyor). Hazır renklerin görünümü değişmedi mi diye yenisiyle karşılaştırılır.
+    /// </summary>
+    private static class EskiRenk
+    {
+        public static DColor Ayristir(string hex)
+        {
+            string s = hex.Trim().TrimStart('#');
+            return DColor.FromArgb(255, Convert.ToInt32(s[..2], 16), Convert.ToInt32(s.Substring(2, 2), 16),
+                Convert.ToInt32(s.Substring(4, 2), 16));
+        }
+
+        public static double Parlaklik(DColor c)
+        {
+            static double Kanal(int v)
+            {
+                double s = v / 255.0;
+                return s <= 0.04045 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+            }
+
+            return (0.2126 * Kanal(c.R)) + (0.7152 * Kanal(c.G)) + (0.0722 * Kanal(c.B));
+        }
+
+        public static bool AcikMi(DColor c) => Parlaklik(c) > 0.42;
+
+        public static DColor Karistir(DColor a, DColor b, double t)
+        {
+            t = Math.Clamp(t, 0, 1);
+            return DColor.FromArgb(255,
+                (int)Math.Round(a.R + ((b.R - a.R) * t)),
+                (int)Math.Round(a.G + ((b.G - a.G) * t)),
+                (int)Math.Round(a.B + ((b.B - a.B) * t)));
+        }
+
+        public static DColor Alfa(DColor c, int a) => DColor.FromArgb(Math.Clamp(a, 0, 255), c.R, c.G, c.B);
+
+        /// <summary>WCAG karşıtlık oranı (sınamanın kendi hesabı).</summary>
+        public static double Karsitlik(DColor a, DColor b)
+        {
+            double la = Parlaklik(a);
+            double lb = Parlaklik(b);
+            return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+        }
+
+        public static int[] Tema(string zemin, string yaziKipi, string yazi, bool fotograf, bool otomatikYazi = false)
+        {
+            DColor background = Ayristir(zemin);
+            bool photoMode = fotograf;
+            bool manual = photoMode || (!otomatikYazi && yaziKipi == "Manual");
+
+            DColor text;
+            bool lightSurface;
+            if (manual)
+            {
+                text = Ayristir(yazi);
+                lightSurface = !AcikMi(text);
+            }
+            else
+            {
+                lightSurface = AcikMi(background);
+                text = lightSurface ? DColor.FromArgb(0x1A, 0x1D, 0x21) : DColor.White;
+            }
+
+            DColor muted = lightSurface
+                ? Karistir(text, photoMode ? DColor.White : background, 0.55)
+                : Karistir(text, DColor.FromArgb(0x30, 0x34, 0x3A), 0.55);
+
+            DColor holiday = lightSurface ? DColor.FromArgb(0xC0, 0x2B, 0x2B) : DColor.FromArgb(0xE4, 0x50, 0x50);
+
+            DColor todayCircle = lightSurface
+                ? Alfa(Karistir(background, DColor.Black, 0.18), 235)
+                : Alfa(Karistir(background, DColor.White, 0.16), 235);
+
+            if (photoMode)
+            {
+                todayCircle = lightSurface ? DColor.FromArgb(64, 0, 0, 0) : DColor.FromArgb(90, 255, 255, 255);
+            }
+
+            return new[] { background, text, muted, holiday, todayCircle, text }.Select(c => c.ToArgb()).ToArray();
+        }
+    }
+
+    private static void Madde11()
+    {
+        Console.WriteLine("11) Açık/koyu kararı karşıtlığa göre; hazır renkler ve hazır fotoğraflar eskisi gibi");
+        Type renkAraclari = Tip("Kalender.Rendering.ColorTools");
+
+        // Hazır zemin renkleri (ayarlardaki örnekler) ve varsayılan zemin: eski hesapla yenisi birebir aynı.
+        var hazirlar = ((IEnumerable)Tip("Kalender.Settings.ThemePresets").GetProperty("All", Hepsi)!.GetValue(null)!)
+            .Cast<object>().Select(p => ((string)Oku(p, "Name")!, (string)Oku(p, "Color")!)).ToList();
+        object varsayilan = Activator.CreateInstance(Tip("Kalender.Settings.AppearanceSettings"), true)!;
+        hazirlar.Add(("varsayılan", (string)Oku(varsayilan, "SolidColor")!));
+
+        var farklar = new List<string>();
+        foreach ((string ad, string renk) in hazirlar)
+        {
+            DColor zemin = EskiRenk.Ayristir(renk);
+            if (UygulamadaAcik(zemin) != EskiRenk.AcikMi(zemin))
+            {
+                farklar.Add(ad + ": örnekteki işaret");
+            }
+
+            int[] otomatik = EskiRenk.Tema(renk, "Auto", "#FFFFFF", fotograf: false);
+            if (!YeniTema(YeniGorunum(renk), false).SequenceEqual(otomatik))
+            {
+                farklar.Add(ad + ": otomatik yazı");
+            }
+
+            // "Otomatik" kapatılınca ayarlar penceresi yazıyı o an hesaplanan renkte bırakıyor.
+            string oto = Onaltilik(Renk(otomatik[1]));
+            if (!YeniTema(YeniGorunum(renk, "Manual", oto), false).SequenceEqual(EskiRenk.Tema(renk, "Manual", oto, false)))
+            {
+                farklar.Add(ad + ": elle aynı yazı");
+            }
+
+            // Fotoğraf açılamayınca kalan düz zemin (yazı zeminden hesaplanıyor).
+            if (!YeniTema(YeniGorunum(renk, "Manual", "#FFFFFF"), false, otomatikYazi: true)
+                .SequenceEqual(EskiRenk.Tema(renk, "Manual", "#FFFFFF", false, otomatikYazi: true)))
+            {
+                farklar.Add(ad + ": açılamayan fotoğraf");
+            }
+        }
+
+        Denetle($"hazır zemin renklerinin hepsinde ({hazirlar.Count - 1} hazır renk ve varsayılan) renkler ve örnek işareti eskisinin aynısı",
+            hazirlar.Count >= 9 && farklar.Count == 0, string.Join(", ", farklar));
+
+        // Hazır fotoğraf: seçilince fotoğrafta okunmayacak yazı beyaza çekiliyor (eskisi gibi),
+        // sonra fotoğraf kipinin renkleri. Beyaz yazı (hazır fotoğrafların olağan hâli) dâhil 216 renk.
+        var fotoFarklari = new List<string>();
+        for (int r = 0; r <= 255; r += 51)
+        {
+            for (int g = 0; g <= 255; g += 51)
+            {
+                for (int b = 0; b <= 255; b += 51)
+                {
+                    DColor yazi = DColor.FromArgb(r, g, b);
+                    string eskiYazi = EskiRenk.AcikMi(yazi) ? Onaltilik(yazi) : "#FFFFFF";
+                    string yeniYazi = (bool)Statik(renkAraclari, "FotograftaOkunur", yazi)! ? Onaltilik(yazi) : "#FFFFFF";
+                    if (eskiYazi != yeniYazi
+                        || !YeniTema(YeniGorunum("#2E3238", "Auto", yeniYazi, true), true)
+                            .SequenceEqual(EskiRenk.Tema("#2E3238", "Auto", eskiYazi, fotograf: true)))
+                    {
+                        fotoFarklari.Add(Onaltilik(yazi));
+                    }
+                }
+            }
+        }
+
+        Denetle("hazır fotoğraf seçilince yazı rengi ve fotoğraf üstündeki renkler eskisi gibi (216 yazı rengi)",
+            fotoFarklari.Count == 0, string.Join(", ", fotoFarklari.Take(8)));
+
+        List<Komut> k = Komutlar(Tip("Kalender.Ui.SettingsWindow").GetMethod("OnReadyPhotoClicked", Hepsi)!);
+        Denetle("hazır fotoğraf seçilince yazıya fotoğraftaki okunurluk sınırıyla bakılıyor",
+            Bul(k, x => Cagri(x, renkAraclari, "FotograftaOkunur")) >= 0 && Bul(k, x => Cagri(x, renkAraclari, "IsLight")) < 0);
+
+        // Eşik: siyah ve beyaz yazının karşıtlığı bağıl parlaklık ~0,179'da eşitleniyor.
+        DColor acikGri = DColor.FromArgb(0x76, 0x76, 0x76);
+        DColor koyuGri = DColor.FromArgb(0x75, 0x75, 0x75);
+        Denetle("eşik karşıtlığa göre: #767676 açık, #757575 koyu (önceden ikisi de koyu)",
+            UygulamadaAcik(acikGri) && !UygulamadaAcik(koyuGri),
+            $"parlaklık {EskiRenk.Parlaklik(acikGri):0.0000} / {EskiRenk.Parlaklik(koyuGri):0.0000}");
+
+        // Orta tonlu kendi renkleri: koyu yazı, zeminden ayrılan soluk günler ve tatiller.
+        DColor beyaz = DColor.White;
+        foreach (string renk in new[] { "#8C8C8C", "#E08A3C", "#4CAF50", "#5B9BD5" })
+        {
+            DColor zemin = EskiRenk.Ayristir(renk);
+            int[] yeni = YeniTema(YeniGorunum(renk), false);
+            int[] eski = EskiRenk.Tema(renk, "Auto", "#FFFFFF", false);
+            double yazi = EskiRenk.Karsitlik(Renk(yeni[1]), zemin);
+            double soluk = EskiRenk.Karsitlik(Renk(yeni[2]), zemin);
+            double eskiSoluk = EskiRenk.Karsitlik(Renk(eski[2]), zemin);
+            double tatil = EskiRenk.Karsitlik(Renk(yeni[3]), zemin);
+            double eskiTatil = EskiRenk.Karsitlik(Renk(eski[3]), zemin);
+            Denetle($"{renk}: yazı koyu ve beyazdan okunaklı ({yazi:0.0}:1, beyaz {EskiRenk.Karsitlik(beyaz, zemin):0.0}:1); "
+                + $"soluk günler {soluk:0.00}:1 (önce {eskiSoluk:0.00}:1), tatil {tatil:0.00}:1 (önce {eskiTatil:0.00}:1)",
+                yazi > EskiRenk.Karsitlik(beyaz, zemin) && yazi >= 4.5
+                && soluk >= 1.8 && soluk > eskiSoluk && tatil >= 1.6 && tatil > eskiTatil);
+        }
+
+        // Koyu dalda soluk renk zemine doğru karıştırılıyor: eşiğin altındaki orta koyu zeminler.
+        foreach (string renk in new[] { "#707070", "#4A5A6A" })
+        {
+            DColor zemin = EskiRenk.Ayristir(renk);
+            int[] yeni = YeniTema(YeniGorunum(renk), false);
+            int[] eski = EskiRenk.Tema(renk, "Auto", "#FFFFFF", false);
+            double soluk = EskiRenk.Karsitlik(Renk(yeni[2]), zemin);
+            double eskiSoluk = EskiRenk.Karsitlik(Renk(eski[2]), zemin);
+            Denetle($"{renk} (koyu): yazı beyaz, soluk günler zeminden ayrılıyor ({soluk:0.00}:1, önce {eskiSoluk:0.00}:1)",
+                yeni[1] == beyaz.ToArgb() && soluk >= 2.0 && soluk > eskiSoluk);
+        }
+    }
+
+    private static void Madde10()
+    {
+        Console.WriteLine("10) Elle seçilen yazı renginde zeminin açıklığı zeminden; bugünün dairesi koyu zeminde görünüyor");
+        var kalanlar = new List<string>();
+        foreach (string zeminHex in new[] { "#000000", "#0B0E13", "#141A22", "#2E3238" })
+        {
+            DColor zemin = EskiRenk.Ayristir(zeminHex);
+            foreach (string yazi in new[] { "#4CAF50", "#42A5F5", "#FF7043" })
+            {
+                int[] t = YeniTema(YeniGorunum(zeminHex, "Manual", yazi), false);
+                DColor daire = Renk(t[4]);
+                double daireK = EskiRenk.Karsitlik(DColor.FromArgb(daire.R, daire.G, daire.B), zemin);
+                double tatilK = EskiRenk.Karsitlik(Renk(t[3]), zemin);
+                if (Renk(t[1]).ToArgb() != EskiRenk.Ayristir(yazi).ToArgb()
+                    || EskiRenk.Parlaklik(daire) <= EskiRenk.Parlaklik(zemin) || daireK < 1.4 || tatilK < 3)
+                {
+                    kalanlar.Add($"{zeminHex}+{yazi} (daire {daireK:0.00}:1, tatil {tatilK:0.0}:1)");
+                }
+            }
+        }
+
+        Denetle("koyu hazır zeminlerde (Siyah, Kuzgun, Mürekkep, Kömür) elle yeşil, mavi, turuncu yazıyla bugünün dairesi "
+            + "zeminden açık, tatil koyu zeminin kırmızısı; yazı seçilen renk", kalanlar.Count == 0, string.Join("; ", kalanlar));
+
+        // Açık zeminde elle orta tonlu ya da koyu yazı eskisi gibi (zemin açık, yazı da koyu sayılıyordu).
+        bool acikAyni = new[] { ("#F2F0EC", "#4CAF50"), ("#D9CFC1", "#1A1D21"), ("#C8BBA8", "#42A5F5") }
+            .All(d => YeniTema(YeniGorunum(d.Item1, "Manual", d.Item2), false).SequenceEqual(EskiRenk.Tema(d.Item1, "Manual", d.Item2, false)));
+        Denetle("açık hazır zeminlerde elle seçilen orta tonlu ya da koyu yazının renkleri eskisi gibi", acikAyni);
+
+        // Fotoğraf kipinde zemin bilinmiyor; yazıdan çıkarım sürüyor, ama karşıtlık eşiğiyle.
+        int[] foto = YeniTema(YeniGorunum("#2E3238", "Auto", "#4CAF50", true), true);
+        Denetle("fotoğrafta orta tonlu (yeşil) yazı açık sayılıyor: daire beyaz (alfa 90), tatil açık kırmızı",
+            foto[4] == DColor.FromArgb(90, 255, 255, 255).ToArgb() && foto[3] == DColor.FromArgb(0xE4, 0x50, 0x50).ToArgb(),
+            $"daire {Renk(foto[4])}");
+        int[] fotoKoyu = YeniTema(YeniGorunum("#2E3238", "Auto", "#1A1D21", true), true);
+        Denetle("fotoğrafta koyu yazı eskisi gibi (daire siyah, alfa 64)",
+            fotoKoyu.SequenceEqual(EskiRenk.Tema("#2E3238", "Auto", "#1A1D21", fotograf: true)));
+
+        // Masaüstü çiziminde: Siyah zeminde elle yeşil yazıyla bugünün dairesi (koyu gri) çiziliyor.
+        object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+        object gorunum = Oku(ayarlar, "Appearance")!;
+        Yaz(gorunum, "SolidColor", "#000000");
+        Yaz(gorunum, "PresetId", "siyah");
+        Yaz(gorunum, "TextColorMode", Secenek("TextColorMode", "Manual"));
+        Yaz(gorunum, "TextColor", "#4CAF50");
+        (DBitmap resim, DRectangleF blok) = MasaustuCizimi(ayarlar, TasimaYeri(0.5, 0.25), 2560, 1440);
+        using (resim)
+        {
+            int gri = 0;
+            for (int y = (int)blok.Top; y < (int)blok.Bottom; y++)
+            {
+                for (int x = (int)blok.Left; x < (int)blok.Right; x++)
+                {
+                    DColor c = resim.GetPixel(x, y);
+                    if (c.R is >= 30 and <= 52 && Math.Abs(c.R - c.G) <= 3 && Math.Abs(c.G - c.B) <= 3)
+                    {
+                        gri++;
+                    }
+                }
+            }
+
+            Denetle("Siyah zeminde elle yeşil yazıyla masaüstünde bugünün dairesi görünüyor", gri > 500, $"{gri} daire pikseli");
+        }
+    }
+
+    private static void Madde12()
+    {
+        Console.WriteLine("12) Kapla ve Sığdır'da fotoğrafın kenar sırası fotoğrafın renginde; zemin sızmıyor");
+        object ressam = Activator.CreateInstance(Tip("Kalender.Rendering.BackgroundPainter"), true)!;
+        object tema = Statik(Tip("Kalender.Rendering.Theme"), "ZemineGore", YeniGorunum("#2E3238", fotograf: true), true, false)!;
+        DColor zemin = (DColor)Oku(tema, "Background")!;
+        MethodInfo ciz = ressam.GetType().GetMethod("Paint")!;
+        const int G = 384;
+        const int Y = 216;
+
+        foreach ((string ad, int fg, int fy, string kip) in new[]
+        {
+            ("Kapla, küçültme (3840 × 2160 fotoğraf 1920 × 1080 ekranda gibi)", 768, 432, "Fill"),
+            ("Kapla, büyütme", 256, 144, "Fill"),
+            ("Kapla, 3:2 fotoğraf genişliğe oturuyor", 300, 200, "Fill"),
+            ("Sığdır, fotoğraf genişliğe oturuyor, üstte ve altta zemin", 400, 200, "Fit"),
+        })
+        {
+            using var foto = new DBitmap(fg, fy, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using (DGraphics c = DGraphics.FromImage(foto))
+            {
+                c.Clear(DColor.White);
+            }
+
+            using var yuzey = new DBitmap(G, Y, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (DGraphics c = DGraphics.FromImage(yuzey))
+            {
+                ciz.Invoke(ressam, new object[] { c, new DRectangle(0, 0, G, Y), tema, foto, Secenek("PhotoFit", kip) });
+            }
+
+            // Fotoğrafın yüzeydeki dikdörtgeni (Sığdır'da ortada, kenarlarda zemin).
+            DRectangle alan = new(0, 0, G, Y);
+            if (kip == "Fit")
+            {
+                double s = Math.Min((double)G / fg, (double)Y / fy);
+                int w = (int)Math.Round(fg * s);
+                int h = (int)Math.Round(fy * s);
+                alan = new DRectangle((G - w) / 2, (Y - h) / 2, w, h);
+            }
+
+            int enKoyu = 255;
+            for (int x = alan.Left; x < alan.Right; x++)
+            {
+                enKoyu = Math.Min(enKoyu, Math.Min(yuzey.GetPixel(x, alan.Top).G, yuzey.GetPixel(x, alan.Bottom - 1).G));
+            }
+
+            for (int y = alan.Top; y < alan.Bottom; y++)
+            {
+                enKoyu = Math.Min(enKoyu, Math.Min(yuzey.GetPixel(alan.Left, y).G, yuzey.GetPixel(alan.Right - 1, y).G));
+            }
+
+            bool disari = true;
+            if (kip == "Fit")
+            {
+                for (int x = 0; x < G; x++)
+                {
+                    disari &= yuzey.GetPixel(x, alan.Top - 1).ToArgb() == zemin.ToArgb()
+                        && yuzey.GetPixel(x, alan.Bottom).ToArgb() == zemin.ToArgb();
+                }
+            }
+
+            Denetle($"{ad}: kenar sırası beyaz (en koyu {enKoyu}){(kip == "Fit" ? ", dışı zemin renginde" : "")}",
+                enKoyu >= 254 && disari);
+        }
+
+        ((IDisposable)ressam).Dispose();
+    }
+
+    // ------------------------------------------------------- "Takvimi taşı" ekranı
+
+    /// <summary>Hayali bir ekran (%100 ölçekli, gerçek ekrana bakılmaz).</summary>
+    private static object TasimaEkrani(int g, int y)
+    {
+        object m = Activator.CreateInstance(Tip("Kalender.Interop.MonitorTarget"), true)!;
+        Yaz(m, "Handle", IntPtr.Zero);
+        Yaz(m, "DeviceName", @"\\.\DENEME");
+        Yaz(m, "StableId", "DENEME");
+        Yaz(m, "Bounds", new DRectangle(0, 0, g, y));
+        Yaz(m, "WorkArea", new DRectangle(0, 0, g, y - 48));
+        Yaz(m, "Dpi", 96u);
+        Yaz(m, "IsPrimary", true);
+        return m;
+    }
+
+    private static object TasimaYeri(double x, double y, int yuzde = 100)
+    {
+        object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
+        Yaz(yer, "XRatio", x);
+        Yaz(yer, "YRatio", y);
+        Yaz(yer, "ScalePercent", yuzde);
+        return yer;
+    }
+
+    /// <summary>
+    /// "Takvimi taşı" penceresi. Gösterilmez: tanıtıcısı yok, ekrana çıkmaz.
+    /// Açılış, pencere kurulunca çağrılan yöntemle (OnSourceInitialized) yapılır.
+    /// </summary>
+    private static System.Windows.Window TasimaPenceresi(object ekran, object ayarlar, object yer, bool ac = true)
+    {
+        var pencere = (System.Windows.Window)Activator.CreateInstance(Tip("Kalender.Ui.PlacementOverlayWindow"),
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
+            new[] { ekran, ayarlar, yer, BosVeri(), RenkGunu }, null)!;
+        if (ac)
+        {
+            // Window'un kendi OnSourceInitialized'ı da var; pencerenin olay işleyicisi çağrılıyor.
+            pencere.GetType().GetMethod("OnSourceInitialized", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+                new[] { typeof(object), typeof(EventArgs) })!.Invoke(pencere, new object?[] { null, EventArgs.Empty });
+        }
+
+        return pencere;
+    }
+
+    private static void TasimaPenceresiniBirak(System.Windows.Window pencere)
+        => ((IDisposable)AlanOku(pencere, "_renderer")).Dispose();
+
+    private static DPointF TakvimYeri(System.Windows.Window pencere) => (DPointF)AlanOku(pencere, "_origin");
+
+    /// <summary>
+    /// "Kaydet"e basılmış gibi sonucu yazar. Pencere iletişim kutusu olarak
+    /// açılmadığı için sondaki DialogResult ataması hata veriyor; oranlar ondan
+    /// önce yazılmış oluyor.
+    /// </summary>
+    private static object TasimayiKaydet(System.Windows.Window pencere)
+    {
+        try
+        {
+            Cagir(pencere, "Save");
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException)
+        {
+            // Beklenen: pencere ShowDialog ile açılmadı.
+        }
+
+        return Oku(pencere, "Result")!;
+    }
+
+    /// <summary>Masaüstü katmanının ürettiği görüntü ve takvim bloğunun yeri.</summary>
+    private static (DBitmap Resim, DRectangleF Blok) MasaustuCizimi(object ayarlar, object yer, int g, int y)
+    {
+        object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!;
+        try
+        {
+            object yuzey = cizici.GetType().GetMethod("Render")!.Invoke(cizici, new[]
+            {
+                new DSize(g, y), ayarlar, yer, BosVeri(), RenkGunu, RenkGunu, true,
+            })!;
+            return ((DBitmap)Oku(yuzey, "Image")!, (DRectangleF)Oku(Oku(yuzey, "Layout")!, "Bounds")!);
+        }
+        finally
+        {
+            ((IDisposable)cizici).Dispose();
+        }
+    }
+
+    private static bool Yakin(DPointF a, DPointF b) => Math.Abs(a.X - b.X) < 0.01 && Math.Abs(a.Y - b.Y) < 0.01;
+
+    private static void Madde8()
+    {
+        Console.WriteLine("8) \"Takvimi taşı\" ekranı takvimi masaüstündeki çizimle aynı kenar payında tutuyor");
+        foreach ((int g, int y, int yuzde) in new[] { (2560, 1440, 100), (3840, 2160, 150), (1920, 1080, 80) })
+        {
+            object ekran = TasimaEkrani(g, y);
+            object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+            System.Windows.Window pencere = TasimaPenceresi(ekran, ayarlar, TasimaYeri(0.5, 0.5, yuzde));
+            float olcek = (float)Oku(pencere, "TotalScale")!;
+            float pay = 12f * olcek;
+            var blok = (DSizeF)AlanOku(pencere, "_blockSize");
+            var sagAltSiniri = new DPointF(g - blok.Width - pay, y - blok.Height - pay);
+
+            Cagir(pencere, "MoveTo", new DPointF(-5000, -5000), true);
+            DPointF solUst = TakvimYeri(pencere);
+            Cagir(pencere, "MoveTo", new DPointF(50000, 50000), true);
+            DPointF sagAlt = TakvimYeri(pencere);
+            Cagir(pencere, "MoveTo", new DPointF(-5000, 50000), false);
+            DPointF solAlt = TakvimYeri(pencere);
+            Denetle($"{g}×{y} %{yuzde}: kenara sürüklenen takvim kenardan {pay:0.#} px içeride duruyor (sürüklerken ve boyut değişince)",
+                Yakin(solUst, new DPointF(pay, pay)) && Yakin(sagAlt, sagAltSiniri) && Yakin(solAlt, new DPointF(pay, sagAltSiniri.Y)),
+                $"sol üst {solUst}, sağ alt {sagAlt}, sol alt {solAlt}");
+
+            // Yapışma çizgileri (ekranın %6'sı) eskisi gibi.
+            var cizgi = new DPointF((float)(g * 0.06), (float)(y * 0.06));
+            Cagir(pencere, "MoveTo", new DPointF(cizgi.X + 10, cizgi.Y - 10), true);
+            Denetle($"{g}×{y} %{yuzde}: kenar yakınındaki yapışma çizgisi eskisi gibi", Yakin(TakvimYeri(pencere), cizgi),
+                TakvimYeri(pencere).ToString());
+
+            // Gidiş-dönüş: kaydedilen oranla yeniden açılan pencere ve masaüstü aynı yeri gösteriyor.
+            var kalanlar = new List<string>();
+            foreach (DPointF hedef in new[] { new DPointF(50000, 50000), new DPointF(-5000, -5000), new DPointF(g * 0.37f, y * 0.41f) })
+            {
+                Cagir(pencere, "MoveTo", hedef, false);
+                DPointF birakilan = TakvimYeri(pencere);
+                object sonuc = TasimayiKaydet(pencere);
+                System.Windows.Window ikinci = TasimaPenceresi(ekran, ayarlar, sonuc);
+                DPointF acilis = TakvimYeri(ikinci);
+                TasimaPenceresiniBirak(ikinci);
+                (DBitmap resim, DRectangleF masaustu) = MasaustuCizimi(ayarlar, sonuc, g, y);
+                resim.Dispose();
+                if (!Yakin(acilis, birakilan) || !Yakin(masaustu.Location, birakilan))
+                {
+                    kalanlar.Add($"bırakılan {birakilan}, yeniden açılınca {acilis}, masaüstünde {masaustu.Location}");
+                }
+            }
+
+            Denetle($"{g}×{y} %{yuzde}: kaydedilen yer yeniden açılınca ve masaüstünde aynı (kenarlarda ve ortada)",
+                kalanlar.Count == 0, string.Join("; ", kalanlar));
+            TasimaPenceresiniBirak(pencere);
+        }
+
+        // Yapıştırıcı da aynı payı kullanıyor (ekran dışına itilen öneri).
+        Type yapistirici = Tip("Kalender.Settings.PlacementSnapper");
+        MethodInfo yapistir = yapistirici.GetMethod("Snap", Hepsi)!;
+        object?[] a = { new DPointF(-300, 99999), new DSizeF(700, 704), new DSize(2560, 1440), 1.5f, null };
+        var sonucNokta = (DPointF)yapistir.Invoke(null, a)!;
+        Denetle("yapıştırıcı ekran dışına itilen takvimi payın (12 × ölçek) çizgisinde tutuyor",
+            Yakin(sonucNokta, new DPointF(18, 1440 - 704 - 18)), sonucNokta.ToString());
+    }
+
+    private static void Madde9()
+    {
+        Console.WriteLine("9) \"Takvimi taşı\" ekranında fotoğraf karartması masaüstündekiyle aynı, takvimle birlikte taşınıyor");
+        string klasor = Path.Combine(Path.GetTempPath(), "Kalender ikinci inceleme karartma " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(klasor);
+        try
+        {
+            DColor fotoRengi = DColor.FromArgb(0xB4, 0xB4, 0xB4);
+            string foto = Path.Combine(klasor, "duz-gri.png");
+            using (var resim = new DBitmap(640, 360, System.Drawing.Imaging.PixelFormat.Format24bppRgb))
+            {
+                using (DGraphics c = DGraphics.FromImage(resim))
+                {
+                    c.Clear(fotoRengi);
+                }
+
+                resim.Save(foto, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            object Ayarlar(int karartma, bool fotografli = true)
+            {
+                object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+                object gorunum = Oku(ayarlar, "Appearance")!;
+                Yaz(gorunum, "BackgroundMode", Secenek("BackgroundMode", fotografli ? "Photo" : "Solid"));
+                Yaz(gorunum, "PhotoPath", fotografli ? foto : null);
+                Yaz(gorunum, "BackdropDim", karartma);
+                return ayarlar;
+            }
+
+            // Masaüstü görüntüsü = zemin + taşıma ekranının karartma görüntüsü (takvim dışındaki her yerde).
+            object yer = TasimaYeri(0.5, 0.25);
+            foreach (int karartma in new[] { 30, 60, 100 })
+            {
+                object ayarlar = Ayarlar(karartma);
+                object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!;
+                (DBitmap masaustu, DRectangleF blok) = MasaustuCizimi(ayarlar, yer, 2560, 1440);
+                using (masaustu)
+                using (var zemin = (DBitmap)cizici.GetType().GetMethod("RenderBackgroundOnly")!.Invoke(cizici, new[] { new DSize(2560, 1440), ayarlar, yer })!)
+                {
+                    object?[] a = { 1f, ayarlar, yer, null };
+                    using var karartmaResmi = (DBitmap?)cizici.GetType().GetMethod("KarartmaYuzeyi")!.Invoke(cizici, a);
+                    if (karartmaResmi is null)
+                    {
+                        Denetle($"%{karartma} karartma: taşıma ekranı için karartma çiziliyor", false);
+                        ((IDisposable)cizici).Dispose();
+                        continue;
+                    }
+
+                    var kayma = (DPointF)a[3]!;
+                    var kare = new DRectangle((int)Math.Round(blok.X + kayma.X), (int)Math.Round(blok.Y + kayma.Y),
+                        karartmaResmi.Width, karartmaResmi.Height);
+                    using (DGraphics c = DGraphics.FromImage(zemin))
+                    {
+                        c.DrawImage(karartmaResmi, kare);
+                    }
+
+                    DRectangle takvim = DRectangle.Round(blok);
+                    takvim.Inflate(3, 3);
+                    DRectangle bakilan = kare;
+                    bakilan.Inflate(12, 12);
+                    int enCokFark = 0;
+                    int enKoyu = 255;
+                    int bakilanSayisi = 0;
+                    for (int y = bakilan.Top; y < bakilan.Bottom; y += 3)
+                    {
+                        for (int x = bakilan.Left; x < bakilan.Right; x += 3)
+                        {
+                            if (takvim.Contains(x, y))
+                            {
+                                continue;
+                            }
+
+                            DColor m = masaustu.GetPixel(x, y);
+                            DColor o = zemin.GetPixel(x, y);
+                            enCokFark = Math.Max(enCokFark, Math.Max(Math.Abs(m.R - o.R), Math.Max(Math.Abs(m.G - o.G), Math.Abs(m.B - o.B))));
+                            enKoyu = Math.Min(enKoyu, m.R);
+                            bakilanSayisi++;
+                        }
+                    }
+
+                    Denetle($"%{karartma} karartma: taşıma ekranındaki karartma masaüstündekiyle aynı boyut ve renkte "
+                        + $"(kare {karartmaResmi.Width} px, en çok fark {enCokFark}, en koyu {enKoyu})",
+                        karartmaResmi.Width == 816 && karartmaResmi.Height == 816 && enCokFark <= 3
+                        && enKoyu < fotoRengi.R - 40 && bakilanSayisi > 10000);
+                }
+
+                ((IDisposable)cizici).Dispose();
+            }
+
+            // Pencerede: karartma takvimin altında, ortalı; takvimle birlikte taşınıyor.
+            object ekran = TasimaEkrani(2560, 1440);
+            System.Windows.Window pencere = TasimaPenceresi(ekran, Ayarlar(60), yer);
+            var karartmaGoruntusu = (System.Windows.Controls.Image)pencere.FindName("BackdropImage");
+            var takvimGoruntusu = (System.Windows.Controls.Image)pencere.FindName("CalendarImage");
+            var cerceve = (System.Windows.Controls.Border)pencere.FindName("CalendarHost");
+            var sahne = (System.Windows.Controls.Canvas)pencere.FindName("Stage");
+
+            (double X, double Y) Kayma()
+            {
+                double tx = System.Windows.Controls.Canvas.GetLeft(cerceve) + cerceve.BorderThickness.Left + (takvimGoruntusu.Width / 2);
+                double ty = System.Windows.Controls.Canvas.GetTop(cerceve) + cerceve.BorderThickness.Top + (takvimGoruntusu.Height / 2);
+                double kx = System.Windows.Controls.Canvas.GetLeft(karartmaGoruntusu) + (karartmaGoruntusu.Width / 2);
+                double ky = System.Windows.Controls.Canvas.GetTop(karartmaGoruntusu) + (karartmaGoruntusu.Height / 2);
+                return (kx - tx, ky - ty);
+            }
+
+            (double X, double Y) once = Kayma();
+            int sira = sahne.Children.IndexOf(karartmaGoruntusu);
+            Denetle("pencerede karartma çiziliyor, takvimin altında ve takvimi ortalıyor",
+                karartmaGoruntusu.Source is not null && karartmaGoruntusu.Width == 816
+                && sira > sahne.Children.IndexOf((System.Windows.UIElement)pencere.FindName("BackgroundImage"))
+                && sira < sahne.Children.IndexOf(cerceve) && Math.Abs(once.X) < 0.51 && Math.Abs(once.Y) < 0.51,
+                $"merkezler arası {once}");
+
+            Cagir(pencere, "MoveTo", new DPointF(400, 300), true);
+            (double X, double Y) sonra = Kayma();
+            Denetle("takvim sürüklenince karartma da birlikte taşınıyor",
+                karartmaGoruntusu.Source is not null && Math.Abs(sonra.X - once.X) < 0.01 && Math.Abs(sonra.Y - once.Y) < 0.01 && Yakin(TakvimYeri(pencere), new DPointF(400, 300)),
+                $"merkezler arası {sonra}");
+
+            ((System.Windows.Controls.Slider)pencere.FindName("ScaleSlider")).Value = 130;
+            (double X, double Y) buyuyunce = Kayma();
+            Denetle("boyut değişince karartma da büyüyüp ortada kalıyor",
+                karartmaGoruntusu.Width > 816 && Math.Abs(buyuyunce.X) < 0.51 && Math.Abs(buyuyunce.Y) < 0.51,
+                $"{karartmaGoruntusu.Width} px, merkezler arası {buyuyunce}");
+            TasimaPenceresiniBirak(pencere);
+
+            foreach ((object ayarlar, string ad) in new[] { (Ayarlar(0), "karartma %0"), (Ayarlar(60, fotografli: false), "düz renk zemin") })
+            {
+                System.Windows.Window p = TasimaPenceresi(ekran, ayarlar, yer);
+                Denetle($"{ad}: pencerede karartma yok", ((System.Windows.Controls.Image)p.FindName("BackdropImage")).Source is null);
+                TasimaPenceresiniBirak(p);
+            }
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(klasor, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Silinemezse geçici klasörde kalır.
+            }
+        }
     }
 }
 
