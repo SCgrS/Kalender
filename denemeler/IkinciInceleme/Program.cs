@@ -21,6 +21,7 @@ using DRectangle = System.Drawing.Rectangle;
 using DRectangleF = System.Drawing.RectangleF;
 using DSize = System.Drawing.Size;
 using DSizeF = System.Drawing.SizeF;
+using Ifade = System.Linq.Expressions.Expression;
 
 // Kalender'de ikinci genel kod incelemesinin (2026-10-15) düzeltmelerinin
 // sınaması (yansımayla). Madde numaraları kalender.md'deki listeden:
@@ -65,6 +66,21 @@ using DSizeF = System.Drawing.SizeF;
 //      kopyasıyla karşılaştırılır: renkleri birebir aynı.
 //  12. Kapla ve Sığdır'da fotoğrafın kenar sırası fotoğrafın renginde; zemin
 //      rengi kenardan sızmaz.
+//  13. Fotoğraf yalnız bazı ekranlardaysa ayarlar penceresindeki renkler
+//      (yazı, hafta günleri, tatil, soluk gün, bugünün dairesi) fotoğrafsız
+//      ekranda çizilenler; "Otomatik" kapatılınca orada görünüm aynı kalır,
+//      bugünün rakamı iki ekranda da okunur. Renk çarkından seçilen yazı rengi
+//      fotoğrafsız ekranda da kullanılır. Tam fotoğraf ve düz renk kipinde
+//      pencerenin renkleri eskisi gibi.
+//  14. Ekrana ayrı fotoğraf varken Arka plan sayfasında hazır renk ya da
+//      kendi rengi seçilince o ekran fotoğrafını korur, öbürü yeni rengi alır;
+//      genel fotoğraf varsa bırakılır. Seçili hazır renk işaretli; Boyut ve
+//      Konum sayfası çizilen fotoğrafı gösterir.
+//  15. Düz renge geçerken genel fotoğrafın yolu silinir ("Seçili fotoğraf"
+//      satırı boşalır); sonra bir ekrana fotoğraf verilince öbür ekran düz
+//      renkte kalır, fotoğraf kaldırılınca düz renge dönülür. Eski sürümün düz
+//      renkte bıraktığı yol gösterilmez, ekrana fotoğraf verilince silinir.
+//  16. Renk çarkından zemin rengi seçilince hazır fotoğrafın işareti kalkar.
 //  20. Tablonun dışındaki yıllarda İngilizce ya da yanlış yazılmış bayram
 //      adları Türkçe ("Kurban Bayrami Day 2" → "Kurban Bayramı 2. gün",
 //      "Sacrifice Feast Holiday" → "Kurban Bayramı"); "(kesin değil)" eki kalır.
@@ -105,6 +121,12 @@ using DSizeF = System.Drawing.SizeF;
 // (KodIncelemesi'ndeki gibi); katmanın ekranı yok, duvar kâğıdına yazılmaz.
 // 8 ve 9. maddelerde "Takvimi taşı" penceresi kurulur ama gösterilmez (ekrana
 // çıkmaz), ekranı hayalidir; 9'un fotoğrafı geçici klasörde üretilip silinir.
+// 13–16. maddelerde ayarlar penceresi kurucusu çalıştırılmadan kurulur
+// (KodIncelemesi'ndeki gibi): ekranda açılmaz, adlı denetimleri boş kurulur,
+// uygulamaya açılan kapısı sahtedir (duvar kâğıdına yazılmaz, ayar
+// kaydedilmez), iki ekranı hayalidir. Dosya seçme penceresi açılmaz; ekrana
+// fotoğraf verme, seçimden sonraki adımlarıyla çağrılır. Deneme fotoğrafları
+// geçici klasörde üretilip silinir.
 //
 // Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
 // GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
@@ -209,6 +231,10 @@ internal static class Program
             Bolum(Madde10);
             Bolum(Madde11);
             Bolum(Madde12);
+            Bolum(Madde13);
+            Bolum(Madde14);
+            Bolum(Madde15);
+            Bolum(Madde16);
             Bolum(Madde2);
             Bolum(Madde3);
             Bolum(Madde4);
@@ -3237,6 +3263,559 @@ internal static class Program
                 // Silinemezse geçici klasörde kalır.
             }
         }
+    }
+
+    // ------------------ ayarlar penceresi: zemin, fotoğraf ve renk seçimleri (13–16)
+
+    private const string Ekran1 = @"\\.\DISPLAY1";
+    private const string Ekran2 = @"\\.\DISPLAY2";
+
+    /// <summary>13. maddede ikinci ekrana verilen koyu deneme fotoğrafının rengi.</summary>
+    private static readonly DColor KoyuFoto = DColor.FromArgb(0x28, 0x30, 0x38);
+
+    /// <summary>14 ve 15. maddelerde ikinci ekrana verilen deneme fotoğrafının rengi.</summary>
+    private static readonly DColor YesilFoto = DColor.FromArgb(0x2E, 0x7D, 0x32);
+
+    /// <summary>Genel (bütün ekranlara çizilen) deneme fotoğrafının rengi.</summary>
+    private static readonly DColor TuruncuFoto = DColor.FromArgb(0xC0, 0x60, 0x20);
+
+    /// <summary>Geçici klasörde düz renkli bir deneme fotoğrafı (PNG, 64 × 36).</summary>
+    private static string DenemeFotografi(string klasor, string ad, DColor renk)
+    {
+        string yol = Path.Combine(klasor, ad);
+        using var resim = new DBitmap(64, 36, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+        using (DGraphics c = DGraphics.FromImage(resim))
+        {
+            c.Clear(renk);
+        }
+
+        resim.Save(yol, System.Drawing.Imaging.ImageFormat.Png);
+        return yol;
+    }
+
+    /// <summary>Deneme fotoğrafları için geçici bir klasörle çalıştırır; sonunda klasör silinir.</summary>
+    private static void FotografKlasoruyle(Action<string> islem)
+    {
+        string klasor = Path.Combine(Path.GetTempPath(), "Kalender ikinci inceleme zemin " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(klasor);
+        try
+        {
+            islem(klasor);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(klasor, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Silinemezse geçici klasörde kalır.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ayarları bellekte tutan bir depo (KodIncelemesi'ndeki gibi; sınanan
+    /// işleyiciler onu kaydetmez). Genel zemin <paramref name="kip"/> kipinde,
+    /// düz rengi <paramref name="renk"/>; <paramref name="genel"/> genel fotoğraf,
+    /// <paramref name="ekran2"/> ikinci ekranın kendi fotoğrafı. Yazı rengi
+    /// otomatik, fotoğraf için seçilen yazı rengi beyaz (varsayılan). Açılışta
+    /// başlatma kapalı: pencerenin açılış notu kayıt defterine bakmasın.
+    /// </summary>
+    private static object ZeminDeposu(string kip, string renk, string? hazir, string? genel = null, string? ekran2 = null)
+    {
+        object depo = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Settings.SettingsStore"));
+        AlanAta(depo, "_gate", new object());
+
+        object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+        Yaz(ayarlar, "StartWithWindows", false);
+        object g = Oku(ayarlar, "Appearance")!;
+        Yaz(g, "BackgroundMode", Secenek("BackgroundMode", kip));
+        Yaz(g, "SolidColor", renk);
+        Yaz(g, "PresetId", hazir);
+        Yaz(g, "PhotoPath", genel);
+        Yaz(g, "TextColorMode", Secenek("TextColorMode", "Auto"));
+        Yaz(g, "TextColor", "#FFFFFF");
+
+        if (ekran2 is not null)
+        {
+            object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
+            Yaz(yer, "PhotoPath", ekran2);
+            ((IDictionary)Oku(ayarlar, "Monitors")!)[Ekran2] = yer;
+        }
+
+        Yaz(depo, "Current", ayarlar);
+        return depo;
+    }
+
+    private static object Gorunum(object depo) => Oku(Oku(depo, "Current")!, "Appearance")!;
+
+    private static IDictionary Yerlesimler(object depo) => (IDictionary)Oku(Oku(depo, "Current")!, "Monitors")!;
+
+    /// <summary>Hayali ekran (1920 × 1080, %100 ölçek; gerçek ekrana bakılmaz).</summary>
+    private static object ZeminEkrani(string aygit, int x)
+    {
+        object m = Activator.CreateInstance(Tip("Kalender.Interop.MonitorTarget"), true)!;
+        Yaz(m, "Handle", IntPtr.Zero);
+        Yaz(m, "DeviceName", aygit);
+        Yaz(m, "StableId", aygit);
+        Yaz(m, "KimlikOkunamadi", true);
+        Yaz(m, "Bounds", new DRectangle(x, 0, 1920, 1080));
+        Yaz(m, "WorkArea", new DRectangle(x, 0, 1920, 1032));
+        Yaz(m, "Dpi", 96u);
+        Yaz(m, "IsPrimary", x == 0);
+        return m;
+    }
+
+    /// <summary>
+    /// Kurucusu çalıştırılmamış bir ayarlar penceresi (KodIncelemesi'ndeki gibi):
+    /// ekranda açılmaz. Adlı denetimlerinin hepsi boş kurulur, XAML'daki olay
+    /// bağlantıları yoktur; otomatik anahtarlarının bağlantıları kurucudaki
+    /// gibi kurulur. Hazır renk ve hazır fotoğraf örnekleri pencerenin kurduğu
+    /// gibi etiketlenir. Uygulamaya açılan kapı sahte (duvar kâğıdına yazılmaz),
+    /// iki hayali ekran bağlı. Sonunda kurucu gibi ekran satırlarını kurar ve
+    /// ayarları denetimlere yükler.
+    /// </summary>
+    private static object ZeminPenceresi(object depo)
+    {
+        Type tip = Tip("Kalender.Ui.SettingsWindow");
+        object pencere = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(tip);
+        typeof(DispatcherObject).GetField("_dispatcher", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(pencere, Dispatcher.CurrentDispatcher);
+
+        var kapi = (SahteAyarKapisi)DispatchProxy.Create(Tip("Kalender.Ui.IAppearanceHost"), typeof(SahteAyarKapisi));
+        var ekranlar = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Interop.MonitorTarget")))!;
+        ekranlar.Add(ZeminEkrani(Ekran1, 0));
+        ekranlar.Add(ZeminEkrani(Ekran2, 1920));
+        kapi.Ayarlar = depo;
+        kapi.Ekranlar = ekranlar;
+
+        AlanAta(pencere, "_host", kapi);
+        AlanAta(pencere, "_applyTimer", new DispatcherTimer { Interval = TimeSpan.FromHours(1) });
+        AlanAta(pencere, "_rows", Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Ui.MonitorRow")))!);
+
+        foreach (FieldInfo alan in tip.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+        {
+            if (!alan.Name.StartsWith('_') && typeof(System.Windows.DependencyObject).IsAssignableFrom(alan.FieldType)
+                && alan.FieldType.GetConstructor(Type.EmptyTypes) is not null)
+            {
+                alan.SetValue(pencere, Activator.CreateInstance(alan.FieldType));
+            }
+        }
+
+        var hazirRenkler = (System.Windows.Controls.Panel)AlanOku(pencere, "PresetPanel");
+        foreach (object hazir in (IEnumerable)Tip("Kalender.Settings.ThemePresets").GetProperty("All", Hepsi)!.GetValue(null)!)
+        {
+            hazirRenkler.Children.Add(new System.Windows.Controls.RadioButton { Tag = hazir });
+        }
+
+        var hazirFotograflar = (System.Windows.Controls.Panel)AlanOku(pencere, "ReadyPhotoPanel");
+        foreach (object foto in (IEnumerable)Tip("Kalender.Settings.HazirFotograflar").GetProperty("All", Hepsi)!.GetValue(null)!)
+        {
+            hazirFotograflar.Children.Add(new System.Windows.Controls.RadioButton { Tag = foto });
+        }
+
+        // Takvim renklerinin satırları ve anahtar bağlantıları, kurucudaki gibi.
+        Type satirTipi = tip.GetNestedType("CalendarColorRow", BindingFlags.NonPublic)!;
+        Type renkler = Tip("Kalender.Settings.CalendarTextColors");
+        Type tema = Tip("Kalender.Rendering.Theme");
+        MethodInfo otomatik = tip.GetMethod("SetCalendarColorAuto", Hepsi)!;
+        (string Kutu, string Dugme, string Ayar, string Hesap)[] tanimlar =
+        {
+            ("WeekdayAutoBox", "WeekdayColorButton", "Weekday", "Text"),
+            ("HolidayAutoBox", "HolidayColorButton", "Holiday", "Holiday"),
+            ("MutedAutoBox", "MutedColorButton", "Muted", "Muted"),
+            ("TodayCircleAutoBox", "TodayCircleColorButton", "TodayCircle", "TodayCircle"),
+        };
+
+        Array satirlar = Array.CreateInstance(satirTipi, tanimlar.Length);
+        for (int i = 0; i < tanimlar.Length; i++)
+        {
+            var k = Ifade.Parameter(renkler, "k");
+            var v = Ifade.Parameter(typeof(string), "v");
+            var t = Ifade.Parameter(tema, "t");
+            Delegate oku = Ifade.Lambda(typeof(Func<,>).MakeGenericType(renkler, typeof(string)),
+                Ifade.Property(k, tanimlar[i].Ayar), k).Compile();
+            Delegate yaz = Ifade.Lambda(typeof(Action<,>).MakeGenericType(renkler, typeof(string)),
+                Ifade.Assign(Ifade.Property(k, tanimlar[i].Ayar), v), k, v).Compile();
+            Delegate hesap = Ifade.Lambda(typeof(Func<,>).MakeGenericType(tema, typeof(DColor)),
+                Ifade.Property(t, tanimlar[i].Hesap), t).Compile();
+
+            var kutu = (System.Windows.Controls.CheckBox)AlanOku(pencere, tanimlar[i].Kutu);
+            object satir = Activator.CreateInstance(satirTipi, kutu, AlanOku(pencere, tanimlar[i].Dugme), oku, yaz, hesap)!;
+            System.Windows.RoutedEventHandler isleyici = (_, _) => otomatik.Invoke(pencere, new[] { satir });
+            kutu.Checked += isleyici;
+            kutu.Unchecked += isleyici;
+            satirlar.SetValue(satir, i);
+        }
+
+        AlanAta(pencere, "_calendarColors", satirlar);
+
+        // Yazı renginin otomatik anahtarı XAML'da bağlı.
+        var yaziKutusu = (System.Windows.Controls.CheckBox)AlanOku(pencere, "AutoTextColorBox");
+        System.Windows.RoutedEventHandler yaziIsleyici = (s, e) => Cagir(pencere, "OnAutoTextColorChanged", s, e);
+        yaziKutusu.Checked += yaziIsleyici;
+        yaziKutusu.Unchecked += yaziIsleyici;
+
+        Cagir(pencere, "BuildMonitorRows");
+        Cagir(pencere, "LoadFromSettings");
+        return pencere;
+    }
+
+    private static System.Windows.Controls.CheckBox Kutu(object pencere, string ad)
+        => (System.Windows.Controls.CheckBox)AlanOku(pencere, ad);
+
+    private static string Metin(object pencere, string ad) => ((System.Windows.Controls.TextBlock)AlanOku(pencere, ad)).Text;
+
+    /// <summary>Renk düğmesinde görünen renk.</summary>
+    private static DColor Dugme(object pencere, string ad)
+    {
+        var c = (System.Windows.Media.Color)Oku(AlanOku(pencere, ad), "SelectedColor")!;
+        return DColor.FromArgb(c.R, c.G, c.B);
+    }
+
+    /// <summary>Panelde işaretli örneğin kimliği (hazır renk ya da hazır fotoğraf); yoksa null.</summary>
+    private static string? Isaretli(object pencere, string panel)
+        => ((System.Windows.Controls.Panel)AlanOku(pencere, panel)).Children.OfType<System.Windows.Controls.RadioButton>()
+            .Where(r => r.IsChecked == true).Select(r => (string?)Oku(r.Tag, "Id")).FirstOrDefault();
+
+    /// <summary>Hazır renklerden birine tıklanmış gibi.</summary>
+    private static void HazirRenkSec(object pencere, string kimlik)
+    {
+        System.Windows.Controls.RadioButton ornek = ((System.Windows.Controls.Panel)AlanOku(pencere, "PresetPanel")).Children
+            .OfType<System.Windows.Controls.RadioButton>().First(r => (string?)Oku(r.Tag, "Id") == kimlik);
+        Cagir(pencere, "OnPresetClicked", ornek, new System.Windows.RoutedEventArgs());
+    }
+
+    /// <summary>Renk çarkından renk seçilmiş gibi (zemin ya da yazı rengi işleyicisi).</summary>
+    private static void RenkCarkindan(object pencere, string isleyici, string renk)
+    {
+        DColor c = EskiRenk.Ayristir(renk);
+        Cagir(pencere, isleyici, System.Windows.Media.Color.FromRgb(c.R, c.G, c.B));
+    }
+
+    /// <summary>Boyut ve Konum sayfasındaki ekran satırı.</summary>
+    private static object Satir(object pencere, string aygit)
+        => ((IList)AlanOku(pencere, "_rows")).Cast<object>().First(s => (string?)Oku(Oku(s, "Monitor")!, "StableId") == aygit);
+
+    /// <summary>
+    /// "Bu ekrana fotoğraf…": dosya seçildikten sonraki adımlar, OnPickMonitorPhoto'daki
+    /// sırayla (seçme penceresi açılmaz; sıranın aynı olduğu derlenmiş koddan denetlenir).
+    /// </summary>
+    private static void EkranaFotografVer(object pencere, object depo, string aygit, string yol)
+    {
+        object yer = Oku(Satir(pencere, aygit), "Placement")!;
+        Yaz(yer, "PhotoPath", yol);
+        Yerlesimler(depo)[aygit] = yer;
+        Cagir(pencere, "EkranFotografiVerildi");
+    }
+
+    /// <summary>Ekran satırındaki "Kaldır".</summary>
+    private static void EkranFotografiniKaldir(object pencere, string aygit)
+        => Cagir(pencere, "OnRemoveMonitorPhoto", new System.Windows.Controls.Button { Tag = Satir(pencere, aygit) },
+            new System.Windows.RoutedEventArgs());
+
+    /// <summary>Masaüstü katmanının o ekrana çizdiği zeminin ortasındaki renk (takvimsiz, küçük yüzeyde).</summary>
+    private static DColor ZeminPikseli(object depo, string aygit)
+    {
+        IDictionary yerler = Yerlesimler(depo);
+        object yer = yerler.Contains(aygit) ? yerler[aygit]! : Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
+        object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!;
+        try
+        {
+            object yuzey = cizici.GetType().GetMethod("Render")!.Invoke(cizici, new[]
+            {
+                new DSize(64, 36), Oku(depo, "Current")!, yer, BosVeri(), RenkGunu, RenkGunu, false,
+            })!;
+            using var resim = (DBitmap)Oku(yuzey, "Image")!;
+            return resim.GetPixel(32, 18);
+        }
+        finally
+        {
+            ((IDisposable)cizici).Dispose();
+        }
+    }
+
+    private static bool RenkYakin(DColor a, DColor b) => Math.Abs(a.R - b.R) <= 3 && Math.Abs(a.G - b.G) <= 3 && Math.Abs(a.B - b.B) <= 3;
+
+    /// <summary>
+    /// Bir ekranın çizimde kullandığı renkler (ARGB, <see cref="TemaRenkleri"/>
+    /// sırasıyla): çizicinin o ekran için seçtiği tema. <paramref name="foto"/>
+    /// o ekrana çizilen fotoğraf; null ise ekran düz renkle çiziliyor.
+    /// </summary>
+    private static int[] EkranRenkleri(object depo, string? foto)
+    {
+        using DBitmap? resim = foto is null ? null : new DBitmap(4, 4);
+        object t = Statik(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), "EkranTemasi", Gorunum(depo), foto, resim)!;
+        return TemaRenkleri.Select(a => ((DColor)Oku(t, a)!).ToArgb()).ToArray();
+    }
+
+    /// <summary>
+    /// Bugünün rakamının, zemine bindirilen dairenin üstündeki karşıtlığı (WCAG).
+    /// <paramref name="zemin"/> dairenin altındaki renk: düz renk ya da fotoğraf.
+    /// </summary>
+    private static double RakamKarsitligi(int[] renkler, DColor zemin)
+    {
+        DColor daire = Renk(renkler[4]);
+        double a = daire.A / 255.0;
+        int Karistir(int d, int z) => (int)Math.Round((d * a) + (z * (1 - a)));
+        DColor ust = DColor.FromArgb(Karistir(daire.R, zemin.R), Karistir(daire.G, zemin.G), Karistir(daire.B, zemin.B));
+        return EskiRenk.Karsitlik(Renk(renkler[5]), ust);
+    }
+
+    /// <summary>Pencerenin renk düğmeleri (yazı, hafta günleri, tatil, soluk gün, daire) bu renkleri mi gösteriyor?</summary>
+    private static bool DugmelerGosteriyor(object pencere, int[] r, out string ayrinti)
+    {
+        DColor[] dugmeler =
+        {
+            Dugme(pencere, "TextColorButton"), Dugme(pencere, "WeekdayColorButton"), Dugme(pencere, "HolidayColorButton"),
+            Dugme(pencere, "MutedColorButton"), Dugme(pencere, "TodayCircleColorButton"),
+        };
+        DColor[] beklenen = { Renk(r[1]), Renk(r[1]), Renk(r[3]), Renk(r[2]), Renk(r[4]) };
+        ayrinti = string.Join(" ", dugmeler.Select(Onaltilik));
+        return dugmeler.Zip(beklenen).All(c => Onaltilik(c.First) == Onaltilik(c.Second));
+    }
+
+    private static void Madde13() => FotografKlasoruyle(klasor =>
+    {
+        Console.WriteLine("13) Fotoğraf yalnız bir ekrandayken pencerede fotoğrafsız ekranın renkleri; \"Otomatik\" kapatılınca orada görünüm aynı, rakam her ekranda okunur");
+        string foto = DenemeFotografi(klasor, "koyu.png", KoyuFoto);
+
+        // Maddedeki durum: Kömür zemin, genel fotoğraf yok, ikinci ekranın kendi fotoğrafı var.
+        object depo = ZeminDeposu("Photo", "#2E3238", "komur", ekran2: foto);
+        object pencere = ZeminPenceresi(depo);
+        int[] duzOnce = EkranRenkleri(depo, null);
+        int[] fotoOnce = EkranRenkleri(depo, foto);
+        bool karisik = DugmelerGosteriyor(pencere, duzOnce, out string dugmeler);
+
+        // Tam fotoğraf ve düz renk kipinde düğmeler eskisi gibi o kipin renklerinde.
+        object tamDepo = ZeminDeposu("Photo", "#2E3238", "komur", genel: foto, ekran2: foto);
+        bool tam = DugmelerGosteriyor(ZeminPenceresi(tamDepo), EkranRenkleri(tamDepo, foto), out _);
+        object duzDepo = ZeminDeposu("Solid", "#F2F0EC", "kagit");
+        bool duz = DugmelerGosteriyor(ZeminPenceresi(duzDepo), EkranRenkleri(duzDepo, null), out _);
+        Denetle("ekranlardan yalnız birinde fotoğraf varken pencerenin renk düğmeleri fotoğrafsız ekranda çizilen renkler; "
+            + "tam fotoğraf ve düz renk kipinde eskisi gibi", karisik && tam && duz, dugmeler);
+
+        Kutu(pencere, "TodayCircleAutoBox").IsChecked = false;
+        int[] duzSonra = EkranRenkleri(depo, null);
+        int[] fotoSonra = EkranRenkleri(depo, foto);
+        var daire = (string?)Oku(Oku(Gorunum(depo), "Colors")!, "TodayCircle");
+        Denetle("\"Bugünün dairesi\" otomatiği kapatılınca düğmedeki renk kalıcı oluyor, fotoğrafsız ekranda görünüm aynı",
+            string.Equals(daire, Onaltilik(Dugme(pencere, "TodayCircleColorButton")), StringComparison.OrdinalIgnoreCase)
+            && duzSonra.SequenceEqual(duzOnce), $"saklanan {daire ?? "(yok)"}");
+
+        double duzK = RakamKarsitligi(duzSonra, Renk(duzSonra[0]));
+        double fotoK = RakamKarsitligi(fotoSonra, KoyuFoto);
+        Denetle($"bugünün rakamı iki ekranda da okunur (fotoğrafsız {duzK:0.0}:1, fotoğraflı {fotoK:0.0}:1); "
+            + "fotoğraflı ekranda rakamın rengi aynı, daire yine yarı saydam",
+            duzK >= 3 && fotoK >= 3 && fotoSonra[5] == fotoOnce[5] && Renk(fotoSonra[4]).A == Renk(fotoOnce[4]).A
+            && Renk(fotoSonra[4]).A < 128);
+
+        // Açık düz zemin (Kâğıt): fotoğrafsız ekranın otomatik renkleri fotoğraflı ekranınkilerden ayrı.
+        var kalanlar = new List<string>();
+        foreach (string ad in new[] { "AutoTextColorBox", "WeekdayAutoBox", "HolidayAutoBox", "MutedAutoBox", "TodayCircleAutoBox" })
+        {
+            object d = ZeminDeposu("Photo", "#F2F0EC", "kagit", ekran2: foto);
+            object p = ZeminPenceresi(d);
+            int[] once = EkranRenkleri(d, null);
+            Kutu(p, ad).IsChecked = false;
+            int[] sonra = EkranRenkleri(d, null);
+            double k = RakamKarsitligi(sonra, Renk(sonra[0]));
+            bool gosteriyor = DugmelerGosteriyor(p, sonra, out string goster);
+            if (!sonra.SequenceEqual(once) || k < 3 || !gosteriyor || Kutu(p, ad).IsChecked != false)
+            {
+                kalanlar.Add($"{ad}: rakam {k:0.0}:1, düğmeler {goster}");
+            }
+        }
+
+        Denetle("Kâğıt zeminde (ikinci ekranda fotoğraf) yazı, hafta günleri, tatil, soluk gün ve daire anahtarlarının her biri "
+            + "kapatılınca fotoğrafsız ekranda görünüm aynı, rakam okunur, düğmeler çizilen rengi gösteriyor",
+            kalanlar.Count == 0, string.Join("; ", kalanlar));
+
+        // Renk çarkından yazı rengi: fotoğrafsız ekranda da kullanılıyor, düğmede kalıyor. Otomatik
+        // yeniden açılınca fotoğrafsız ekran yine zemine göre, fotoğraflı ekranda seçilen renk kalıyor.
+        object cDepo = ZeminDeposu("Photo", "#F2F0EC", "kagit", ekran2: foto);
+        object cPencere = ZeminPenceresi(cDepo);
+        int otomatikYazi = EkranRenkleri(cDepo, null)[1];
+        RenkCarkindan(cPencere, "OnTextColorPicked", "#8E24AA");
+        int mor = EskiRenk.Ayristir("#8E24AA").ToArgb();
+        bool secilince = EkranRenkleri(cDepo, null)[1] == mor && EkranRenkleri(cDepo, foto)[1] == mor
+            && Onaltilik(Dugme(cPencere, "TextColorButton")) == "#8E24AA" && Kutu(cPencere, "AutoTextColorBox").IsChecked == false;
+        Kutu(cPencere, "AutoTextColorBox").IsChecked = true;
+        bool yenidenOtomatik = EkranRenkleri(cDepo, null)[1] == otomatikYazi && EkranRenkleri(cDepo, foto)[1] == mor;
+        Denetle("renk çarkından yazı rengi seçilince iki ekranda da o renk, düğmede o renk, Otomatik kapalı; Otomatik yeniden "
+            + "açılınca fotoğrafsız ekran zemine göre, fotoğraflı ekranda seçilen renk", secilince && yenidenOtomatik,
+            $"otomatik yazı {Onaltilik(Renk(otomatikYazi))}");
+    });
+
+    private static void Madde14() => FotografKlasoruyle(klasor =>
+    {
+        Console.WriteLine("14) Ekrana ayrı fotoğraf varken zemin rengi seçilince o ekran fotoğrafını koruyor, öbürü yeni rengi alıyor");
+        string yesil = DenemeFotografi(klasor, "ekran-2.png", YesilFoto);
+        string turuncu = DenemeFotografi(klasor, "genel.png", TuruncuFoto);
+
+        // Genel fotoğraf yok, ikinci ekranın kendi fotoğrafı var, genel zemin Kömür.
+        object depo = ZeminDeposu("Photo", "#2E3238", "komur", ekran2: yesil);
+        object pencere = ZeminPenceresi(depo);
+        string? acilista = Isaretli(pencere, "PresetPanel");
+
+        HazirRenkSec(pencere, "kagit");
+        DColor birinci = ZeminPikseli(depo, Ekran1);
+        DColor ikinci = ZeminPikseli(depo, Ekran2);
+        Denetle("hazır renk (Kâğıt) seçilince ikinci ekran kendi fotoğrafıyla, birinci ekran Kâğıt rengiyle çiziliyor",
+            RenkYakin(birinci, EskiRenk.Ayristir("#F2F0EC")) && RenkYakin(ikinci, YesilFoto)
+            && (string?)Oku(Yerlesimler(depo)[Ekran2]!, "PhotoPath") == yesil,
+            $"birinci {Onaltilik(birinci)}, ikinci {Onaltilik(ikinci)}");
+
+        object satir2 = Satir(pencere, Ekran2);
+        Denetle("hazır renklerde açılışta Kömür, seçilince Kâğıt işaretli; Boyut ve Konum sayfasında ikinci ekranın satırı çizilen "
+            + "fotoğrafı gösteriyor, birincisi genel zemini",
+            acilista == "komur" && Isaretli(pencere, "PresetPanel") == "kagit" && (bool)Oku(satir2, "HasPhoto")!
+            && ((string)Oku(satir2, "Detail")!).EndsWith("ekran-2.png", StringComparison.Ordinal)
+            && ((string)Oku(Satir(pencere, Ekran1), "Detail")!).EndsWith("genel zemin", StringComparison.Ordinal)
+            && RenkYakin(ZeminPikseli(depo, Ekran2), YesilFoto), $"açılışta {acilista ?? "(hiçbiri)"}");
+
+        RenkCarkindan(pencere, "OnBackgroundColorPicked", "#336699");
+        birinci = ZeminPikseli(depo, Ekran1);
+        ikinci = ZeminPikseli(depo, Ekran2);
+        Denetle("renk çarkından renk seçilince de ikinci ekran fotoğraflı, birinci yeni renkte; hazır renklerden hiçbiri "
+            + "işaretli değil, \"kendi renginiz\" notu",
+            RenkYakin(birinci, EskiRenk.Ayristir("#336699")) && RenkYakin(ikinci, YesilFoto)
+            && Isaretli(pencere, "PresetPanel") is null && Metin(pencere, "CustomColorNote") == "Şu an kendi renginiz kullanılıyor.",
+            $"birinci {Onaltilik(birinci)}, ikinci {Onaltilik(ikinci)}");
+
+        // Genel fotoğraf da varken: genel fotoğraf bırakılıyor, ekranın kendi fotoğrafı kalıyor.
+        object genelDepo = ZeminDeposu("Photo", "#2E3238", "komur", genel: turuncu, ekran2: yesil);
+        object genelPencere = ZeminPenceresi(genelDepo);
+        bool onceTuruncu = RenkYakin(ZeminPikseli(genelDepo, Ekran1), TuruncuFoto);
+        HazirRenkSec(genelPencere, "siyah");
+        Denetle("genel fotoğraf varken hazır renk (Siyah) seçilince genel fotoğraf bırakılıyor: birinci ekran Siyah, ikinci ekran "
+            + "kendi fotoğrafıyla; Siyah işaretli",
+            onceTuruncu && RenkYakin(ZeminPikseli(genelDepo, Ekran1), DColor.Black) && RenkYakin(ZeminPikseli(genelDepo, Ekran2), YesilFoto)
+            && Isaretli(genelPencere, "PresetPanel") == "siyah");
+    });
+
+    private static void Madde15() => FotografKlasoruyle(klasor =>
+    {
+        Console.WriteLine("15) Düz renge geçerken genel fotoğraf bırakılıyor; sonra bir ekrana fotoğraf verilince öbür ekran düz renkte kalıyor");
+        string yesil = DenemeFotografi(klasor, "ekran-2.png", YesilFoto);
+        string turuncu = DenemeFotografi(klasor, "genel.png", TuruncuFoto);
+        DColor murekkep = EskiRenk.Ayristir("#141A22");
+        object duzKip = Secenek("BackgroundMode", "Solid");
+        bool KaldirAcik(object p) => ((System.Windows.UIElement)AlanOku(p, "RemovePhotoButton")).IsEnabled;
+
+        // Maddedeki sıra: genel fotoğraf, hazır renk (Mürekkep), ikinci ekrana fotoğraf, sonra "Kaldır".
+        object depo = ZeminDeposu("Photo", "#2E3238", "komur", genel: turuncu);
+        object pencere = ZeminPenceresi(depo);
+        HazirRenkSec(pencere, "murekkep");
+        object g = Gorunum(depo);
+        Denetle("hazır renk seçilince genel fotoğrafın yolu siliniyor: \"Şu an fotoğraf kullanılmıyor.\", \"Fotoğrafı kaldır\" "
+            + "kapalı, zemin Mürekkep",
+            Oku(g, "PhotoPath") is null && Oku(g, "BackgroundMode")!.Equals(duzKip)
+            && Metin(pencere, "PhotoPathText") == "Şu an fotoğraf kullanılmıyor." && !KaldirAcik(pencere)
+            && RenkYakin(ZeminPikseli(depo, Ekran1), murekkep), Metin(pencere, "PhotoPathText"));
+
+        EkranaFotografVer(pencere, depo, Ekran2, yesil);
+        DColor birinci = ZeminPikseli(depo, Ekran1);
+        Denetle("sonra ikinci ekrana fotoğraf verilince birinci ekran Mürekkep'te kalıyor (bırakılan fotoğraf geri gelmiyor), "
+            + "ikinci ekran fotoğraflı; Mürekkep işaretli",
+            RenkYakin(birinci, murekkep) && RenkYakin(ZeminPikseli(depo, Ekran2), YesilFoto)
+            && Isaretli(pencere, "PresetPanel") == "murekkep", $"birinci {Onaltilik(birinci)}");
+
+        EkranFotografiniKaldir(pencere, Ekran2);
+        Denetle("ikinci ekranın fotoğrafı kaldırılınca düz renge dönülüyor, iki ekran da Mürekkep",
+            Oku(g, "BackgroundMode")!.Equals(duzKip) && RenkYakin(ZeminPikseli(depo, Ekran1), murekkep)
+            && RenkYakin(ZeminPikseli(depo, Ekran2), murekkep));
+
+        // Eski sürümden kalan durum: düz renkte genel fotoğrafın yolu duruyor.
+        object eskiDepo = ZeminDeposu("Solid", "#141A22", "murekkep", genel: turuncu);
+        object eskiPencere = ZeminPenceresi(eskiDepo);
+        Denetle("eski sürümün düz renkte bıraktığı fotoğraf \"Seçili fotoğraf\" diye gösterilmiyor, \"Fotoğrafı kaldır\" kapalı",
+            Metin(eskiPencere, "PhotoPathText") == "Şu an fotoğraf kullanılmıyor." && !KaldirAcik(eskiPencere),
+            Metin(eskiPencere, "PhotoPathText"));
+
+        EkranaFotografVer(eskiPencere, eskiDepo, Ekran2, yesil);
+        birinci = ZeminPikseli(eskiDepo, Ekran1);
+        Denetle("o durumda ikinci ekrana fotoğraf verilince eski yol siliniyor, birinci ekran Mürekkep'te kalıyor",
+            Oku(Gorunum(eskiDepo), "PhotoPath") is null && RenkYakin(birinci, murekkep)
+            && RenkYakin(ZeminPikseli(eskiDepo, Ekran2), YesilFoto), $"birinci {Onaltilik(birinci)}");
+
+        EkranFotografiniKaldir(eskiPencere, Ekran2);
+        Denetle("fotoğrafı kaldırılınca yine düz renk, iki ekran da Mürekkep",
+            Oku(Gorunum(eskiDepo), "BackgroundMode")!.Equals(duzKip) && RenkYakin(ZeminPikseli(eskiDepo, Ekran1), murekkep)
+            && RenkYakin(ZeminPikseli(eskiDepo, Ekran2), murekkep));
+
+        // Derlenmiş kodda: "Bu ekrana fotoğraf…" dosya seçildikten sonra yukarıda sınanan adımlardan geçiyor.
+        Type pencereTipi = Tip("Kalender.Ui.SettingsWindow");
+        List<Komut> k = Komutlar(pencereTipi.GetMethod("OnPickMonitorPhoto", Hepsi)!);
+        int sec = Bul(k, x => Cagri(x, pencereTipi, "AskForPhoto"));
+        Denetle("\"Bu ekrana fotoğraf…\" dosya seçildikten sonra aynı adımlardan geçiyor",
+            sec >= 0 && Bul(k, x => Cagri(x, pencereTipi, "EkranFotografiVerildi"), sec) > sec);
+    });
+
+    private static void Madde16()
+    {
+        Console.WriteLine("16) Renk çarkından zemin rengi seçilince hazır fotoğrafın işareti kalkıyor");
+        object foto = ((IList)Tip("Kalender.Settings.HazirFotograflar").GetProperty("All", Hepsi)!.GetValue(null)!)[1]!;
+        string yol = (string)Statik(Tip("Kalender.Settings.HazirFotograflar"), "PathOf", foto)!;
+        object depo = ZeminDeposu("Photo", "#2E3238", "komur", genel: yol);
+        object pencere = ZeminPenceresi(depo);
+        string? once = Isaretli(pencere, "ReadyPhotoPanel");
+
+        RenkCarkindan(pencere, "OnBackgroundColorPicked", "#336699");
+        string? sonra = Isaretli(pencere, "ReadyPhotoPanel");
+        Denetle($"hazır fotoğraf ({Oku(foto, "Name")}) zemindeyken renk çarkından renk seçilince hiçbir hazır fotoğraf işaretli "
+            + "değil; zemin fotoğrafı satırı boş, \"kendi renginiz\" notu",
+            once == (string?)Oku(foto, "Id") && sonra is null && Metin(pencere, "PhotoPathText") == "Şu an fotoğraf kullanılmıyor."
+            && Metin(pencere, "CustomColorNote") == "Şu an kendi renginiz kullanılıyor.",
+            $"önce {once ?? "(hiçbiri)"}, sonra {sonra ?? "(hiçbiri)"}");
+    }
+}
+
+/// <summary>
+/// Ayarlar penceresinin uygulamaya açılan kapısının (IAppearanceHost) sahtesi
+/// (KodIncelemesi'ndekine benzer): duvar kâğıdına hiçbir şey yazmaz,
+/// ApplyAppearance çağrıları yalnız sayılır; öbür özellikler boş değer verir.
+/// </summary>
+public class SahteAyarKapisi : DispatchProxy
+{
+    /// <summary>Ayar deposu (SettingsStore).</summary>
+    public object? Ayarlar { get; set; }
+
+    /// <summary>Bağlı ekranlar (MonitorTarget listesi).</summary>
+    public object? Ekranlar { get; set; }
+
+    /// <summary>ApplyAppearance kaç kez çağrıldı.</summary>
+    public int Uygulama { get; private set; }
+
+    protected override object? Invoke(MethodInfo? yontem, object?[]? a)
+    {
+        string ad = yontem!.Name;
+        switch (ad)
+        {
+            case "get_Settings":
+                return Ayarlar;
+
+            case "get_Monitors":
+                return Ekranlar;
+
+            case "ApplyAppearance":
+                Uygulama++;
+                return null;
+        }
+
+        if (ad.StartsWith("add_", StringComparison.Ordinal) || ad.StartsWith("remove_", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (ad.StartsWith("get_", StringComparison.Ordinal))
+        {
+            return yontem.ReturnType.IsValueType ? Activator.CreateInstance(yontem.ReturnType) : null;
+        }
+
+        throw new NotSupportedException(ad);
     }
 }
 

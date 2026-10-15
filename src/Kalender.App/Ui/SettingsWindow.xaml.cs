@@ -276,13 +276,7 @@ public partial class SettingsWindow : Window
                 FitCombo.SelectedIndex = 0;
             }
 
-            // Dar sütunda tam yol dosya adının ortasından kırılıyordu; tam yol ipucunda.
-            PhotoPathText.Text = string.IsNullOrWhiteSpace(a.PhotoPath)
-                ? "Şu an fotoğraf kullanılmıyor."
-                : "Seçili fotoğraf: " + PhotoName(a.PhotoPath);
-            PhotoPathText.ToolTip = string.IsNullOrWhiteSpace(a.PhotoPath) ? null : a.PhotoPath;
-
-            RemovePhotoButton.IsEnabled = !string.IsNullOrWhiteSpace(a.PhotoPath);
+            RefreshPhotoRow();
 
             SaturdayRedBox.IsChecked = a.SaturdayIsRed;
 
@@ -393,10 +387,13 @@ public partial class SettingsWindow : Window
     /// <summary>
     /// Seçili hazır rengi işaretler. Düz renk hiçbir hazır renge uymuyorsa
     /// kullanıcının kendi rengi kullanılıyordur; bunu "Kendi rengim" satırı söyler.
+    /// Fotoğraf yalnız bazı ekranlara verildiyse genel zemin yine düz renktir;
+    /// öbür ekranlar onunla çizilir, seçili renk de işaretlenir (önceden
+    /// yalnız düz renk kipinde işaretleniyordu).
     /// </summary>
     private void RefreshPresetSelection()
     {
-        bool solid = S.Appearance.BackgroundMode == BackgroundMode.Solid;
+        bool solid = GenelFotograf() is null;
         bool anyPreset = false;
 
         foreach (object item in PresetPanel.Children)
@@ -523,6 +520,35 @@ public partial class SettingsWindow : Window
     private static string PhotoName(string path) => HazirFotograflar.Find(path)?.Name ?? Path.GetFileName(path);
 
     /// <summary>
+    /// "Zemin fotoğrafı" satırı: şu an çizilen genel fotoğraf ve "Fotoğrafı kaldır".
+    /// Dar sütunda tam yol dosya adının ortasından kırılıyordu; tam yol ipucunda.
+    /// </summary>
+    private void RefreshPhotoRow()
+    {
+        string? genel = GenelFotograf();
+
+        PhotoPathText.Text = genel is null
+            ? "Şu an fotoğraf kullanılmıyor."
+            : "Seçili fotoğraf: " + PhotoName(genel);
+        PhotoPathText.ToolTip = genel;
+
+        RemovePhotoButton.IsEnabled = genel is not null;
+    }
+
+    /// <summary>
+    /// Kendi fotoğrafı olmayan ekranlara çizilen genel fotoğraf; genel zemin
+    /// düz renkse null. Düz renge geçerken yol artık siliniyor; eski sürümlerin
+    /// düz renkte bıraktığı yol da yok sayılır.
+    /// </summary>
+    private string? GenelFotograf()
+        => S.Appearance.BackgroundMode == BackgroundMode.Photo && !string.IsNullOrWhiteSpace(S.Appearance.PhotoPath)
+            ? S.Appearance.PhotoPath
+            : null;
+
+    /// <summary>Kendi fotoğrafı olan bir ekran var mı (o an bağlı olmasa da)?</summary>
+    private bool EkranFotografiVar() => S.Monitors.Values.Any(p => !string.IsNullOrWhiteSpace(p.PhotoPath));
+
+    /// <summary>
     /// Ekran satırlarını kurar. Kayıtlar yalnızca okunur: kaydı olmayan ekranda
     /// masaüstü katmanının kullandığı varsayılan yer (sağ alt köşe) gösterilir,
     /// kayıt ancak kullanıcı o satırda bir şey değiştirince açılır. Önceden her
@@ -590,9 +616,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        S.Appearance.BackgroundMode = BackgroundMode.Solid;
-        S.Appearance.SolidColor = preset.Color;
-        S.Appearance.PresetId = preset.Id;
+        GenelZeminDuzRenk(preset.Color, preset.Id);
 
         LoadFromSettings();
         ScheduleApply();
@@ -605,16 +629,34 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        S.Appearance.BackgroundMode = BackgroundMode.Solid;
-        S.Appearance.SolidColor = ColorWheel.ToHex(color);
-        S.Appearance.PresetId = null;
+        GenelZeminDuzRenk(ColorWheel.ToHex(color), null);
 
+        // Hazır fotoğraf seçiliyse işareti kalkmalı; genel fotoğraf satırı da boşalır.
         RefreshPresetSelection();
+        RefreshReadyPhotoSelection();
+        RefreshPhotoRow();
         UpdateTextColorControls();
 
         // Otomatik renkler zeminden hesaplanıyor; düğmeleri de yeni zemine göre.
         LoadCalendarColors();
         ScheduleApply();
+    }
+
+    /// <summary>
+    /// Genel zemin düz renk oldu (hazır renk ya da kendi rengi). Genel fotoğraf
+    /// bırakılır; kendi fotoğrafı olan ekranlar onu korur, öbürleri bu rengi alır.
+    /// Önceden kip düz renge çevrilip genel fotoğrafın yolu bırakılıyordu: ekrana
+    /// verilen fotoğraflar da çizilmez oluyor (Boyut ve Konum sayfası onları seçili
+    /// göstermeyi sürdürüyordu), sonra bir ekrana fotoğraf verilince de öbür
+    /// ekranlarda bırakılan genel fotoğraf geri geliyordu.
+    /// </summary>
+    private void GenelZeminDuzRenk(string renk, string? hazirRenk)
+    {
+        AppearanceSettings a = S.Appearance;
+        a.PhotoPath = null;
+        a.BackgroundMode = EkranFotografiVar() ? BackgroundMode.Photo : BackgroundMode.Solid;
+        a.SolidColor = renk;
+        a.PresetId = hazirRenk;
     }
 
     private void OnPickPhoto(object sender, RoutedEventArgs e)
@@ -724,7 +766,9 @@ public partial class SettingsWindow : Window
     /// <summary>
     /// "Otomatik" açıldıysa yazı rengi yeniden zeminden hesaplanır. Kapatıldıysa
     /// düğmede o an görünen (hesaplanmış) renk elle seçim olarak saklanır;
-    /// böylece anahtarı kapatmak takvimdeki yazıyı sıçratmaz.
+    /// böylece anahtarı kapatmak takvimdeki yazıyı sıçratmaz. Fotoğraf yalnız
+    /// bazı ekranlardaysa düğme fotoğrafsız ekranın rengini gösterir (bkz.
+    /// <see cref="PencereTemasi"/>); o ekranlarda yazı yerinde kalır.
     /// </summary>
     private void OnAutoTextColorChanged(object sender, RoutedEventArgs e)
     {
@@ -803,8 +847,10 @@ public partial class SettingsWindow : Window
 
         S.Appearance.TextColor = ColorWheel.ToHex(color);
 
-        // Renk çarkından bir renk seçildiyse artık elle seçim istenmiştir.
-        if (S.Appearance.BackgroundMode != BackgroundMode.Photo)
+        // Renk çarkından bir renk seçildiyse artık elle seçim istenmiştir. Fotoğraf
+        // yalnız bazı ekranlardaysa da: düğme fotoğrafsız ekranın rengini gösteriyor,
+        // seçilen renk orada kullanılmasa düğmeden de kaybolurdu.
+        if (FotografsizEkranVar())
         {
             S.Appearance.TextColorMode = TextColorMode.Manual;
         }
@@ -818,7 +864,8 @@ public partial class SettingsWindow : Window
 
     /// <summary>
     /// Yazı renginin şu an geçerli hâli: elle seçildiyse o, otomatikse zeminden
-    /// hesaplanan. Hafta günleri rengi (yazının üstüne yazılan seçim) buna karışmaz.
+    /// hesaplanan (fotoğraf yalnız bazı ekranlardaysa fotoğrafsız ekranınki).
+    /// Hafta günleri rengi (yazının üstüne yazılan seçim) buna karışmaz.
     /// </summary>
     private System.Drawing.Color EffectiveTextColor()
     {
@@ -831,8 +878,25 @@ public partial class SettingsWindow : Window
             TextColor = a.TextColor,
         };
 
-        return Theme.From(textOnly).Text;
+        return PencereTemasi(textOnly).Text;
     }
+
+    /// <summary>
+    /// Pencerede gösterilen renklerin teması: fotoğrafsız bir ekran varsa onun
+    /// (düz zemine göre çizilen) renkleri, yoksa fotoğraf kipinin renkleri.
+    ///
+    /// Fotoğraf yalnız bazı ekranlara verildiyse iki ekranın otomatik renkleri
+    /// ayrı olabilir; elle seçilen renk ise iki ekranda da aynen kullanılır.
+    /// "Otomatik" kapatılınca tek renk saklanabildiği için fotoğrafsız ekranınki
+    /// esas alınır: zemine göre hesap yalnız orada yapılabiliyor, bugünün dairesi
+    /// de orada neredeyse opak (alfa 235) çizildiği için yanlış renk rakamı okunmaz
+    /// yapar. Fotoğraflı ekranda daire yarı saydamdır (alfa 90 ya da 64); rakam
+    /// okunur kalır. Önceden fotoğraf kipinin renkleri gösteriliyordu: koyu düz
+    /// zeminde "Bugünün dairesi" otomatiği kapatılınca daire beyaza dönüyor,
+    /// beyaz rakam okunmuyordu.
+    /// </summary>
+    private Theme PencereTemasi(AppearanceSettings a)
+        => Theme.ZemineGore(a, fotograf: !FotografsizEkranVar(), otomatikYazi: false);
 
     private void OnSaturdayChanged(object sender, RoutedEventArgs e)
     {
@@ -888,12 +952,14 @@ public partial class SettingsWindow : Window
     /// <summary>
     /// Renk düğmelerini ve otomatik anahtarlarını ayara eşitler. Ayar boşsa
     /// "Otomatik" açık kalır ve düğmede o an hesaplanan renk görünür; kullanıcı
-    /// otomatiği kapattığında elinde makul bir başlangıç rengi olur.
+    /// otomatiği kapattığında elinde makul bir başlangıç rengi olur. Fotoğraf
+    /// yalnız bazı ekranlardaysa hesaplanan renk fotoğrafsız ekranınkidir
+    /// (bkz. <see cref="PencereTemasi"/>).
     /// </summary>
     private void LoadCalendarColors()
     {
         CalendarTextColors c = S.Appearance.Colors;
-        var theme = Theme.From(S.Appearance);
+        Theme theme = PencereTemasi(S.Appearance);
 
         Silently(() =>
         {
@@ -932,7 +998,10 @@ public partial class SettingsWindow : Window
 
     /// <summary>
     /// "Otomatik" açıldığında ayarı boşaltır, kapatıldığında düğmede duran
-    /// rengi yazar; böylece anahtarı kapatmak görünümü sıçratmaz.
+    /// rengi yazar; böylece anahtarı kapatmak görünümü sıçratmaz. Fotoğraf
+    /// yalnız bazı ekranlardaysa düğmedeki renk fotoğrafsız ekranınkidir; orada
+    /// görünüm aynı kalır, fotoğraflı ekran da o renge geçer (çoğu zaman
+    /// yalnız bugünün yarı saydam dairesinin tonu; bkz. <see cref="PencereTemasi"/>).
     /// </summary>
     private void SetCalendarColorAuto(CalendarColorRow row)
     {
@@ -1357,6 +1426,22 @@ public partial class SettingsWindow : Window
 
         row.Placement.PhotoPath = path;
         S.Monitors[row.Monitor.StableId] = row.Placement;
+
+        EkranFotografiVerildi();
+    }
+
+    /// <summary>
+    /// Bir ekrana kendi fotoğrafı verildi. Genel zemin düz renkse öbür ekranlar
+    /// düz renkte kalır: eski sürümlerin düz renge geçerken bıraktığı genel
+    /// fotoğraf yolu silinir. Önceden o fotoğraf öbür ekranlarda geri geliyordu.
+    /// </summary>
+    private void EkranFotografiVerildi()
+    {
+        if (GenelFotograf() is null)
+        {
+            S.Appearance.PhotoPath = null;
+        }
+
         S.Appearance.BackgroundMode = BackgroundMode.Photo;
 
         LoadFromSettings();
