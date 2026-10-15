@@ -86,11 +86,18 @@ using Ifade = System.Linq.Expressions.Expression;
 //      ekranda çizilenler; "Otomatik" kapatılınca orada görünüm aynı kalır,
 //      bugünün rakamı iki ekranda da okunur. Renk çarkından seçilen yazı rengi
 //      fotoğrafsız ekranda da kullanılır. Tam fotoğraf ve düz renk kipinde
-//      pencerenin renkleri eskisi gibi.
+//      pencerenin renkleri eskisi gibi. Onarım: yalnız takvimin gösterildiği
+//      ekranlar sayılır ("Yalnız ana ekranda" ya da "Seçtiğim ekranlarda");
+//      görünen tek takvim fotoğraflı ekrandaysa düğmeler onun renkleri,
+//      "Otomatik" kapatılınca o takvim değişmez. Gösterim değişince pencere
+//      tazelenir. Yazı rengi "Otomatik"i kapatıp açmak fotoğraflı ekranın
+//      yazısını değiştirmez (arada renk seçilmediyse).
 //  14. Ekrana ayrı fotoğraf varken Arka plan sayfasında hazır renk ya da
 //      kendi rengi seçilince o ekran fotoğrafını korur, öbürü yeni rengi alır;
 //      genel fotoğraf varsa bırakılır. Seçili hazır renk işaretli; Boyut ve
-//      Konum sayfası çizilen fotoğrafı gösterir.
+//      Konum sayfası çizilen fotoğrafı gösterir. Onarım: kendi fotoğrafı
+//      yalnız bağlı olmayan bir ekrandaysa yazı rengi notu ve karartma düz
+//      renkteki gibi.
 //  15. Düz renge geçerken genel fotoğrafın yolu silinir ("Seçili fotoğraf"
 //      satırı boşalır); sonra bir ekrana fotoğraf verilince öbür ekran düz
 //      renkte kalır, fotoğraf kaldırılınca düz renge dönülür. Eski sürümün düz
@@ -289,6 +296,7 @@ internal static class Program
             Bolum(Madde14);
             Bolum(Madde15);
             Bolum(Madde16);
+            Bolum(Madde13Onarim);
             Bolum(Madde2);
             Bolum(Madde3);
             Bolum(Madde3KacanBirakis);
@@ -3829,11 +3837,13 @@ internal static class Program
     /// Ayarları bellekte tutan bir depo (KodIncelemesi'ndeki gibi; sınanan
     /// işleyiciler onu kaydetmez). Genel zemin <paramref name="kip"/> kipinde,
     /// düz rengi <paramref name="renk"/>; <paramref name="genel"/> genel fotoğraf,
-    /// <paramref name="ekran2"/> ikinci ekranın kendi fotoğrafı. Yazı rengi
-    /// otomatik, fotoğraf için seçilen yazı rengi beyaz (varsayılan). Açılışta
-    /// başlatma kapalı: pencerenin açılış notu kayıt defterine bakmasın.
+    /// <paramref name="ekran2"/> ikinci, <paramref name="ekran1"/> birinci (ana)
+    /// ekranın kendi fotoğrafı. Yazı rengi otomatik, fotoğraf için seçilen yazı
+    /// rengi beyaz (varsayılan). Açılışta başlatma kapalı: pencerenin açılış notu
+    /// kayıt defterine bakmasın.
     /// </summary>
-    private static object ZeminDeposu(string kip, string renk, string? hazir, string? genel = null, string? ekran2 = null)
+    private static object ZeminDeposu(string kip, string renk, string? hazir, string? genel = null, string? ekran2 = null,
+        string? ekran1 = null)
     {
         object depo = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Settings.SettingsStore"));
         AlanAta(depo, "_gate", new object());
@@ -3848,11 +3858,14 @@ internal static class Program
         Yaz(g, "TextColorMode", Secenek("TextColorMode", "Auto"));
         Yaz(g, "TextColor", "#FFFFFF");
 
-        if (ekran2 is not null)
+        foreach ((string aygit, string? fotograf) in new[] { (Ekran1, ekran1), (Ekran2, ekran2) })
         {
-            object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
-            Yaz(yer, "PhotoPath", ekran2);
-            ((IDictionary)Oku(ayarlar, "Monitors")!)[Ekran2] = yer;
+            if (fotograf is not null)
+            {
+                object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
+                Yaz(yer, "PhotoPath", fotograf);
+                ((IDictionary)Oku(ayarlar, "Monitors")!)[aygit] = yer;
+            }
         }
 
         Yaz(depo, "Current", ayarlar);
@@ -4281,6 +4294,152 @@ internal static class Program
             && Metin(pencere, "CustomColorNote") == "Şu an kendi renginiz kullanılıyor.",
             $"önce {once ?? "(hiçbiri)"}, sonra {sonra ?? "(hiçbiri)"}");
     }
+
+    // ------------------------------------------------------ 13 ve 14. maddeler, onarım
+
+    /// <summary>Boyut ve Konum sayfasında takvimin gösterileceği ekranlar seçilmiş gibi (AllScreens, PrimaryOnly, SelectedScreens).</summary>
+    private static void GosterimSec(object pencere, string secim)
+    {
+        foreach ((string dugme, string ad) in new[]
+        {
+            ("AllScreensRadio", "AllScreens"), ("PrimaryOnlyRadio", "PrimaryOnly"), ("SelectedScreensRadio", "SelectedScreens"),
+        })
+        {
+            ((System.Windows.Controls.RadioButton)AlanOku(pencere, dugme)).IsChecked = ad == secim;
+        }
+
+        Cagir(pencere, "OnDisplayTargetChanged", AlanOku(pencere, "AllScreensRadio"), new System.Windows.RoutedEventArgs());
+    }
+
+    private static void Madde13Onarim() => FotografKlasoruyle(klasor =>
+    {
+        Console.WriteLine("13–14 onarım) Renkler takvimin gösterildiği ekranlara göre; yazı rengi Otomatik'i kapatıp açmak fotoğraflı "
+            + "ekranı değiştirmiyor; bağlı olmayan ekranın fotoğrafı notu ve karartmayı açmıyor");
+        string foto = DenemeFotografi(klasor, "koyu.png", KoyuFoto);
+        const string KarisikNot = "Otomatik yalnız fotoğrafsız ekranlarda geçerlidir; fotoğraflı ekranlarda son seçtiğiniz renk kullanılır.";
+        const string DuzNot = "Otomatikte zemine göre açık ya da koyu seçilir; öteki renkler buna göre hesaplanır.";
+
+        // Gözden geçirmedeki durum: takvim yalnız ana ekranda, ana ekranın kendi koyu fotoğrafı var,
+        // genel zemin Kâğıt (açık), ikinci ekranda takvim yok.
+        object AnaEkrandaDepo()
+        {
+            object d = ZeminDeposu("Photo", "#F2F0EC", "kagit", ekran1: foto);
+            Yaz(Gorunum(d), "DisplayTarget", Secenek("DisplayTarget", "PrimaryOnly"));
+            return d;
+        }
+
+        object depo = AnaEkrandaDepo();
+        object pencere = ZeminPenceresi(depo);
+        int[] fotoOnce = EkranRenkleri(depo, foto);
+        System.Windows.Controls.CheckBox yazi = Kutu(pencere, "AutoTextColorBox");
+        Denetle("takvim yalnız fotoğraflı ana ekrandayken renk düğmeleri o ekranda çizilen renkler; yazı rengi Otomatik'i tam "
+            + "fotoğraftaki gibi kapalı ve kilitli",
+            DugmelerGosteriyor(pencere, fotoOnce, out string dugmeler) && !yazi.IsEnabled && yazi.IsChecked == false
+            && Metin(pencere, "AutoTextNote") == "Fotoğraf zeminde otomatik seçim yapılamaz; rengi siz belirlersiniz.",
+            dugmeler);
+
+        var kalanlar = new List<string>();
+        foreach (string ad in new[] { "WeekdayAutoBox", "HolidayAutoBox", "MutedAutoBox", "TodayCircleAutoBox" })
+        {
+            object d = AnaEkrandaDepo();
+            object p = ZeminPenceresi(d);
+            Kutu(p, ad).IsChecked = false;
+            int[] sonra = EkranRenkleri(d, foto);
+            double k = RakamKarsitligi(sonra, KoyuFoto);
+            if (!sonra.SequenceEqual(fotoOnce) || k < 3)
+            {
+                kalanlar.Add($"{ad}: rakam {k:0.0}:1, renkler {string.Join(" ", sonra.Select(c => Onaltilik(Renk(c))))}");
+            }
+        }
+
+        Denetle("o durumda hafta günleri, tatil, soluk gün ve daire otomatiğinin her biri kapatılınca görünen takvim (fotoğraflı "
+            + "ana ekran) değişmiyor, bugünün rakamı okunur", kalanlar.Count == 0, string.Join("; ", kalanlar));
+
+        // Pencere açıkken "Yalnız ana ekranda" ile "Tüm ekranlarda" arasında geçiş.
+        object gDepo = ZeminDeposu("Photo", "#F2F0EC", "kagit", ekran1: foto);
+        object gPencere = ZeminPenceresi(gDepo);
+        bool tumunde = DugmelerGosteriyor(gPencere, EkranRenkleri(gDepo, null), out _) && Kutu(gPencere, "AutoTextColorBox").IsEnabled;
+        GosterimSec(gPencere, "PrimaryOnly");
+        bool anada = DugmelerGosteriyor(gPencere, EkranRenkleri(gDepo, foto), out string anaDugmeler)
+            && !Kutu(gPencere, "AutoTextColorBox").IsEnabled;
+        GosterimSec(gPencere, "AllScreens");
+        bool yeniden = DugmelerGosteriyor(gPencere, EkranRenkleri(gDepo, null), out _)
+            && Kutu(gPencere, "AutoTextColorBox").IsEnabled && Kutu(gPencere, "AutoTextColorBox").IsChecked == true;
+        Denetle("pencere açıkken \"Yalnız ana ekranda\"ya geçilince düğmeler fotoğraflı ana ekranın renklerine, \"Tüm ekranlarda\"ya "
+            + "dönülünce fotoğrafsız ekranınkine dönüyor", tumunde && anada && yeniden, anaDugmeler);
+
+        // "Seçtiğim ekranlarda": ikinci ekranın satırındaki "Bu ekranda göster" kaldırılıp yeniden konuyor.
+        object sDepo = ZeminDeposu("Photo", "#F2F0EC", "kagit", ekran1: foto);
+        Yaz(Gorunum(sDepo), "DisplayTarget", Secenek("DisplayTarget", "SelectedScreens"));
+        object sPencere = ZeminPenceresi(sDepo);
+        bool ikisinde = DugmelerGosteriyor(sPencere, EkranRenkleri(sDepo, null), out _);
+        Yaz(Satir(sPencere, Ekran2), "Enabled", false);
+        bool birinde = DugmelerGosteriyor(sPencere, EkranRenkleri(sDepo, foto), out string sDugmeler);
+        Yaz(Satir(sPencere, Ekran2), "Enabled", true);
+        bool yine = DugmelerGosteriyor(sPencere, EkranRenkleri(sDepo, null), out _);
+        Denetle("\"Seçtiğim ekranlarda\" seçiliyken fotoğrafsız ekranın \"Bu ekranda göster\" işareti kaldırılınca düğmeler fotoğraflı "
+            + "ekranın renklerine, yeniden konunca fotoğrafsız ekranınkine dönüyor", ikisinde && birinde && yine, sDugmeler);
+
+        // Yazı rengi Otomatik'i kapatıp açmak: fotoğraflı ekranın yazısı önceki renginde kalıyor.
+        string sari = "#FFD54F";
+        var kapatAc = new List<string>();
+        foreach ((string zemin, string hazir, string fotoYazisi) in new[] { ("#2E3238", "komur", sari), ("#F2F0EC", "kagit", "#FFFFFF") })
+        {
+            object d = ZeminDeposu("Photo", zemin, hazir, ekran2: foto);
+            Yaz(Gorunum(d), "TextColor", fotoYazisi);
+            object p = ZeminPenceresi(d);
+            int[] duzOnce = EkranRenkleri(d, null);
+            Kutu(p, "AutoTextColorBox").IsChecked = false;
+            bool kapaliyken = EkranRenkleri(d, null).SequenceEqual(duzOnce);
+            Kutu(p, "AutoTextColorBox").IsChecked = true;
+            var sonra = (string)Oku(Gorunum(d), "TextColor")!;
+            if (!kapaliyken || !string.Equals(sonra, fotoYazisi, StringComparison.OrdinalIgnoreCase)
+                || EkranRenkleri(d, foto)[1] != EskiRenk.Ayristir(fotoYazisi).ToArgb() || !EkranRenkleri(d, null).SequenceEqual(duzOnce))
+            {
+                kapatAc.Add($"{hazir}: kapalıyken fotoğrafsız ekran {(kapaliyken ? "aynı" : "değişti")}, açınca yazı rengi {sonra}");
+            }
+        }
+
+        // Arada renk çarkından renk seçilirse seçilen renk kalıyor.
+        object rDepo = ZeminDeposu("Photo", "#2E3238", "komur", ekran2: foto);
+        Yaz(Gorunum(rDepo), "TextColor", sari);
+        object rPencere = ZeminPenceresi(rDepo);
+        Kutu(rPencere, "AutoTextColorBox").IsChecked = false;
+        RenkCarkindan(rPencere, "OnTextColorPicked", "#8E24AA");
+        Kutu(rPencere, "AutoTextColorBox").IsChecked = true;
+        var secilen = (string)Oku(Gorunum(rDepo), "TextColor")!;
+        if (!string.Equals(secilen, "#8E24AA", StringComparison.OrdinalIgnoreCase))
+        {
+            kapatAc.Add($"arada seçilen renk: açınca yazı rengi {secilen}");
+        }
+
+        Denetle("ikinci ekranda fotoğraf varken yazı rengi Otomatik'i kapatılıp açılınca fotoğraflı ekranın yazısı önceki renginde "
+            + "(Kömür'de sarı, Kâğıt'ta beyaz), fotoğrafsız ekran hiç değişmiyor; arada renk çarkından renk seçilirse o renk kalıyor",
+            kapatAc.Count == 0, string.Join("; ", kapatAc));
+
+        // Kendi fotoğrafı yalnız bağlı olmayan bir ekranda: hazır renk seçilince kip fotoğrafta kalıyor
+        // (ekran bağlanınca fotoğrafı çizilsin), ama bağlı ekranların hiçbirine fotoğraf çizilmiyor.
+        DColor murekkep = EskiRenk.Ayristir("#141A22");
+        object bDepo = ZeminDeposu("Photo", "#2E3238", "komur", genel: foto);
+        object uzak = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"), true)!;
+        Yaz(uzak, "PhotoPath", foto);
+        Yerlesimler(bDepo)[@"\\.\DISPLAY3"] = uzak;
+        object bPencere = ZeminPenceresi(bDepo);
+        HazirRenkSec(bPencere, "murekkep");
+        bool KarartmaAcik(object p) => ((System.Windows.UIElement)AlanOku(p, "DimPanel")).IsEnabled;
+        Denetle("kendi fotoğrafı yalnız bağlı olmayan bir ekranda varken hazır renk seçilince bağlı iki ekran da düz renkte, kip "
+            + "fotoğrafta kalıyor; yazı rengi notu düz renkteki gibi, \"Takvimin arkasını karart\" kapalı, Otomatik açık",
+            Oku(Gorunum(bDepo), "BackgroundMode")!.Equals(Secenek("BackgroundMode", "Photo"))
+            && RenkYakin(ZeminPikseli(bDepo, Ekran1), murekkep) && RenkYakin(ZeminPikseli(bDepo, Ekran2), murekkep)
+            && Metin(bPencere, "AutoTextNote") == DuzNot && !KarartmaAcik(bPencere)
+            && Kutu(bPencere, "AutoTextColorBox").IsEnabled && Kutu(bPencere, "AutoTextColorBox").IsChecked == true,
+            Metin(bPencere, "AutoTextNote"));
+
+        object kDepo = ZeminDeposu("Photo", "#2E3238", "komur", ekran2: foto);
+        object kPencere = ZeminPenceresi(kDepo);
+        Denetle("fotoğraf bağlı ikinci ekrandayken not fotoğraflı ekranlarda son seçilen rengin kullanıldığını söylüyor, karartma açık",
+            Metin(kPencere, "AutoTextNote") == KarisikNot && KarartmaAcik(kPencere), Metin(kPencere, "AutoTextNote"));
+    });
 
     // ------------------------ Google eşitlemesi ve ayarları (17, 18, 19, 25, 26, 31)
 

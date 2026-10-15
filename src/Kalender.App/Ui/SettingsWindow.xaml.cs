@@ -52,6 +52,13 @@ public partial class SettingsWindow : Window
     /// <summary>Boşken otomatik hesaplanan, elle de seçilebilen dört takvim rengi.</summary>
     private readonly CalendarColorRow[] _calendarColors;
 
+    /// <summary>
+    /// Yazı rengi "Otomatik" kapatılırken ezilen renk ve yerine yazılan renk.
+    /// Fotoğraflı ekranlar yazı rengini hep kullanır; anahtar yeniden açılınca,
+    /// arada renk seçilmediyse önceki renk geri yazılır.
+    /// </summary>
+    private (string Onceki, string Yazilan)? _otomatikOncesiYazi;
+
     private bool _loading;
     private int _page;
 
@@ -602,6 +609,15 @@ public partial class SettingsWindow : Window
         }
 
         S.Monitors[monitor.StableId] = placement;
+
+        // "Seçtiğim ekranlarda" seçiliyken "Bu ekranda göster" Takvim sayfasının
+        // renklerini de değiştirebilir: renkler takvimin gösterildiği ekranlara göre.
+        if (S.Appearance.DisplayTarget == DisplayTarget.SelectedScreens)
+        {
+            UpdateTextColorControls();
+            LoadCalendarColors();
+        }
+
         ScheduleApply();
     }
 
@@ -785,6 +801,11 @@ public partial class SettingsWindow : Window
     /// böylece anahtarı kapatmak takvimdeki yazıyı sıçratmaz. Fotoğraf yalnız
     /// bazı ekranlardaysa düğme fotoğrafsız ekranın rengini gösterir (bkz.
     /// <see cref="PencereTemasi"/>); o ekranlarda yazı yerinde kalır.
+    ///
+    /// Fotoğraflı ekranlar yazı rengini "Otomatik" açıkken de kullanır. Bu
+    /// yüzden kapatılırken ezilen renk, anahtar yeniden açılınca (arada renk
+    /// seçilmediyse) geri yazılır: kapatıp açmak fotoğraflı ekranın yazısını
+    /// kalıcı olarak değiştirmez.
     /// </summary>
     private void OnAutoTextColorChanged(object sender, RoutedEventArgs e)
     {
@@ -793,14 +814,25 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        AppearanceSettings a = S.Appearance;
         if (AutoTextColorBox.IsChecked == true)
         {
-            S.Appearance.TextColorMode = TextColorMode.Auto;
+            a.TextColorMode = TextColorMode.Auto;
+
+            if (_otomatikOncesiYazi is { } once
+                && string.Equals(a.TextColor, once.Yazilan, StringComparison.OrdinalIgnoreCase))
+            {
+                a.TextColor = once.Onceki;
+            }
+
+            _otomatikOncesiYazi = null;
         }
         else
         {
-            S.Appearance.TextColor = ColorWheel.ToHex(TextColorButton.SelectedColor);
-            S.Appearance.TextColorMode = TextColorMode.Manual;
+            string yeni = ColorWheel.ToHex(TextColorButton.SelectedColor);
+            _otomatikOncesiYazi = (a.TextColor, yeni);
+            a.TextColor = yeni;
+            a.TextColorMode = TextColorMode.Manual;
         }
 
         UpdateTextColorControls();
@@ -809,50 +841,100 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Yazı rengi satırını ve fotoğrafa bağlı denetimleri zemin kipine eşitler.
-    /// Fotoğraf zeminde otomatik kontrast hesabı yapılamaz: bütün ekranlarda
-    /// fotoğraf varsa anahtar kapalı ve kilitli durur, rengi kullanıcı seçer.
-    /// Fotoğraf yalnız bazı ekranlara verildiyse öbürleri düz renkle çizilir;
-    /// anahtar o ekranlar için açık kalır (önceden kilitleniyordu, fotoğrafsız
-    /// ekrandaki yazı da fotoğrafın rengiyle çiziliyordu).
+    /// Yazı rengi satırını ve fotoğrafa bağlı denetimleri ekranların zeminine
+    /// eşitler. Fotoğraf zeminde otomatik kontrast hesabı yapılamaz: takvimin
+    /// gösterildiği bütün ekranlarda fotoğraf varsa anahtar kapalı ve kilitli
+    /// durur, rengi kullanıcı seçer. Fotoğraf yalnız bazı ekranlara verildiyse
+    /// öbürleri düz renkle çizilir; anahtar o ekranlar için açık kalır (önceden
+    /// kilitleniyordu, fotoğrafsız ekrandaki yazı da fotoğrafın rengiyle
+    /// çiziliyordu). Not ve karartma kipe değil, fotoğrafın çizildiği ekranlara
+    /// bakar: kendi fotoğrafı yalnız o an bağlı olmayan bir ekranda olan
+    /// kullanıcıda düz renkteki gibidir.
     /// </summary>
     private void UpdateTextColorControls()
     {
         AppearanceSettings a = S.Appearance;
-        bool photoMode = a.BackgroundMode == BackgroundMode.Photo;
-        bool hepsiFotograf = photoMode && !FotografsizEkranVar();
+        bool hepsiFotograf = !FotografsizEkranVar();
+        bool karisik = !hepsiFotograf && FotografliEkranVar();
 
         Silently(() => AutoTextColorBox.IsChecked = !hepsiFotograf && a.TextColorMode == TextColorMode.Auto);
         AutoTextColorBox.IsEnabled = !hepsiFotograf;
 
         AutoTextNote.Text = hepsiFotograf
             ? "Fotoğraf zeminde otomatik seçim yapılamaz; rengi siz belirlersiniz."
-            : photoMode
-                ? "Otomatik yalnız fotoğrafsız ekranlarda geçerlidir; fotoğraflı ekranda rengi siz belirlersiniz."
+            : karisik
+                ? "Otomatik yalnız fotoğrafsız ekranlarda geçerlidir; fotoğraflı ekranlarda son seçtiğiniz renk kullanılır."
                 : "Otomatikte zemine göre açık ya da koyu seçilir; öteki renkler buna göre hesaplanır.";
 
-        DimPanel.IsEnabled = photoMode;
+        DimPanel.IsEnabled = hepsiFotograf || karisik;
     }
 
     /// <summary>
-    /// Fotoğrafı olmayan, düz renkle çizilen bir ekran var mı? Genel fotoğraf
-    /// yoksa kendi fotoğrafı olmayan her ekran düz renkle çizilir.
+    /// Takvimin gösterildiği ekranlardan biri fotoğrafsız, düz renkle mi
+    /// çiziliyor? Genel fotoğraf yoksa kendi fotoğrafı olmayan her ekran düz
+    /// renkle çizilir. Takvimin gösterilmediği ekranın zemini sayılmaz: "Yalnız
+    /// ana ekranda" seçiliyken ana ekranın kendi fotoğrafı varsa öbür ekranın
+    /// düz rengi pencerenin renklerini belirlemez.
     /// </summary>
     private bool FotografsizEkranVar()
     {
-        if (S.Appearance.BackgroundMode != BackgroundMode.Photo)
+        AppearanceSettings a = S.Appearance;
+        if (a.BackgroundMode != BackgroundMode.Photo)
         {
             return true;
         }
 
-        if (!string.IsNullOrWhiteSpace(S.Appearance.PhotoPath))
+        if (!string.IsNullOrWhiteSpace(a.PhotoPath))
         {
             return false;
         }
 
-        return _host.Monitors.Any(m => !S.Monitors.TryGetValue(m.StableId, out MonitorPlacement? p)
-            || string.IsNullOrWhiteSpace(p.PhotoPath));
+        return TakvimliEkranlar().Any(m => string.IsNullOrWhiteSpace(Yerlesim(m).PhotoPath));
     }
+
+    /// <summary>
+    /// Takvimin gösterildiği ekranlardan birine fotoğraf çiziliyor mu? Kendi
+    /// fotoğrafı yalnız o an bağlı olmayan bir ekranda olan kullanıcıda kip
+    /// fotoğraf kalır (ekran bağlanınca fotoğrafı çizilsin), ama hiçbir ekrana
+    /// fotoğraf çizilmez.
+    /// </summary>
+    private bool FotografliEkranVar()
+    {
+        AppearanceSettings a = S.Appearance;
+        if (a.BackgroundMode != BackgroundMode.Photo)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(a.PhotoPath))
+        {
+            return true;
+        }
+
+        return TakvimliEkranlar().Any(m => !string.IsNullOrWhiteSpace(Yerlesim(m).PhotoPath));
+    }
+
+    /// <summary>
+    /// Takvimin gösterildiği bağlı ekranlar, masaüstü katmanının kuralıyla:
+    /// hepsi, yalnız ana ekran ya da "bu ekranda göster" işaretli olanlar.
+    /// Hiçbirinde gösterilmiyorsa bütün bağlı ekranlar. Tepsideki "Takvimi
+    /// gizle" sayılmaz: geçicidir, takvim yeniden aynı ekranlarda gösterilir.
+    /// </summary>
+    private List<MonitorTarget> TakvimliEkranlar()
+    {
+        List<MonitorTarget> takvimli = _host.Monitors.Where(m => S.Appearance.DisplayTarget switch
+        {
+            DisplayTarget.PrimaryOnly => m.IsPrimary,
+            DisplayTarget.SelectedScreens => Yerlesim(m).Enabled,
+            _ => true,
+        }).ToList();
+
+        return takvimli.Count > 0 ? takvimli : _host.Monitors.ToList();
+    }
+
+    /// <summary>Ekranın kaydı; kaydı yoksa masaüstü katmanının kullandığı varsayılan yerleşim.</summary>
+    private MonitorPlacement Yerlesim(MonitorTarget monitor)
+        => S.Monitors.TryGetValue(monitor.StableId, out MonitorPlacement? kayitli) ? kayitli : PlacementDefaults.For(monitor);
 
     private void OnTextColorPicked(Color color)
     {
@@ -862,6 +944,7 @@ public partial class SettingsWindow : Window
         }
 
         S.Appearance.TextColor = ColorWheel.ToHex(color);
+        _otomatikOncesiYazi = null;
 
         // Renk çarkından bir renk seçildiyse artık elle seçim istenmiştir. Fotoğraf
         // yalnız bazı ekranlardaysa da: düğme fotoğrafsız ekranın rengini gösteriyor,
@@ -898,8 +981,10 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Pencerede gösterilen renklerin teması: fotoğrafsız bir ekran varsa onun
-    /// (düz zemine göre çizilen) renkleri, yoksa fotoğraf kipinin renkleri.
+    /// Pencerede gösterilen renklerin teması: takvimin gösterildiği fotoğrafsız
+    /// bir ekran varsa onun (düz zemine göre çizilen) renkleri, yoksa fotoğraf
+    /// kipinin renkleri. Takvimin gösterilmediği ekran sayılmaz; görünen tek
+    /// takvim fotoğraflı ekrandaysa onun renkleri gösterilir.
     ///
     /// Fotoğraf yalnız bazı ekranlara verildiyse iki ekranın otomatik renkleri
     /// ayrı olabilir; elle seçilen renk ise iki ekranda da aynen kullanılır.
@@ -909,7 +994,9 @@ public partial class SettingsWindow : Window
     /// yapar. Fotoğraflı ekranda daire yarı saydamdır (alfa 90 ya da 64); rakam
     /// okunur kalır. Önceden fotoğraf kipinin renkleri gösteriliyordu: koyu düz
     /// zeminde "Bugünün dairesi" otomatiği kapatılınca daire beyaza dönüyor,
-    /// beyaz rakam okunmuyordu.
+    /// beyaz rakam okunmuyordu. Açık düz zeminle fotoğraf bir aradayken tek renk
+    /// iki ekrana birden uymaz: yazı, hafta günleri, tatil ya da soluk gün
+    /// otomatiği kapatılınca fotoğraflı ekranda da o renk (koyu) kullanılır.
     /// </summary>
     private Theme PencereTemasi(AppearanceSettings a)
         => Theme.ZemineGore(a, fotograf: !FotografsizEkranVar(), otomatikYazi: false);
@@ -1016,8 +1103,9 @@ public partial class SettingsWindow : Window
     /// "Otomatik" açıldığında ayarı boşaltır, kapatıldığında düğmede duran
     /// rengi yazar; böylece anahtarı kapatmak görünümü sıçratmaz. Fotoğraf
     /// yalnız bazı ekranlardaysa düğmedeki renk fotoğrafsız ekranınkidir; orada
-    /// görünüm aynı kalır, fotoğraflı ekran da o renge geçer (çoğu zaman
-    /// yalnız bugünün yarı saydam dairesinin tonu; bkz. <see cref="PencereTemasi"/>).
+    /// görünüm aynı kalır, fotoğraflı ekran da o renge geçer (koyu zeminde çoğu
+    /// zaman yalnız bugünün yarı saydam dairesinin tonu, açık zeminde hafta
+    /// günleri, tatil ve soluk gün de; bkz. <see cref="PencereTemasi"/>).
     /// </summary>
     private void SetCalendarColorAuto(CalendarColorRow row)
     {
@@ -1370,6 +1458,9 @@ public partial class SettingsWindow : Window
             _ => DisplayTarget.AllScreens,
         };
 
+        // Takvim sayfasının renkleri takvimin gösterildiği ekranların zeminine göre.
+        UpdateTextColorControls();
+        LoadCalendarColors();
         ScheduleApply();
     }
 
