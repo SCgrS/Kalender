@@ -3181,6 +3181,11 @@ public class SahteAyarKapisi : DispatchProxy
 
                 return Task.CompletedTask;
 
+            // İkinci kod incelemesinin (2026-10-15) 17. maddesinden beri anahtar
+            // değişince bellekteki aylar da bayatlatılıyor (IkinciInceleme'de sınanır).
+            case "GoogleSecimiDegisti":
+                return null;
+
             default:
                 if (ad.StartsWith("add_", StringComparison.Ordinal) || ad.StartsWith("remove_", StringComparison.Ordinal))
                 {

@@ -47,6 +47,18 @@ internal interface IAppearanceHost
 
     int GoogleTaskCount { get; }
 
+    /// <summary>
+    /// Bağlıyken istemci kimliği değiştirildi, yeniden bağlanılmadı: bağlantı
+    /// yakında kesilecek, yeni kimlikle yeniden bağlanılmalı.
+    /// </summary>
+    bool GoogleIstemciKimligiDegisti { get; }
+
+    /// <summary>
+    /// Gösterilecek takvimlerin ya da görev listelerinin seçimi değişti; bellekteki
+    /// aylar o aya geçilince baştan alınır.
+    /// </summary>
+    void GoogleSecimiDegisti();
+
     /// <summary>Google bağlantı durumu ya da verisi değişti.</summary>
     event Action? GoogleStateChanged;
 

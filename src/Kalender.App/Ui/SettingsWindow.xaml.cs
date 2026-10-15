@@ -239,12 +239,17 @@ public partial class SettingsWindow : Window
 
     private void OnGoogleStateChanged() => Dispatcher.BeginInvoke(() => Silently(UpdateGoogleUi));
 
+    /// <summary>
+    /// Ekran düzeni değişti. İstemci kimliği ve gizli anahtar kutularına
+    /// dokunulmaz: değer yalnız odak kutudan çıkınca kaydediliyor; yapıştırılıp
+    /// henüz kaydedilmemiş değer önceden kayıtlı değerle eziliyordu.
+    /// </summary>
     private void OnMonitorsChanged()
     {
         Dispatcher.BeginInvoke(() =>
         {
             BuildMonitorRows();
-            LoadFromSettings();
+            DenetimleriYukle();
         });
     }
 
@@ -261,6 +266,26 @@ public partial class SettingsWindow : Window
     // ------------------------------------------------------------- yükleme
 
     private void LoadFromSettings()
+    {
+        IstemciKutulariniYukle();
+        DenetimleriYukle();
+    }
+
+    /// <summary>İstemci kimliği ve gizli anahtar kutularına ayardaki değeri yazar.</summary>
+    private void IstemciKutulariniYukle()
+    {
+        ClientIdBox.Text = S.Google.ClientId ?? string.Empty;
+        // Yalnızca değer değiştiyse yazılır: PasswordBox, kalıbı uygulanmış ama
+        // henüz yerleşmemişken Password atanınca WPF içinde hata veriyor.
+        string secret = S.Google.ClientSecret ?? string.Empty;
+        if (ClientSecretBox.Password != secret)
+        {
+            ClientSecretBox.Password = secret;
+        }
+    }
+
+    /// <summary>Ayarları istemci kutuları dışındaki bütün denetimlere yükler.</summary>
+    private void DenetimleriYukle()
     {
         _loading = true;
         try
@@ -284,15 +309,6 @@ public partial class SettingsWindow : Window
 
             UpdateTextColorControls();
             LoadCalendarColors();
-
-            ClientIdBox.Text = S.Google.ClientId ?? string.Empty;
-            // Yalnızca değer değiştiyse yazılır: PasswordBox, kalıbı uygulanmış ama
-            // henüz yerleşmemişken Password atanınca WPF içinde hata veriyor.
-            string secret = S.Google.ClientSecret ?? string.Empty;
-            if (ClientSecretBox.Password != secret)
-            {
-                ClientSecretBox.Password = secret;
-            }
 
             int intervalIndex = Array.FindIndex(
                 GooglePoller.Intervals, i => i.Seconds == S.Google.PollIntervalSeconds);
@@ -1062,6 +1078,14 @@ public partial class SettingsWindow : Window
             GoogleStatusText.Text =
                 $"{_host.GoogleAccountEmail ?? "Hesap"} · {durum}"
                 + $"\nBu ayda {_host.GoogleEventCount} etkinlik, {_host.GoogleTaskCount} görev.";
+
+            // Kayıtlı izin eski kimliğe ait; yeniden bağlanılmazsa bağlantı en
+            // çok bir saat içinde kesilir. Önceden bu hiç söylenmiyordu.
+            if (_host.GoogleIstemciKimligiDegisti)
+            {
+                GoogleStatusText.Text += "\nİstemci kimliği değişti. Yeni kimliği kullanmak için \"Yeniden bağlan\"a "
+                    + "basın; yoksa bağlantı bir saat içinde kesilir.";
+            }
         }
 
         BuildSourceList(CalendarListPanel, _host.GoogleCalendars.Select(c => (c.Id, c.Name)).ToList(),
@@ -1078,8 +1102,11 @@ public partial class SettingsWindow : Window
     /// Hepsi kapatılınca listede yalnız <see cref="GoogleSettings.HicbiriSecili"/>
     /// kalır; o hiçbir kaynakla eşleşmediği için bütün anahtarlar kapalı kurulur.
     ///
-    /// Her yoklamadan sonra çağrılır; kaynaklar değişmediyse satırlara
-    /// dokunulmaz, yoksa kullanıcının tam tıklayacağı anahtar altından kayardı.
+    /// Her yoklamadan sonra çağrılır; kaynaklar değişmediyse satırlar yeniden
+    /// kurulmaz, yoksa kullanıcının tam tıklayacağı anahtar altından kayardı.
+    /// Anahtarlar yine de seçime eşitlenir: seçim pencerenin dışında da
+    /// değişebiliyor ("Yeniden bağlan" ile başka hesaba geçilince "hepsi"ne
+    /// döner); önceden anahtarlar eski seçimi göstermeye devam ediyordu.
     /// </summary>
     private void BuildSourceList(StackPanel panel, List<(string Id, string Name)> sources, List<string> selected)
     {
@@ -1087,6 +1114,14 @@ public partial class SettingsWindow : Window
         if (_sourceSignatures.TryGetValue(panel, out string? previous) && previous == signature
             && panel.Children.Count > 0)
         {
+            Silently(() =>
+            {
+                foreach (CheckBox box in SourceBoxes(panel))
+                {
+                    box.IsChecked = selected.Count == 0 || (box.Tag is string id && selected.Contains(id));
+                }
+            });
+
             return;
         }
 
@@ -1182,6 +1217,8 @@ public partial class SettingsWindow : Window
             target.Add(GoogleSettings.HicbiriSecili);
         }
 
+        // Bellekteki aylar eski seçimle alınmıştı; o aylara geçilince baştan alınsın.
+        _host.GoogleSecimiDegisti();
         _host.ApplyAppearance();
         _ = _host.RefreshGoogleAsync(force: true);
     }

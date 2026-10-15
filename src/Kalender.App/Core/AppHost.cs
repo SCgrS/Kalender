@@ -95,6 +95,15 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// </summary>
     private bool _applying;
 
+    /// <summary>
+    /// "Yeniden bağlan"dan önce bağlı olan hesabın e-postası; yeni hesabın
+    /// e-postası gelip karşılaştırılınca boşalır.
+    /// </summary>
+    private string? _oncekiHesap;
+
+    /// <summary>Google bağlantı kuşağının en son görülen değeri; değiştiyse yeniden bağlanılmıştır.</summary>
+    private int _bilinenKusak;
+
     public AppHost()
     {
         _updates = new UpdateService(_settings);
@@ -127,6 +136,10 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     public int GoogleTaskCount => _google?.Data.Tasks.Count ?? 0;
 
+    public bool GoogleIstemciKimligiDegisti => _googleAuth?.IstemciKimligiDegisti == true;
+
+    public void GoogleSecimiDegisti() => _google?.SecimDegisti();
+
     /// <summary>
     /// Google hesabına bağlanır (tarayıcıda onay açılır) ve ilk veriyi alır.
     /// Aşama değişince <paramref name="progress"/> ile arayüze haber verilir.
@@ -138,10 +151,16 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
             return new SignInResult(false, "Uygulama henüz hazır değil.");
         }
 
+        // Bağlıyken "Yeniden bağlan"da başka bir hesap seçilebilir. Bağlı hesabın
+        // e-postası girişten önce saklanıyor; yeni hesabınki ilk eşitlemeyle
+        // gelince karşılaştırılır (bkz. HesapDegistiyseSecimiSifirla).
+        string? oncekiHesap = _googleAuth.IsConnected ? _googleAuth.AccountEmail : null;
+
         SignInResult result = await _googleAuth.SignInAsync(cancel).ConfigureAwait(true);
 
         if (result.Success)
         {
+            _oncekiHesap = oncekiHesap;
             progress?.Invoke("Bağlandı; takvimler ve görevler alınıyor…");
             await RefreshGoogleAsync(force: true).ConfigureAwait(true);
         }
@@ -301,6 +320,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _holidays.LoadCache();
         _calendarData.SetViewMonth(_viewMonth);
 
+        _bilinenKusak = _googleAuth.BaglantiKusagi;
         _googleAuth.StateChanged += OnGoogleStateChanged;
         _googleAuth.YetkiDustu += OnGoogleYetkiDustu;
         _poller.StatusChanged += UpdateTrayTooltip;
@@ -766,8 +786,21 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         {
             _settings.Update(s => s.Google.AccountEmail = _googleAuth?.AccountEmail);
 
+            int kusak = _googleAuth?.BaglantiKusagi ?? 0;
+
             if (_googleAuth?.IsConnected == true)
             {
+                // Bağlantı kesilmeden yeniden kuruldu ("Yeniden bağlan"): ay
+                // belleği ve yerel kopya önceki bağlantınındı, başka bir hesabın
+                // olabilir. Bağlantıyı kesmedeki gibi silinir; önceden eski
+                // hesabın ayları geri geliyor, e-postası da yeniden yazılıyordu.
+                if (kusak != _bilinenKusak)
+                {
+                    _google?.ClearCache();
+                    _calendarData?.Rebuild();
+                }
+
+                HesapDegistiyseSecimiSifirla();
                 _poller?.Start();
             }
             else
@@ -777,9 +810,44 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
                 _calendarData?.Rebuild();
             }
 
+            _bilinenKusak = kusak;
             UpdateTrayTooltip();
             GoogleStateChanged?.Invoke();
         });
+    }
+
+    /// <summary>
+    /// "Yeniden bağlan"dan sonra yeni hesabın e-postası ilk eşitlemeyle gelince
+    /// öncekiyle karşılaştırılır. Başka bir hesapsa takvim ve görev listesi
+    /// seçimi önceki hesabın kimliklerinden oluşuyor; yeni hesabın takvimleri
+    /// onda olmadığı için hiçbir etkinlik görünmüyordu. Seçim "hepsi"ne döner ve
+    /// yeniden eşitlenir. Aynı hesapsa seçim korunur.
+    /// </summary>
+    private void HesapDegistiyseSecimiSifirla()
+    {
+        if (_oncekiHesap is not string onceki || _googleAuth?.AccountEmail is not string yeni)
+        {
+            return;
+        }
+
+        _oncekiHesap = null;
+
+        if (string.Equals(onceki, yeni, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Log.Info("Başka bir Google hesabına bağlanıldı; takvim ve görev listesi seçimi sıfırlandı.");
+
+        _settings.Update(s =>
+        {
+            s.Google.SelectedCalendarIds.Clear();
+            s.Google.SelectedTaskListIds.Clear();
+        });
+
+        _google?.SecimDegisti();
+        _calendarData?.Rebuild();
+        _ = RefreshGoogleAsync(force: true);
     }
 
     /// <summary>

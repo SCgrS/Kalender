@@ -124,8 +124,15 @@ internal sealed class CalendarDataService
             return;
         }
 
+        List<string> secim = _settings.Current.Google.SelectedCalendarIds;
+
         foreach (ProviderEvent e in _provider.Data.Events)
         {
+            if (!Secili(secim, e.CalendarId))
+            {
+                continue;
+            }
+
             Color dot = ColorTools.Parse(e.ColorHex, Color.FromArgb(0x4C, 0x8D, 0xFF));
 
             DateOnly from = e.StartDate < first ? first : e.StartDate;
@@ -158,9 +165,11 @@ internal sealed class CalendarDataService
         Color dot = ColorTools.Parse(
             _settings.Current.Google.TaskColor, Color.FromArgb(0x4C, 0x8D, 0xFF));
 
+        List<string> secim = _settings.Current.Google.SelectedTaskListIds;
+
         foreach (ProviderTask task in _provider.Data.Tasks)
         {
-            if (task.Due < first || task.Due > last)
+            if (task.Due < first || task.Due > last || !Secili(secim, task.ListId))
             {
                 continue;
             }
@@ -174,6 +183,16 @@ internal sealed class CalendarDataService
             });
         }
     }
+
+    /// <summary>
+    /// Takvim ya da görev listesi ayarlarda seçili mi? Seçim Google'dan alınırken
+    /// de uygulanıyor, ama ay belleğinden gelen ay eski seçimle alınmıştı: kapatılan
+    /// takvimin kayıtları eşitleme bitene dek, çevrim dışıyken de sürekli
+    /// çiziliyordu. Boş seçim "hepsi" demek; "hiçbiri" işareti hiçbir kimlikle
+    /// eşleşmez.
+    /// </summary>
+    private static bool Secili(List<string> secim, string kimlik)
+        => secim.Count == 0 || secim.Contains(kimlik);
 
     /// <summary>
     /// Aynı gün içinde başlığı bir görevle birebir aynı olan etkinlikleri

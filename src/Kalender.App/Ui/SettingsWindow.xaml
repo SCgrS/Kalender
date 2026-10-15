@@ -662,7 +662,7 @@
 
                         <TextBlock Style="{StaticResource GrupBasligi}" Text="İstemci bilgileri" />
                         <TextBlock Style="{StaticResource GrupAciklamasi}"
-                                   Text="Bu iki değer uygulamanın içinde gömülü değildir; sizin projenize aittir ve bilgisayarınızda şifreli saklanır." />
+                                   Text="Bu iki değer uygulamanın içinde gömülü değildir; sizin projenize aittir. Gizli anahtar bilgisayarınızda şifreli saklanır." />
                         <Border Style="{StaticResource Kart}">
                             <StackPanel>
                                 <Expander AutomationProperties.Name="Client ID nasıl alınır?">
@@ -699,7 +699,7 @@
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="5." />
                                             <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Sol menüden Branding: Application home page kutusuna https://github.com/SCgrS/Kalender, Application privacy policy link kutusuna https://github.com/SCgrS/Kalender#verileriniz-nerede-duruyor yazın. Authorized domains &gt; + Add domain: github.com &gt; Save. Logo eklemeyin; logo Google'ın ayrıca incelemesini gerektirir." />
+                                                       Text="Sol menüden Branding: Application home page ve Application privacy policy link kutularına https://github.com/SCgrS/Kalender yazın. Authorized domains &gt; + Add domain: github.com &gt; Save. Logo eklemeyin; logo Google'ın ayrıca incelemesini gerektirir." />
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="6." />

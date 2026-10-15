@@ -79,6 +79,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
 
     private readonly object _veriKilidi = new();
 
+    /// <summary>
+    /// Takvim ya da görev listesi seçimi her değiştiğinde artar (bkz.
+    /// <see cref="SecimDegisti"/>). Eşitleme başında okunur; bu arada değişmişse
+    /// sonuç eski seçimle alınmıştır ve bir sonraki eşitleme tam yapılır.
+    /// </summary>
+    private int _secimKusagi;
+
     public GoogleCalendarProvider(GoogleAuthenticator auth, SettingsStore settings)
     {
         _auth = auth;
@@ -302,6 +309,29 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         }
     }
 
+    /// <summary>
+    /// Ayarlarda bir takvimin ya da görev listesinin anahtarı değişti. Bellekteki
+    /// aylar eski seçimle alınmıştı: yeni açılan takvimin kayıtları onlarda yok,
+    /// artımlı yoklama da onları getirmiyordu (takvimde son yoklamadan beri
+    /// değişiklik yoksa hiç sorulmuyor); bellekten gelen ayda 30 dakikaya kadar
+    /// görünmüyorlardı. Aylar bellekte kalır, ama hepsinin tam yenileme zamanı
+    /// silinir: o aya geçilince (zorlanmasa da) ay baştan alınır. Kapatılan
+    /// takvimin kayıtları gösterilirken süzülüyor (bkz. CalendarDataService).
+    /// </summary>
+    public void SecimDegisti()
+    {
+        lock (_veriKilidi)
+        {
+            Interlocked.Increment(ref _secimKusagi);
+            Data.FullSyncUtc = null;
+
+            foreach (ProviderBundle bundle in _gecmis)
+            {
+                bundle.FullSyncUtc = null;
+            }
+        }
+    }
+
     /// <summary>Yerinden edilen ayın verisini geçmişe ekler; en eskisi düşer. Kilit içinde çağrılır.</summary>
     private void Gecmise(ProviderBundle bundle)
     {
@@ -380,6 +410,7 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         // seçime bakıyor, ayın bütün etkinlikleri elenebiliyordu.
         List<string> takvimSecimi = _settings.Current.Google.SelectedCalendarIds.ToList();
         List<string> gorevSecimi = _settings.Current.Google.SelectedTaskListIds.ToList();
+        int secimKusagi = Volatile.Read(ref _secimKusagi);
 
         // Bu arada bağlantı kesilir ya da yeniden kurulursa sonuç yazılmaz.
         int kusak = _auth.BaglantiKusagi;
@@ -469,6 +500,13 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 if (_auth.BaglantiKusagi != kusak)
                 {
                     return false;
+                }
+
+                // Bu arada seçim değiştiyse veri eski seçimle alındı; yine
+                // yazılıyor, ama bu ayın bir sonraki eşitlemesi tam yapılır.
+                if (Volatile.Read(ref _secimKusagi) != secimKusagi)
+                {
+                    bundle.FullSyncUtc = null;
                 }
 
                 if (Data.RangeFrom != bundle.RangeFrom || Data.RangeTo != bundle.RangeTo)

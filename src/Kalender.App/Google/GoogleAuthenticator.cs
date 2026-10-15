@@ -77,6 +77,14 @@ internal sealed class GoogleAuthenticator : IDisposable
     public string? AccountEmail => _token?.AccountEmail;
 
     /// <summary>
+    /// Bağlıyken ayarlardaki istemci kimliği değiştirildi mi? Kayıtlı izin eski
+    /// kimliğe ait: bellekteki erişim anahtarının süresi dolunca (en çok bir saat)
+    /// bağlantı kesilir. Ayarlar penceresi bunu görüp yeniden bağlanmayı söyler.
+    /// </summary>
+    public bool IstemciKimligiDegisti
+        => IsConnected && _token?.ClientId is string kayitli && kayitli != _config.ClientId;
+
+    /// <summary>
     /// Bağlantı her kesildiğinde ya da yeniden kurulduğunda artar. Eşitleme
     /// başında okunur; değişmişse sonuç yazılmaz: bağlantıyı keserken süren bir
     /// eşitleme, silinen yerel kopyayı geri yazıyordu.
@@ -186,11 +194,13 @@ internal sealed class GoogleAuthenticator : IDisposable
 
             lock (_kayitKilidi)
             {
+                // Hesabın e-postası önceki kayıttan taşınmıyor: "Yeniden bağlan"da
+                // başka bir hesap seçilmiş olabilir. Önceden eski hesabın e-postası
+                // yeni kayda yazılıyordu. İlk eşitleme doldurur.
                 _token = new StoredToken
                 {
                     RefreshToken = token.RefreshToken,
                     ClientId = clientId,
-                    AccountEmail = _token?.AccountEmail,
                 };
 
                 _accessToken = token.AccessToken;
@@ -292,8 +302,13 @@ internal sealed class GoogleAuthenticator : IDisposable
 
             if (kayit.ClientId is not null && kayit.ClientId != _config.ClientId)
             {
-                Log.Warn("İstemci kimliği değişmiş; kayıtlı Google yetkisi geçersiz.");
-                SignOut();
+                // Ayarlarda istemci kimliği değiştirilmiş, yeniden bağlanılmamış.
+                // Önceden bağlantı burada sessizce kesiliyordu: etkinlikler
+                // kayboluyor, günlüğe yalnız uyarı düşüyordu. İzni düşen
+                // bağlantıdaki gibi kullanıcıya haber veriliyor.
+                InvalidateAuthorization(yenilenirken: true,
+                    neden: "İstemci kimliği (Client ID) ayarlarda değiştirilmiş; kayıtlı Google izni eski kimliğe "
+                        + "ait. Bağlantı kesildi; yeni kimlikle yeniden bağlanılmalı.");
                 return null;
             }
 
@@ -376,17 +391,18 @@ internal sealed class GoogleAuthenticator : IDisposable
     /// Kayıtlı izin yenilenirken mi düştü? Öyleyse kullanıcıya haber verilir.
     /// Bağlanma sırasındaki bir hata zaten bağlanma ekranında gösteriliyor.
     /// </param>
-    public void InvalidateAuthorization(bool yenilenirken)
+    /// <param name="neden">Günlüğe yazılacak neden; verilmezse Google'ın izni geçersiz saydığı yazılır.</param>
+    public void InvalidateAuthorization(bool yenilenirken, string? neden = null)
     {
         if (yenilenirken)
         {
             // Hata olarak yazılıyor ki varsayılan günlük ayarında da görünsün.
-            Log.Error("Google kayıtlı izni geçersiz saydı; bağlantı kesildi. Uygulama Google Cloud'da "
+            Log.Error(neden ?? "Google kayıtlı izni geçersiz saydı; bağlantı kesildi. Uygulama Google Cloud'da "
                 + "\"Testing\" durumundaysa Google izni 7 günde bir düşürür.");
         }
         else
         {
-            Log.Warn("Google yetkisi geçersiz; bağlantı kesiliyor.");
+            Log.Warn(neden ?? "Google yetkisi geçersiz; bağlantı kesiliyor.");
         }
 
         SignOut();

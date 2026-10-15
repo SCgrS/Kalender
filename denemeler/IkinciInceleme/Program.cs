@@ -81,6 +81,23 @@ using Ifade = System.Linq.Expressions.Expression;
 //      renkte kalır, fotoğraf kaldırılınca düz renge dönülür. Eski sürümün düz
 //      renkte bıraktığı yol gösterilmez, ekrana fotoğraf verilince silinir.
 //  16. Renk çarkından zemin rengi seçilince hazır fotoğrafın işareti kalkar.
+//  17. Ayarlarda takvim ya da görev listesi anahtarı değişince bellekteki
+//      aylar kalır, tam yenileme zamanları silinir: o aya geçilince ay baştan
+//      alınır, yeni açılan takvimin ve listenin kayıtları gelir. Seçim
+//      değişmedikçe bellekteki ay eskisi gibi artımlı tazelenir. Kapatılan
+//      takvimin ve listenin kayıtları bellekten gelen ayda (çevrim dışıyken de)
+//      çizilmez. Eşitleme sürerken seçim değişirse o ayın sıradaki eşitlemesi
+//      tam. Ayarlar penceresi anahtar değişince önce bunu, sonra zorlanmış
+//      yenilemeyi ister.
+//  18. "Yeniden bağlan"da yeni yetki kaydına önceki hesabın e-postası yazılmaz.
+//      Bağlantı yeniden kurulunca ay belleği ve yerel kopya silinir. Yeni
+//      hesabın e-postası öncekinden farklıysa takvim ve görev listesi seçimi
+//      "hepsi"ne döner ve yeniden eşitlenir; aynı hesapsa seçim korunur.
+//      Ayarlar penceresindeki anahtarlar, satırlar aynı kalsa da seçime eşitlenir.
+//  19. Bağlıyken istemci kimliği değiştirilip yeniden bağlanılmazsa erişim
+//      anahtarı yenilenirken bağlantı kesilir, ama izni düşen bağlantıdaki gibi
+//      haber verilir (YetkiDustu, günlükte hata). Ayarlar penceresinin durum
+//      satırı kimlik değişir değişmez "Yeniden bağlan"a basılmasını söyler.
 //  20. Tablonun dışındaki yıllarda İngilizce ya da yanlış yazılmış bayram
 //      adları Türkçe ("Kurban Bayrami Day 2" → "Kurban Bayramı 2. gün",
 //      "Sacrifice Feast Holiday" → "Kurban Bayramı"); "(kesin değil)" eki kalır.
@@ -98,6 +115,9 @@ using Ifade = System.Linq.Expressions.Expression;
 //      güncelleme denetimiyle birlikte arka planda.
 //  24. Kurulum penceresi Ayarlar'dan yalnız açılışta başlamanın
 //      kapatılabileceğini söyler (kısayol için ayar yok).
+//  25. Ayarlar penceresi yalnız gizli anahtarın şifreli saklandığını söyler.
+//  26. "Client ID nasıl alınır?" 5. adımı README'deki gibi iki kutuya da depo
+//      adresini yazdırır (kaldırılan README bölümüne bağlantı yok).
 //  28. Güncelleme denetimi sürerken indirme başlarsa denetim bitince durum ve
 //      bulunan sürüm değişmez; indirme sürerken ikinci tıklama ikinci bir
 //      indirme başlatmaz.
@@ -108,6 +128,9 @@ using Ifade = System.Linq.Expressions.Expression;
 //  30. Tam ekran ya da sunum kipi takvimi yalnız ön plandaki pencere imlecin
 //      ekranındaysa susturur; hiçbir ekranda durmayan pencere ya da ön planda
 //      pencere olmaması susturmaz.
+//  31. Ayarlar penceresi açıkken ekran düzeni değişince istemci kimliği ve gizli
+//      anahtar kutularına yazılıp kaydedilmemiş değer silinmez; ayarlardan
+//      yükleme (bağlanınca, bağlantıyı kesince) kutuları yine doldurur.
 //  32. Ekranlarda yalnız takvimin görüntüsünün yolu görünse de Windows'ta
 //      resim kipi kapalıysa (düz renk) yedek düz renk olarak alınır; Windows
 //      yolu boş verince ya da resim kipi açıkken eskisi gibi.
@@ -127,6 +150,15 @@ using Ifade = System.Linq.Expressions.Expression;
 // kaydedilmez), iki ekranı hayalidir. Dosya seçme penceresi açılmaz; ekrana
 // fotoğraf verme, seçimden sonraki adımlarıyla çağrılır. Deneme fotoğrafları
 // geçici klasörde üretilip silinir.
+// 17, 18 ve 19. maddelerde Google yerine bu programdaki sahtesi yanıt verir
+// (GoogleEsitleme'deki gibi), ağa çıkılmaz, gerçek hesaba dokunulmaz. Bu
+// maddelerde ve 31. maddede ayarlar penceresi 13–16. maddelerdeki gibi
+// kurulur (ekranda açılmaz). 18. maddede tarayıcı açılmaz:
+// onayı bu program yerel dinleyiciye (127.0.0.1) gönderir; uygulama kurucusu
+// çalıştırılmadan kurulur (tepsisi, masaüstü katmanı yok, duvar kâğıdına
+// yazılmaz) ve bağlanma yolu bu programın dağıtıcısında çalışır. Yetki dosyası,
+// Google'ın yerel kopyası ve günlük geçici klasöre yazılır. 25 ve 26. maddelerde
+// pencerenin derlenmiş metnine ve README'ye bakılır.
 //
 // Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
 // GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
@@ -240,6 +272,12 @@ internal static class Program
             Bolum(Madde4);
             Bolum(Madde30);
             Bolum(Madde33);
+            Bolum(Madde17);
+            Bolum(Madde18);
+            Bolum(Madde19);
+            Bolum(Madde25);
+            Bolum(Madde26);
+            Bolum(Madde31);
         }
         finally
         {
@@ -3771,6 +3809,758 @@ internal static class Program
             && Metin(pencere, "CustomColorNote") == "Şu an kendi renginiz kullanılıyor.",
             $"önce {once ?? "(hiçbiri)"}, sonra {sonra ?? "(hiçbiri)"}");
     }
+
+    // ------------------------ Google eşitlemesi ve ayarları (17, 18, 19, 25, 26, 31)
+
+    /// <summary>
+    /// Google'ın sahtesi: bağlı hesabın takvimlerini, tüm gün etkinliklerini, görev
+    /// listelerini ve görevlerini bu program verir, ağa çıkılmaz; her anahtarı
+    /// kabul eder (GoogleEsitleme'dekine benzer). Artımlı yoklamanın "son
+    /// yoklamadan beri değişen var mı" sorusuna hep "yok" der. Bağlı hesapta
+    /// olmayan takvim ya da liste istenirse 404 döner.
+    /// </summary>
+    private sealed class SahteGoogleHesabi : HttpMessageHandler
+    {
+        /// <summary>Bağlı hesabın e-postası; birincil takvimin kimliği de bu.</summary>
+        public string Hesap = "a@deneme";
+
+        /// <summary>Takvim kimliği → o takvimdeki tüm gün etkinlikleri (kimlik, gün).</summary>
+        public Dictionary<string, (string Id, DateOnly Gun)[]> Takvimler = new();
+
+        /// <summary>Görev listesi kimliği → görevler (kimlik, gün).</summary>
+        public Dictionary<string, (string Id, DateOnly Gun)[]> Listeler = new();
+
+        /// <summary>Gelen isteklerin adresleri (anahtar adresi dışında), çözülmüş hâliyle.</summary>
+        public readonly List<string> Adresler = new();
+
+        /// <summary>Anahtar adresine (oauth2) gelen istek sayısı.</summary>
+        public int AnahtarIstegi;
+
+        /// <summary>Her yanıttan önceki bekleme (anahtar adresi dışında).</summary>
+        public TimeSpan Gecikme;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage istek, CancellationToken iptal)
+        {
+            string adres = Uri.UnescapeDataString(istek.RequestUri!.AbsoluteUri);
+            if (adres.StartsWith("https://oauth2.googleapis.com/token", StringComparison.Ordinal))
+            {
+                int sira = Interlocked.Increment(ref AnahtarIstegi);
+                return Yanit(200, new { access_token = "ERISIM" + sira, refresh_token = "yenileme", expires_in = 3599 });
+            }
+
+            lock (Adresler)
+            {
+                Adresler.Add(adres);
+            }
+
+            if (Gecikme > TimeSpan.Zero)
+            {
+                await Task.Delay(Gecikme, iptal);
+            }
+
+            string yol = adres.Split('?')[0];
+            bool artimli = adres.Contains("updatedMin=", StringComparison.Ordinal);
+
+            if (yol.EndsWith("/users/me/calendarList", StringComparison.Ordinal))
+            {
+                return Yanit(200, new
+                {
+                    items = Takvimler.Keys.Select(k => new { id = k, summary = k, backgroundColor = "#039be5", primary = k == Hesap }),
+                });
+            }
+
+            if (yol.EndsWith("/colors", StringComparison.Ordinal))
+            {
+                return Yanit(200, new { @event = new Dictionary<string, object>() });
+            }
+
+            if (yol.EndsWith("/users/@me/lists", StringComparison.Ordinal))
+            {
+                return Yanit(200, new { items = Listeler.Keys.Select(k => new { id = k, title = k }) });
+            }
+
+            if (Parca(yol, "/lists/", "/tasks") is string liste)
+            {
+                if (!Listeler.TryGetValue(liste, out (string Id, DateOnly Gun)[]? gorevler))
+                {
+                    return Yanit(404, new { });
+                }
+
+                return Yanit(200, new
+                {
+                    items = (artimli ? Array.Empty<(string Id, DateOnly Gun)>() : gorevler).Select(g => new
+                    {
+                        id = g.Id,
+                        title = g.Id,
+                        due = g.Gun.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + "T00:00:00.000Z",
+                        status = "needsAction",
+                    }),
+                });
+            }
+
+            if (Parca(yol, "/calendars/", "/events") is string takvim)
+            {
+                if (!Takvimler.TryGetValue(takvim, out (string Id, DateOnly Gun)[]? etkinlikler))
+                {
+                    return Yanit(404, new { });
+                }
+
+                return Yanit(200, new
+                {
+                    items = (artimli ? Array.Empty<(string Id, DateOnly Gun)>() : etkinlikler).Select(e => new
+                    {
+                        id = e.Id,
+                        summary = e.Id,
+                        status = "confirmed",
+                        start = new { date = e.Gun.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) },
+                        end = new { date = e.Gun.AddDays(1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) },
+                    }),
+                });
+            }
+
+            // Takvimin etiket renkleri: etiket yok.
+            return yol.Contains("/calendars/", StringComparison.Ordinal) ? Yanit(200, new { }) : Yanit(404, new { });
+        }
+
+        /// <summary>Yolun <paramref name="bas"/> ile <paramref name="son"/> arasındaki parçası (takvim ya da liste kimliği).</summary>
+        private static string? Parca(string yol, string bas, string son)
+        {
+            int i = yol.IndexOf(bas, StringComparison.Ordinal);
+            return i >= 0 && yol.EndsWith(son, StringComparison.Ordinal) && yol.Length - son.Length > i + bas.Length
+                ? yol[(i + bas.Length)..^son.Length]
+                : null;
+        }
+
+        private static HttpResponseMessage Yanit(int durum, object govde) => new((HttpStatusCode)durum)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(govde), Encoding.UTF8, "application/json"),
+        };
+    }
+
+    private const string IstemciKimligi = "deneme-istemci";
+
+    /// <summary>
+    /// A hesabı: kendi takvimi (a@deneme) ve "Ev" takvimi, iki görev listesi;
+    /// Ekim ve Kasım 2026'da birer kayıtları var.
+    /// </summary>
+    private static SahteGoogleHesabi AHesabi() => new()
+    {
+        Hesap = "a@deneme",
+        Takvimler =
+        {
+            ["a@deneme"] = new[] { ("is-ekim", new DateOnly(2026, 10, 15)), ("is-kasim", new DateOnly(2026, 11, 20)) },
+            ["ev@deneme"] = new[] { ("ev-ekim", new DateOnly(2026, 10, 16)), ("ev-kasim", new DateOnly(2026, 11, 25)) },
+        },
+        Listeler =
+        {
+            ["liste1"] = new[] { ("gorev-ekim", new DateOnly(2026, 10, 14)) },
+            ["liste2"] = new[] { ("gorev2-kasim", new DateOnly(2026, 11, 24)) },
+        },
+    };
+
+    /// <summary>B hesabı: kendi takvimi (b@deneme), "İş" takvimi ve bir görev listesi.</summary>
+    private static void BHesabinaGec(SahteGoogleHesabi google)
+    {
+        google.Hesap = "b@deneme";
+        google.Takvimler = new()
+        {
+            ["b@deneme"] = new[] { ("b-ekim", new DateOnly(2026, 10, 12)) },
+            ["b-is@deneme"] = new[] { ("b-is-ekim", new DateOnly(2026, 10, 13)) },
+        };
+        google.Listeler = new() { ["b-liste"] = new[] { ("b-gorev", new DateOnly(2026, 10, 14)) } };
+    }
+
+    /// <summary>
+    /// Sahte Google'a bağlı yetki ve sağlayıcı: ayarlar bellekte (kaydedilince
+    /// geçici klasöre yazılır), yetki kaydı sahte hesabınki, istemci kimliği
+    /// kayıttakiyle aynı.
+    /// </summary>
+    private static (object Depo, object Yetki, object Saglayici) GoogleKur(SahteGoogleHesabi google)
+    {
+        object depo = ZeminDeposu("Solid", "#2E3238", "komur");
+        Yaz(GoogleAyari(depo), "ClientId", IstemciKimligi);
+
+        object yapilandirma = Activator.CreateInstance(Tip("Kalender.Google.SettingsOAuthConfig"), depo)!;
+        object yetki = Activator.CreateInstance(Tip("Kalender.Google.GoogleAuthenticator"), yapilandirma)!;
+        object kayit = Activator.CreateInstance(Tip("Kalender.Google.StoredToken"))!;
+        Yaz(kayit, "RefreshToken", "yenileme");
+        Yaz(kayit, "ClientId", IstemciKimligi);
+        Yaz(kayit, "AccountEmail", google.Hesap);
+        AlanAta(yetki, "_token", kayit);
+        ((IDisposable)AlanOku(yetki, "_http")).Dispose();
+        AlanAta(yetki, "_http", new HttpClient(google));
+
+        object saglayici = Activator.CreateInstance(Tip("Kalender.Google.GoogleCalendarProvider"), yetki, depo)!;
+        ((IDisposable)AlanOku(saglayici, "_http")).Dispose();
+        AlanAta(saglayici, "_http", new HttpClient(google));
+        return (depo, yetki, saglayici);
+    }
+
+    private static object GoogleAyari(object depo) => Oku(Oku(depo, "Current")!, "Google")!;
+
+    /// <summary>Ayarlardaki canlı seçim listesi (SelectedCalendarIds ya da SelectedTaskListIds).</summary>
+    private static List<string> Secim(object depo, string ad) => (List<string>)Oku(GoogleAyari(depo), ad)!;
+
+    private static string HicbiriSecili => (string)Tip("Kalender.Settings.GoogleSettings").GetField("HicbiriSecili", Hepsi)!.GetValue(null)!;
+
+    /// <summary>2026'nın verilen ayının ızgarasının kapsadığı gün aralığı.</summary>
+    private static (DateOnly Ilk, DateOnly Son) Izgara(int ay)
+        => ((DateOnly, DateOnly))Statik(Tip("Kalender.Calendar.CalendarLayout"), "GridRange", new DateOnly(2026, ay, 1))!;
+
+    /// <summary>Ayı Google'dan eşitler (iş parçacığı havuzunda, arayüz dağıtıcısına bağlanmadan).</summary>
+    private static bool AyiEsitle(object saglayici, int ay, bool tam)
+    {
+        (DateOnly ilk, DateOnly son) = Izgara(ay);
+        return Task.Run(() => (Task<bool>)Cagir(saglayici, "SyncAsync", ilk, son, tam, CancellationToken.None)!)
+            .GetAwaiter().GetResult();
+    }
+
+    /// <summary>Ok ile o aya geçilmiş gibi: ay bellekteyse hemen kullanılır.</summary>
+    private static bool AyiGetir(object saglayici, int ay)
+    {
+        (DateOnly ilk, DateOnly son) = Izgara(ay);
+        return (bool)Cagir(saglayici, "GecmistenGetir", ilk, son)!;
+    }
+
+    /// <summary>Sağlayıcının elindeki etkinliklerin ve görevlerin kimlikleri.</summary>
+    private static HashSet<string> Kayitlar(object saglayici)
+    {
+        object veri = Oku(saglayici, "Data")!;
+        return ((IEnumerable)Oku(veri, "Events")!).Cast<object>().Select(e => (string)Oku(e, "Id")!)
+            .Concat(((IEnumerable)Oku(veri, "Tasks")!).Cast<object>().Select(g => (string)Oku(g, "Id")!))
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static IList AyBellegi(object saglayici) => (IList)AlanOku(saglayici, "_gecmis");
+
+    private static int AdresSayisi(SahteGoogleHesabi google)
+    {
+        lock (google.Adresler)
+        {
+            return google.Adresler.Count;
+        }
+    }
+
+    private static List<string> AdreslerSonra(SahteGoogleHesabi google, int once)
+    {
+        lock (google.Adresler)
+        {
+            return google.Adresler.Skip(once).ToList();
+        }
+    }
+
+    /// <summary>Ekim 2026'yı gösteren takvim içeriği (tatil listesi boş).</summary>
+    private static object GoogleVeriHizmeti(object saglayici, object depo)
+    {
+        object tatiller = Activator.CreateInstance(Tip("Kalender.Calendar.Holidays.HolidayService"), true)!;
+        object veri = Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataService"), tatiller, saglayici, depo)!;
+        Cagir(veri, "SetViewMonth", new DateOnly(2026, 10, 1));
+        return veri;
+    }
+
+    /// <summary>Takvimde o güne çizilen kayıtların başlıkları.</summary>
+    private static List<string> Cizilen(object veri, DateOnly gun)
+    {
+        object? icerik = Cagir(Oku(veri, "Current")!, "For", gun);
+        return icerik is null
+            ? new List<string>()
+            : ((IEnumerable)Oku(icerik, "Entries")!).Cast<object>().Select(k => (string)Oku(k, "Title")!).ToList();
+    }
+
+    // ------------------------------------------------------------------ 17. madde
+
+    private static void Madde17()
+    {
+        Console.WriteLine("17) Ayarlarda açılan takvim ve görev listesi bellekteki aylarda da hemen görünüyor; kapatılan, bellekten gelen ayda çizilmiyor");
+        SahteGoogleHesabi google = AHesabi();
+        var (depo, _, saglayici) = GoogleKur(google);
+        List<string> takvimler = Secim(depo, "SelectedCalendarIds");
+        List<string> listeler = Secim(depo, "SelectedTaskListIds");
+        IList bellek = AyBellegi(saglayici);
+
+        // "Ev" takvimi ve ikinci liste kapalı. Kasım'a bakılıp Ekim'e dönülmüş:
+        // Kasım ay belleğinde, son tam eşitlemesi az önce.
+        takvimler.Add("a@deneme");
+        listeler.Add("liste1");
+        bool hazir = AyiEsitle(saglayici, 10, tam: true) && AyiEsitle(saglayici, 11, tam: true) && AyiGetir(saglayici, 10);
+        Denetle("sınama düzeni: Ekim gösteriliyor, Kasım bellekte; kapalı takvimden ve listeden bir şey alınmadı",
+            hazir && bellek.Count == 1 && Kayitlar(saglayici).SetEquals(new[] { "is-ekim", "gorev-ekim" }),
+            string.Join(", ", Kayitlar(saglayici)));
+
+        // Ayarlarda "Ev" ve ikinci liste açılıyor (bütün anahtarlar açık: seçim "hepsi").
+        takvimler.Clear();
+        listeler.Clear();
+        Cagir(saglayici, "SecimDegisti");
+        Denetle("seçim değişince bellekteki aylar kalıyor, tam yenileme zamanları siliniyor",
+            bellek.Count == 1 && Oku(bellek[0]!, "FullSyncUtc") is null && Oku(Oku(saglayici, "Data")!, "FullSyncUtc") is null);
+
+        // Ayarlar penceresinin zorladığı yenileme görünen ayı (Ekim) yeni seçimle alıyor;
+        // ardından ok ile Kasım'a geçiliyor: önce bellekteki Kasım, sonra zorlanmamış eşitleme.
+        AyiEsitle(saglayici, 10, tam: true);
+        int once = AdresSayisi(google);
+        bool geldi = AyiGetir(saglayici, 11);
+        bool tuttu = AyiEsitle(saglayici, 11, tam: false);
+        List<string> sorulan = AdreslerSonra(google, once);
+        HashSet<string> kasim = Kayitlar(saglayici);
+        Denetle("bellekten gelen Kasım'da yeni açılan takvimin ve görev listesinin kayıtları var",
+            geldi && tuttu && kasim.Contains("ev-kasim") && kasim.Contains("gorev2-kasim"), string.Join(", ", kasim));
+        bool kasimBastan = sorulan.Any(a => a.Contains("/events?timeMin=", StringComparison.Ordinal))
+            && !sorulan.Any(a => a.Contains("updatedMin=", StringComparison.Ordinal));
+        int kasimIstegi = sorulan.Count;
+
+        // 30 sn sonra bu aya dönüş: seçim yeniden değişmedi, bellek eskisi gibi hızlı.
+        once = AdresSayisi(google);
+        bool dondu = AyiGetir(saglayici, 10) && AyiEsitle(saglayici, 10, tam: false);
+        sorulan = AdreslerSonra(google, once);
+        Denetle("seçim değişince bellekteki Kasım baştan alındı (\"değişen var mı\" sorusu sorulmadı); seçim yeniden "
+            + "değişmeden Ekim'e dönüşte bellekteki ay eskisi gibi artımlı tazeleniyor, iki takvimin kaydı da var",
+            kasimBastan && dondu && sorulan.Any(a => a.Contains("updatedMin=", StringComparison.Ordinal))
+            && !sorulan.Any(a => a.Contains("/events?timeMin=", StringComparison.Ordinal))
+            && Kayitlar(saglayici).IsSupersetOf(new[] { "is-ekim", "ev-ekim" }),
+            $"Kasım {kasimIstegi} istek, Ekim {sorulan.Count} istek");
+
+        // "Ev" ve ikinci liste yeniden kapatılıyor; ağ yok, eşitleme hiç tutmuyor.
+        // Ok ile Kasım'a geçiliyor: bellekteki Kasım iki takvimle alınmıştı.
+        takvimler.Add("a@deneme");
+        listeler.Add("liste1");
+        Cagir(saglayici, "SecimDegisti");
+        object veri = GoogleVeriHizmeti(saglayici, depo);
+        AyiGetir(saglayici, 11);
+        Cagir(veri, "SetViewMonth", new DateOnly(2026, 11, 1));
+        Denetle("çevrim dışıyken bellekten gelen Kasım'da kapatılan takvimin ve listenin kayıtları çizilmiyor, açık takvimin kaydı çiziliyor",
+            Kayitlar(saglayici).Contains("ev-kasim") && !Cizilen(veri, new DateOnly(2026, 11, 25)).Contains("ev-kasim")
+            && !Cizilen(veri, new DateOnly(2026, 11, 24)).Contains("gorev2-kasim")
+            && Cizilen(veri, new DateOnly(2026, 11, 20)).Contains("is-kasim"),
+            "25 Kasım: " + string.Join(", ", Cizilen(veri, new DateOnly(2026, 11, 25))));
+
+        takvimler.Clear();
+        takvimler.Add(HicbiriSecili);
+        Cagir(veri, "Rebuild");
+        Denetle("bütün takvimler kapatılınca bellekteki ayın hiçbir etkinliği çizilmiyor",
+            !Cizilen(veri, new DateOnly(2026, 11, 20)).Contains("is-kasim"));
+        takvimler.Clear();
+        takvimler.Add("a@deneme");
+
+        // Eşitleme sürerken seçim değişiyor; yeni bir istek gelmeden eşitleme bitiyor.
+        google.Gecikme = TimeSpan.FromMilliseconds(150);
+        (DateOnly ilk, DateOnly son) = Izgara(11);
+        once = AdresSayisi(google);
+        Task<bool> suren = Task.Run(() => (Task<bool>)Cagir(saglayici, "SyncAsync", ilk, son, true, CancellationToken.None)!);
+        var saat = System.Diagnostics.Stopwatch.StartNew();
+        while (AdresSayisi(google) == once && saat.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            Thread.Sleep(5);
+        }
+
+        Cagir(saglayici, "SecimDegisti");
+        bool bitti = suren.GetAwaiter().GetResult();
+        google.Gecikme = TimeSpan.Zero;
+        Denetle("eşitleme sürerken seçim değişirse sonuç yazılıyor, ama o ayın sıradaki eşitlemesi tam",
+            bitti && Oku(Oku(saglayici, "Data")!, "FullSyncUtc") is null);
+
+        // Uygulama, ayarlar penceresinin haberini sağlayıcıya iletiyor.
+        AyiEsitle(saglayici, 11, tam: true);
+        object host = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Core.AppHost"));
+        AlanAta(host, "_google", saglayici);
+        bool onceVardi = Oku(Oku(saglayici, "Data")!, "FullSyncUtc") is not null;
+        Cagir(host, "GoogleSecimiDegisti");
+        Denetle("uygulama seçim değişikliğini sağlayıcıya iletiyor",
+            onceVardi && Oku(Oku(saglayici, "Data")!, "FullSyncUtc") is null);
+
+        // Ayarlar penceresinde anahtar değişince önce bu haber, sonra zorlanmış yenileme.
+        object pencere = GooglePenceresi(depo);
+        var kapi = (SahteAyarKapisi)AlanOku(pencere, "_host");
+        var panel = (StackPanel)AlanOku(pencere, "CalendarListPanel");
+        Cagir(pencere, "BuildSourceList", panel,
+            new List<(string Id, string Name)> { ("a@deneme", "Takvimim"), ("ev@deneme", "Ev") }, takvimler);
+        GoogleAnahtarlari(panel)[1].IsChecked = true;
+        Denetle("ayarlar penceresinde anahtar açılınca bellekteki aylar bayatlatılıyor, sonra görünen ay zorla yenileniyor",
+            takvimler.Count == 0 && kapi.Cagrilar.SequenceEqual(new[] { "GoogleSecimiDegisti", "ApplyAppearance", "RefreshGoogleAsync(zorla)" }),
+            string.Join(" → ", kapi.Cagrilar));
+        Cagir(saglayici, "ClearCache");
+    }
+
+    /// <summary>Paneldeki takvim ya da görev listesi anahtarları, görünüş sırasıyla.</summary>
+    private static List<CheckBox> GoogleAnahtarlari(StackPanel panel)
+        => panel.Children.OfType<DockPanel>().SelectMany(d => d.Children.OfType<CheckBox>()).ToList();
+
+    /// <summary>
+    /// Google sayfası da kurulabilen ayarlar penceresi: <see cref="ZeminPenceresi"/>
+    /// gibi kurulur (ekranda açılmaz, kapısı sahte), üstüne pencerenin temel
+    /// kurucusu çalıştırılır ve takvim listesinin satır stilleri verilir
+    /// (KodIncelemesi'ndeki gibi).
+    /// </summary>
+    private static object GooglePenceresi(object depo)
+    {
+        object pencere = ZeminPenceresi(depo);
+        typeof(Window).GetConstructor(Type.EmptyTypes)!.Invoke(pencere, null);
+        ((FrameworkElement)pencere).Resources = new ResourceDictionary
+        {
+            ["Satir"] = new Style(typeof(DockPanel)),
+            ["SatirBasligi"] = new Style(typeof(TextBlock)),
+            ["SatirAciklamasi"] = new Style(typeof(TextBlock)),
+        };
+        AlanAta(pencere, "_sourceSignatures", new Dictionary<StackPanel, string>());
+        return pencere;
+    }
+
+    // ------------------------------------------------------------------ 18. madde
+
+    /// <summary>
+    /// Tarayıcının yerine geçer (GoogleEsitleme'deki gibi): onay adresindeki dönüş
+    /// adresine ve durum değerine bakıp yerel dinleyiciye "onaylandı" yanıtını gönderir.
+    /// </summary>
+    private static async Task OnayVer(string adres)
+    {
+        var sorgu = System.Web.HttpUtility.ParseQueryString(new Uri(adres).Query);
+        using var istemci = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(10) };
+        try
+        {
+            await istemci.GetStringAsync($"{sorgu["redirect_uri"]}/?code=deneme-kodu&state={Uri.EscapeDataString(sorgu["state"]!)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("   (onay isteği gönderilemedi: " + ex.Message + ")");
+        }
+    }
+
+    /// <summary>Bağlı uygulamanın Google parçaları; uygulamanın kendisi kurucusu çalıştırılmadan kurulur.</summary>
+    private sealed record GoogleUygulamasi(object Depo, object Yetki, object Saglayici, object Veri, object Yoklayici, object Host);
+
+    /// <summary>
+    /// Google'a bağlı bir uygulama: kurucusu çalıştırılmamış AppHost'a ayarlar,
+    /// yetki, sağlayıcı, takvim içeriği (Ekim) ve yoklayıcı verilir; açılıştaki
+    /// gibi bağlantı durumu değişince uygulamaya haber gider. Tepsi, katman ve
+    /// duvar kâğıdı yok. Uygulamanın dağıtıcısı bu iş parçacığınınki.
+    /// </summary>
+    private static GoogleUygulamasi GoogleUygulamasiKur(SahteGoogleHesabi google)
+    {
+        if (System.Windows.Application.Current is null)
+        {
+            _ = new System.Windows.Application();
+        }
+
+        var (depo, yetki, saglayici) = GoogleKur(google);
+        object veri = GoogleVeriHizmeti(saglayici, depo);
+        object yoklayici = Activator.CreateInstance(Tip("Kalender.Google.GooglePoller"), saglayici, veri, depo)!;
+
+        Type hostTipi = Tip("Kalender.Core.AppHost");
+        object host = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(hostTipi);
+        AlanAta(host, "_settings", depo);
+        AlanAta(host, "_googleAuth", yetki);
+        AlanAta(host, "_google", saglayici);
+        AlanAta(host, "_calendarData", veri);
+        AlanAta(host, "_poller", yoklayici);
+        AlanAta(host, "_viewMonth", new DateOnly(2026, 10, 1));
+        AlanAta(host, "_bilinenKusak", Oku(yetki, "BaglantiKusagi"));
+
+        EventInfo olay = yetki.GetType().GetEvent("StateChanged", Hepsi)!;
+        olay.AddEventHandler(yetki, Delegate.CreateDelegate(olay.EventHandlerType!, host,
+            hostTipi.GetMethod("OnGoogleStateChanged", Hepsi)!));
+        return new GoogleUygulamasi(depo, yetki, saglayici, veri, yoklayici, host);
+    }
+
+    /// <summary>
+    /// Ayarlar penceresindeki "Yeniden bağlan": uygulamanın bağlanma yolu arayüz
+    /// dağıtıcısında çalıştırılır, onayı sınama verir. Bağlanma bitip yoklama
+    /// durulana ve <paramref name="durdu"/> doğru olana dek (en çok 10 sn) dağıtıcı çalıştırılır.
+    /// </summary>
+    private static (bool Basari, string Ileti) YenidenBaglan(GoogleUygulamasi u, Func<bool> durdu)
+    {
+        Task? gorev = null;
+        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
+            gorev = (Task)Cagir(u.Host, "ConnectGoogleAsync", null, CancellationToken.None)!));
+
+        bool Bos() => AlanOku(u.Yoklayici, "_current") is not Task t || t.IsCompleted;
+
+        var saat = System.Diagnostics.Stopwatch.StartNew();
+        while (saat.Elapsed < TimeSpan.FromSeconds(10) && !(gorev is { IsCompleted: true } && Bos() && durdu()))
+        {
+            Bekle(20);
+        }
+
+        // Kuyruğa düşmüş son haberler de işlensin.
+        Bekle(100);
+
+        if (gorev is not { IsCompleted: true })
+        {
+            return (false, "bağlanma bitmedi");
+        }
+
+        object sonuc = gorev.GetType().GetProperty("Result")!.GetValue(gorev)!;
+        return ((bool)Oku(sonuc, "Success")!, (string)Oku(sonuc, "Message")!);
+    }
+
+    private static void Madde18()
+    {
+        Console.WriteLine("18) \"Yeniden bağlan\" ile başka hesaba geçilince önceki hesabın seçimi, ay belleği, yerel kopyası ve e-postası kalmıyor (tarayıcı açılmıyor)");
+        PropertyInfo acici = Tip("Kalender.Google.GoogleAuthenticator").GetProperty("TarayiciAcici", Hepsi)!;
+        object asil = acici.GetValue(null)!;
+        int acilan = 0;
+        acici.SetValue(null, new Action<string>(adres =>
+        {
+            Interlocked.Increment(ref acilan);
+            _ = Task.Run(() => OnayVer(adres));
+        }));
+
+        var yoklayicilar = new List<object>();
+        try
+        {
+            // Yalnız giriş: yeni yetki kaydına önceki hesabın e-postası yazılmıyor.
+            var (_, yetki, _) = GoogleKur(AHesabi());
+            var gorev = (Task)Task.Run(() => Cagir(yetki, "SignInAsync", CancellationToken.None)!).GetAwaiter().GetResult();
+            gorev.GetAwaiter().GetResult();
+            object giris = gorev.GetType().GetProperty("Result")!.GetValue(gorev)!;
+            Denetle("girişten sonra yeni yetki kaydında önceki hesabın e-postası yok (ilk eşitleme doldurur)",
+                (bool)Oku(giris, "Success")! && Oku(yetki, "AccountEmail") is null && (bool)Oku(yetki, "IsConnected")!,
+                (string)Oku(giris, "Message")!);
+
+            // A hesabıyla bağlı; "Ev" takvimi ve ikinci liste kapalı. Ekim gösteriliyor, Kasım bellekte.
+            SahteGoogleHesabi google = AHesabi();
+            GoogleUygulamasi u = GoogleUygulamasiKur(google);
+            yoklayicilar.Add(u.Yoklayici);
+            List<string> takvimler = Secim(u.Depo, "SelectedCalendarIds");
+            List<string> listeler = Secim(u.Depo, "SelectedTaskListIds");
+            takvimler.Add("a@deneme");
+            listeler.Add("liste1");
+            Yaz(GoogleAyari(u.Depo), "AccountEmail", "a@deneme");
+            bool hazir = AyiEsitle(u.Saglayici, 11, tam: true) && AyiEsitle(u.Saglayici, 10, tam: true);
+            Denetle("sınama düzeni: A hesabı bağlı, Ekim gösteriliyor, Kasım bellekte",
+                hazir && AyBellegi(u.Saglayici).Count == 1 && Kayitlar(u.Saglayici).Contains("is-ekim"));
+
+            // Tarayıcıda B hesabı seçiliyor.
+            BHesabinaGec(google);
+            var (basari, ileti) = YenidenBaglan(u, () => (string?)Oku(u.Yetki, "AccountEmail") == "b@deneme"
+                && takvimler.Count == 0 && listeler.Count == 0 && Kayitlar(u.Saglayici).Contains("b-is-ekim"));
+            HashSet<string> kayit = Kayitlar(u.Saglayici);
+            Denetle("bağlantı tuttu; takvim ve görev listesi seçimi \"hepsi\"ne döndü, yeni hesabın bütün takvimlerinin ve listesinin kayıtları var",
+                basari && takvimler.Count == 0 && listeler.Count == 0 && kayit.SetEquals(new[] { "b-ekim", "b-is-ekim", "b-gorev" }),
+                $"{ileti}; seçim [{string.Join(", ", takvimler)}] [{string.Join(", ", listeler)}]; kayıtlar {string.Join(", ", kayit)}");
+            Denetle("önceki hesabın ayları ay belleğinde kalmadı", AyBellegi(u.Saglayici).Count == 0,
+                $"{AyBellegi(u.Saglayici).Count} ay");
+
+            string kopyaYolu = Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("CacheFolder", Hepsi)!.GetValue(null)!, "google.json");
+            string kopya = File.Exists(kopyaYolu) ? File.ReadAllText(kopyaYolu) : string.Empty;
+            Denetle("yerel kopyada önceki hesabın verisi yok, yeni hesabınki var",
+                !kopya.Contains("a@deneme", StringComparison.Ordinal) && !kopya.Contains("\"is-ekim\"", StringComparison.Ordinal)
+                && kopya.Contains("\"b-is-ekim\"", StringComparison.Ordinal));
+            Denetle("takvimde yeni hesabın kayıtları çiziliyor, öncekininki çizilmiyor",
+                Cizilen(u.Veri, new DateOnly(2026, 10, 13)).Contains("b-is-ekim")
+                && !Cizilen(u.Veri, new DateOnly(2026, 10, 15)).Contains("is-ekim"));
+
+            // Ok ile önceki hesapla bakılmış Kasım'a geçiliyor, ardından zorlanmamış eşitleme.
+            // Uygulamadaki gibi takvimin içeriği de Kasım'ı gösteriyor: yoklayıcı da Kasım'ı ister.
+            AyiGetir(u.Saglayici, 11);
+            Cagir(u.Veri, "SetViewMonth", new DateOnly(2026, 11, 1));
+            bool kasimTuttu = AyiEsitle(u.Saglayici, 11, tam: false);
+            for (int i = 0; i < 5 || (i < 150 && AlanOku(u.Yoklayici, "_current") is Task { IsCompleted: false }); i++)
+            {
+                Bekle(20);
+            }
+
+            HashSet<string> kasim = Kayitlar(u.Saglayici);
+            Denetle("önceki hesapla bakılmış aya geçince o hesabın kayıtları ve e-postası geri gelmiyor (yetkide ve ayarlarda yeni hesap; \"takvimde aç\" onu açar)",
+                kasimTuttu && !kasim.Overlaps(new[] { "is-kasim", "ev-kasim", "gorev2-kasim" })
+                && (string?)Oku(u.Yetki, "AccountEmail") == "b@deneme" && (string?)Oku(GoogleAyari(u.Depo), "AccountEmail") == "b@deneme",
+                $"{(string?)Oku(u.Yetki, "AccountEmail") ?? "yok"}; Kasım: {string.Join(", ", kasim)}");
+
+            // Aynı hesapla yeniden bağlanma: seçim korunur.
+            SahteGoogleHesabi ayni = AHesabi();
+            GoogleUygulamasi v = GoogleUygulamasiKur(ayni);
+            yoklayicilar.Add(v.Yoklayici);
+            List<string> takvimler2 = Secim(v.Depo, "SelectedCalendarIds");
+            List<string> listeler2 = Secim(v.Depo, "SelectedTaskListIds");
+            takvimler2.Add("a@deneme");
+            listeler2.Add("liste1");
+            bool hazir2 = AyiEsitle(v.Saglayici, 11, tam: true) && AyiEsitle(v.Saglayici, 10, tam: true);
+            var (basari2, ileti2) = YenidenBaglan(v, () => (string?)Oku(v.Yetki, "AccountEmail") == "a@deneme");
+            HashSet<string> kayit2 = Kayitlar(v.Saglayici);
+            Denetle("aynı hesapla yeniden bağlanınca seçim korunuyor (kapalı takvim kapalı kalıyor), ay belleği yine siliniyor",
+                hazir2 && basari2 && takvimler2.SequenceEqual(new[] { "a@deneme" }) && listeler2.SequenceEqual(new[] { "liste1" })
+                && AyBellegi(v.Saglayici).Count == 0 && kayit2.SetEquals(new[] { "is-ekim", "gorev-ekim" })
+                && (string?)Oku(v.Yetki, "AccountEmail") == "a@deneme",
+                $"{ileti2}; seçim [{string.Join(", ", takvimler2)}]; {AyBellegi(v.Saglayici).Count} ay; kayıtlar {string.Join(", ", kayit2)}");
+
+            // Ayarlar penceresi açıksa anahtarlar seçime eşitleniyor (satırlar aynı kalsa da).
+            object pencere = GooglePenceresi(u.Depo);
+            var kapi = (SahteAyarKapisi)AlanOku(pencere, "_host");
+            var panel = (StackPanel)AlanOku(pencere, "CalendarListPanel");
+            var kaynaklar = new List<(string Id, string Name)> { ("b@deneme", "B"), ("b-is@deneme", "İş") };
+            var eskiSecim = new List<string> { "a@deneme" };
+            Cagir(pencere, "BuildSourceList", panel, kaynaklar, eskiSecim);
+            bool kapaliydi = GoogleAnahtarlari(panel).All(k => k.IsChecked == false);
+            Cagir(pencere, "BuildSourceList", panel, kaynaklar, new List<string>());
+            List<CheckBox> anahtarlar = GoogleAnahtarlari(panel);
+            Denetle("ayarlar penceresinde anahtarlar \"hepsi\"ne dönen seçimi gösteriyor (yeniden yenileme istenmeden)",
+                kapaliydi && anahtarlar.Count == 2 && anahtarlar.All(k => k.IsChecked == true) && kapi.Cagrilar.Count == 0,
+                string.Join(", ", anahtarlar.Select(k => k.IsChecked)) + "; " + string.Join(" → ", kapi.Cagrilar));
+
+            Denetle("gerçek tarayıcı açılmadı, onayı sınama verdi", acilan == 3, $"{acilan} kez");
+        }
+        finally
+        {
+            acici.SetValue(null, asil);
+            foreach (object yoklayici in yoklayicilar)
+            {
+                ((IDisposable)yoklayici).Dispose();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ 19. madde
+
+    /// <summary>Geçici klasördeki günlük dosyalarının metni.</summary>
+    private static string Gunluk()
+    {
+        string klasor = (string)Tip("Kalender.Core.Paths").GetProperty("LogFolder", Hepsi)!.GetValue(null)!;
+        return Directory.Exists(klasor)
+            ? string.Join("\n", Directory.GetFiles(klasor, "kalender-*.log").Select(File.ReadAllText))
+            : string.Empty;
+    }
+
+    private static void Madde19()
+    {
+        Console.WriteLine("19) Bağlıyken istemci kimliği değiştirilince bağlantı uyarısız kopmuyor; ayarlar yeniden bağlanmayı söylüyor");
+        SahteGoogleHesabi google = AHesabi();
+        var (depo, yetki, _) = GoogleKur(google);
+        bool ayniyken = (bool)Oku(yetki, "IstemciKimligiDegisti")!;
+        Yaz(GoogleAyari(depo), "ClientId", "yeni-istemci");
+        object host = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Core.AppHost"));
+        AlanAta(host, "_googleAuth", yetki);
+        Denetle("ayarlarda kimlik değişince yetki ve uygulama \"değişti\" diyor, aynıyken demiyor",
+            !ayniyken && (bool)Oku(yetki, "IstemciKimligiDegisti")! && (bool)Oku(host, "GoogleIstemciKimligiDegisti")!);
+
+        // Bellekteki erişim anahtarının süresi dolmuş: yenilenmesi gerekiyor.
+        int dustu = 0;
+        EventInfo olay = yetki.GetType().GetEvent("YetkiDustu", Hepsi)!;
+        olay.AddEventHandler(yetki, new Action(() => Interlocked.Increment(ref dustu)));
+        const string neden = "İstemci kimliği (Client ID) ayarlarda değiştirilmiş";
+        int onceki = Gunluk().Split('\n').Count(s => s.Contains(neden, StringComparison.Ordinal));
+        string? anahtar = Task.Run(() => (Task<string?>)Cagir(yetki, "GetAccessTokenAsync", CancellationToken.None)!)
+            .GetAwaiter().GetResult();
+        List<string> satirlar = Gunluk().Split('\n').Where(s => s.Contains(neden, StringComparison.Ordinal)).ToList();
+
+        Denetle("bağlantı kesildi (Google'a eski izinle sorulmadan), ama kullanıcıya izni düşen bağlantıdaki gibi haber "
+            + "veriliyor (uygulama tepside balon gösterir)",
+            anahtar is null && !(bool)Oku(yetki, "IsConnected")! && google.AnahtarIstegi == 0 && dustu == 1, $"{dustu} kez haber");
+        Denetle("varsayılan günlük düzeyinde de nedeniyle yazılıyor (hata)",
+            satirlar.Count == onceki + 1 && satirlar[^1].Contains("[HATA]", StringComparison.Ordinal),
+            satirlar.LastOrDefault()?.Trim() ?? "yok");
+
+        // Ayarlar penceresi: bağlıyken kimlik kutusu değiştirilip odak çıkıyor.
+        object pencereDeposu = ZeminDeposu("Solid", "#2E3238", "komur");
+        Yaz(GoogleAyari(pencereDeposu), "ClientId", IstemciKimligi);
+        object pencere = GooglePenceresi(pencereDeposu);
+        var kapi = (SahteAyarKapisi)AlanOku(pencere, "_host");
+        kapi.Degerler["GoogleConnected"] = true;
+        kapi.Degerler["GoogleOnline"] = true;
+        kapi.Degerler["GoogleAccountEmail"] = "a@deneme";
+        kapi.Degerler["GoogleCalendars"] = Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Google.ProviderCalendar")));
+        kapi.Degerler["GoogleTaskLists"] = Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Google.ProviderTaskList")));
+        kapi.Degerler["GoogleIstemciKimligiDegisti"] = false;
+        Cagir(pencere, "UpdateGoogleUi");
+        string once = Metin(pencere, "GoogleStatusText");
+
+        ((TextBox)AlanOku(pencere, "ClientIdBox")).Text = "yeni-istemci";
+        kapi.Degerler["GoogleIstemciKimligiDegisti"] = true;
+        Cagir(pencere, "OnGoogleCredentialsChanged", null, null);
+        string sonra = Metin(pencere, "GoogleStatusText");
+        Denetle("kimlik kutusu değişince durum satırı yeni kimlikle yeniden bağlanmayı söylüyor; değişmeden önce söylemiyor",
+            (string?)Oku(GoogleAyari(pencereDeposu), "ClientId") == "yeni-istemci"
+            && !once.Contains("Yeniden bağlan", StringComparison.Ordinal)
+            && sonra.Contains("İstemci kimliği değişti", StringComparison.Ordinal)
+            && sonra.Contains("\"Yeniden bağlan\"a basın", StringComparison.Ordinal),
+            sonra.Replace("\n", " / "));
+    }
+
+    // ------------------------------------------------------- 25. ve 26. maddeler
+
+    /// <summary>Derlenmiş ayarlar penceresinin (BAML) metni; dizgiler UTF-8 yazılıyor.</summary>
+    private static string AyarPenceresiMetni()
+    {
+        using Stream akis = Uyg.GetManifestResourceStream(Uyg.GetName().Name + ".g.resources")!;
+        using var okuyucu = new System.Resources.ResourceReader(akis);
+        foreach (DictionaryEntry kayit in okuyucu)
+        {
+            if ((string)kayit.Key == "ui/settingswindow.baml")
+            {
+                using var bellek = new MemoryStream();
+                ((Stream)kayit.Value!).CopyTo(bellek);
+                return Encoding.UTF8.GetString(bellek.ToArray());
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string DepoKoku()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
+        {
+            if (Directory.Exists(Path.Combine(d.FullName, "src", "Kalender.App")))
+            {
+                return d.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("Depo kökü bulunamadı.");
+    }
+
+    private static void Madde25()
+    {
+        Console.WriteLine("25) Ayarlar, istemci kimliğinin de şifreli saklandığını söylemiyor");
+        string metin = AyarPenceresiMetni();
+        Denetle("\"İstemci bilgileri\" açıklaması: yalnız gizli anahtar şifreli saklanıyor",
+            metin.Contains("sizin projenize aittir. Gizli anahtar bilgisayarınızda şifreli saklanır.", StringComparison.Ordinal)
+            && !metin.Contains("aittir ve bilgisayarınızda şifreli saklanır", StringComparison.Ordinal),
+            metin.Length == 0 ? "pencerenin derlenmiş metni bulunamadı" : "");
+    }
+
+    private static void Madde26()
+    {
+        Console.WriteLine("26) \"Client ID nasıl alınır?\" 5. adımındaki gizlilik bağlantısı README'deki gibi depo adresi");
+        string metin = AyarPenceresiMetni();
+        string beniOku = File.ReadAllText(Path.Combine(DepoKoku(), "README.md"));
+        Denetle("iki kutuya da README'deki adımdaki gibi depo adresi yazdırılıyor, kaldırılan README bölümüne bağlantı yok",
+            metin.Contains("Application home page ve Application privacy policy link kutularına https://github.com/SCgrS/Kalender yazın.",
+                StringComparison.Ordinal)
+            && !metin.Contains("#verileriniz-nerede-duruyor", StringComparison.Ordinal)
+            && beniOku.Contains("link** kutularına `https://github.com/SCgrS/Kalender` yazın.", StringComparison.Ordinal)
+            && !beniOku.Contains("#verileriniz-nerede-duruyor", StringComparison.Ordinal),
+            metin.Length == 0 ? "pencerenin derlenmiş metni bulunamadı" : "");
+    }
+
+    // ------------------------------------------------------------------ 31. madde
+
+    private static void Madde31()
+    {
+        Console.WriteLine("31) Ekran düzeni değişince istemci kutularına yazılıp kaydedilmemiş değer kalıyor");
+        object depo = ZeminDeposu("Solid", "#2E3238", "komur");
+        object google = GoogleAyari(depo);
+        Yaz(google, "ClientId", "eski-kimlik");
+        Yaz(google, "ClientSecret", "eski-sir");
+        object pencere = ZeminPenceresi(depo);
+        var kimlik = (TextBox)AlanOku(pencere, "ClientIdBox");
+        var gizli = (PasswordBox)AlanOku(pencere, "ClientSecretBox");
+        bool yuklendi = kimlik.Text == "eski-kimlik" && gizli.Password == "eski-sir";
+
+        // Yeni değerler yapıştırıldı, odak kutuda (kaydedilmedi); bu sırada ikinci ekran çıkarıldı.
+        kimlik.Text = "yeni-kimlik";
+        gizli.Password = "yeni-sir";
+        var kapi = (SahteAyarKapisi)AlanOku(pencere, "_host");
+        ((IList)kapi.Ekranlar!).RemoveAt(1);
+        Cagir(pencere, "OnMonitorsChanged");
+        Bosalt();
+        int satir = ((IList)AlanOku(pencere, "_rows")).Count;
+        bool korundu = kimlik.Text == "yeni-kimlik" && gizli.Password == "yeni-sir"
+            && (string?)Oku(google, "ClientId") == "eski-kimlik" && (string?)Oku(google, "ClientSecret") == "eski-sir";
+
+        // Ayarlardan yükleme (bağlanınca, bağlantıyı kesince) kutuları yine dolduruyor.
+        Cagir(pencere, "LoadFromSettings");
+        Denetle("ekran satırları tazelendi, kutulardaki kaydedilmemiş değerler duruyor (ayara yazılmadı); ayarlardan yükleme kutuları yine dolduruyor",
+            yuklendi && satir == 1 && korundu && kimlik.Text == "eski-kimlik" && gizli.Password == "eski-sir",
+            $"{satir} ekran satırı; ekran değişiminden sonra kutuda \"{(korundu ? "yeni-kimlik" : "eski değer")}\"");
+    }
 }
 
 /// <summary>
@@ -3789,6 +4579,15 @@ public class SahteAyarKapisi : DispatchProxy
     /// <summary>ApplyAppearance kaç kez çağrıldı.</summary>
     public int Uygulama { get; private set; }
 
+    /// <summary>Özellik adı → verilecek değer (ör. GoogleConnected); verilmeyen özellik boş değer verir.</summary>
+    public Dictionary<string, object?> Degerler { get; } = new();
+
+    /// <summary>
+    /// Ayarlar penceresinin Google için çağırdığı yöntemler, sırasıyla; zorlanmış
+    /// yenileme "RefreshGoogleAsync(zorla)" diye yazılır.
+    /// </summary>
+    public List<string> Cagrilar { get; } = new();
+
     protected override object? Invoke(MethodInfo? yontem, object?[]? a)
     {
         string ad = yontem!.Name;
@@ -3802,7 +4601,16 @@ public class SahteAyarKapisi : DispatchProxy
 
             case "ApplyAppearance":
                 Uygulama++;
+                Cagrilar.Add(ad);
                 return null;
+
+            case "GoogleSecimiDegisti":
+                Cagrilar.Add(ad);
+                return null;
+
+            case "RefreshGoogleAsync":
+                Cagrilar.Add(a?[0] is true ? ad + "(zorla)" : ad);
+                return Task.CompletedTask;
         }
 
         if (ad.StartsWith("add_", StringComparison.Ordinal) || ad.StartsWith("remove_", StringComparison.Ordinal))
@@ -3812,6 +4620,11 @@ public class SahteAyarKapisi : DispatchProxy
 
         if (ad.StartsWith("get_", StringComparison.Ordinal))
         {
+            if (Degerler.TryGetValue(ad[4..], out object? deger))
+            {
+                return deger;
+            }
+
             return yontem.ReturnType.IsValueType ? Activator.CreateInstance(yontem.ReturnType) : null;
         }
 
