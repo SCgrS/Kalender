@@ -114,6 +114,15 @@ internal sealed class UpdateService : IDisposable
     private DateTime _lastAttemptUtc = DateTime.MinValue;
     private bool _checking;
 
+    /// <summary>
+    /// İndirme ya da kurulum sürüyor. Bu sırada <see cref="InstallAsync"/> yeniden
+    /// çağrılırsa (ikinci tıklama) hiçbir şey yapmaz; durum ne gösterirse göstersin.
+    /// </summary>
+    private bool _kuruluyor;
+
+    /// <summary>Eski açılım klasörlerinin temizliği bu açılışta başlatıldı mı?</summary>
+    private bool _acilimTemizligiBasladi;
+
     public UpdateService(SettingsStore settings)
     {
         _settings = settings;
@@ -122,6 +131,7 @@ internal sealed class UpdateService : IDisposable
         _timer.Tick += async (_, _) =>
         {
             _timer.Interval = CheckInterval;
+            EskiAcilimKlasorleriniTemizle();
             await CheckAsync(remind: true);
         };
     }
@@ -222,6 +232,15 @@ internal sealed class UpdateService : IDisposable
             LastChecked = DateTime.Now;
             LastCheckFailed = false;
 
+            if (State is UpdateState.Downloading or UpdateState.Installing)
+            {
+                // Yanıt beklenirken kullanıcı güncellemeyi başlatmış (yavaş bağlantıda
+                // denetim 30 saniyeyi bulabilir). Durum ve bulunan sürüm olduğu gibi
+                // kalır; yoksa bildirim yeniden "İndirip kurmak için tıklayın" der, ikinci
+                // tıklama ikinci bir indirme başlatırdı.
+                return;
+            }
+
             if (latest is not null && latest.Version > CurrentVersion)
             {
                 if (Available?.Version != latest.Version)
@@ -267,11 +286,12 @@ internal sealed class UpdateService : IDisposable
     public async Task InstallAsync(bool fromPrompt = false)
     {
         UpdateInfo? info = Available;
-        if (info is null || State is UpdateState.Downloading or UpdateState.Installing)
+        if (info is null || _kuruluyor || State is UpdateState.Downloading or UpdateState.Installing)
         {
             return;
         }
 
+        _kuruluyor = true;
         State = UpdateState.Downloading;
         Progress = 0;
         Error = null;
@@ -293,10 +313,29 @@ internal sealed class UpdateService : IDisposable
         catch (Exception ex)
         {
             Log.Warn("Güncelleme kurulamadı.", ex);
+            _kuruluyor = false;
             State = UpdateState.Failed;
             Error = UserMessage(ex);
             Changed?.Invoke();
         }
+    }
+
+    /// <summary>
+    /// Eski sürümlerin Temp altında bıraktığı açılım klasörlerini ilk denetimle
+    /// birlikte (açılıştan bir dakika sonra) arka planda bir kez siler (bkz.
+    /// <see cref="Installer.EskiAcilimKlasorleriniSil()"/>). Güncelleme denetimi
+    /// kapalıysa da yapılır. Yalnız kurulu kopyada: elle açılan bir kopya kurulu
+    /// uygulamanın klasörlerine dokunmasın.
+    /// </summary>
+    private void EskiAcilimKlasorleriniTemizle()
+    {
+        if (_acilimTemizligiBasladi || !Installer.RunningInstalled)
+        {
+            return;
+        }
+
+        _acilimTemizligiBasladi = true;
+        _ = Task.Run(() => Installer.EskiAcilimKlasorleriniSil());
     }
 
     /// <summary>

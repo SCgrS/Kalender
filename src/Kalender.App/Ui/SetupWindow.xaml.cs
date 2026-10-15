@@ -193,7 +193,7 @@ public partial class SetupWindow : Window
         }
 
         NoteText.Text = "Kurulumdan sonra Başlat menüsüne kısayol eklenir ve Kalender "
-            + "Windows açılışında kendiliğinden başlar. İkisini de Ayarlar'dan kapatabilirsiniz.";
+            + "Windows açılışında kendiliğinden başlar. Bunu Ayarlar'dan kapatabilirsiniz.";
 
         PathBox.Visibility = Visibility.Visible;
         CancelButton.Content = "Vazgeç";

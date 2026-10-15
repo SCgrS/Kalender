@@ -150,9 +150,29 @@ internal static class Installer
         catch (Exception ex)
         {
             Log.Error("Kurulum başarısız.", ex);
-            return new SetupResult(false, "Kurulum yapılamadı: " + ex.Message);
+            return new SetupResult(false, "Kurulum yapılamadı: " + HataAciklamasi(ex));
         }
     }
+
+    /// <summary>
+    /// Kurulum ya da kaldırma hatasının kullanıcıya gösterilecek sade Türkçe
+    /// açıklaması (kurulum penceresinde ve güncellemenin "güncellenemedi"
+    /// kutusunda). .NET'in kendi iletileri İngilizce ve teknik; ayrıntı günlüğe
+    /// yazılır. Hata türü Windows'un hata kodundan anlaşılır.
+    /// </summary>
+    internal static string HataAciklamasi(Exception ex) => ex switch
+    {
+        // Paylaşım ya da kilit ihlali, eşlenmiş dosya: exe çalışıyor ya da başka bir program tutuyor.
+        IOException when Win32Kodu(ex) is 32 or 33 or 1224 =>
+            "Kalender'in dosyası şu an kullanımda; açık olan Kalender kapatılamamış olabilir. "
+            + "Kalender'i kapatıp yeniden deneyin.",
+        IOException when Win32Kodu(ex) is 39 or 112 => "Diskte yeterli boş yer yok. Biraz yer açıp yeniden deneyin.",
+        UnauthorizedAccessException => "Kalender'in klasörüne yazma izni yok.",
+        _ => "Beklenmeyen bir sorun çıktı. Ayrıntılar günlük dosyasına yazıldı: " + Paths.LogFolder,
+    };
+
+    /// <summary>Hata Windows'tan geliyorsa (HRESULT 0x8007xxxx) Windows'un hata kodu, değilse 0.</summary>
+    private static int Win32Kodu(Exception ex) => ex.HResult >>> 16 == 0x8007 ? ex.HResult & 0xFFFF : 0;
 
     /// <summary>
     /// Dosyadaki "internetten indirildi" işaretini (Zone.Identifier akışı) siler.
@@ -297,7 +317,7 @@ internal static class Installer
         catch (Exception ex)
         {
             Log.Error("Kaldırma başarısız.", ex);
-            return new SetupResult(false, "Kaldırma tamamlanamadı: " + ex.Message);
+            return new SetupResult(false, "Kaldırma tamamlanamadı: " + HataAciklamasi(ex));
         }
     }
 
@@ -554,6 +574,145 @@ internal static class Installer
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Güncellemelerden kalan açılım klasörlerini siler (bkz.
+    /// <see cref="SingleFileExtractionFolders"/>). Her sürüm kütüphanelerini
+    /// %TEMP%\.net\Kalender altında kendi paket kimliğiyle ayrı bir klasöre açar,
+    /// kurucu da Kalender-Kurulum* altına; .NET eskilerini silmediği için her
+    /// güncellemede ~16 MB birikiyordu. Kurulu kopyanın açılışından bir süre
+    /// sonra arka planda çağrılır (bkz. UpdateService). Bu sürecin kendi açılım
+    /// klasörü korunur; kullanımdaki klasör (çalışan bir kurucunun klasörü gibi)
+    /// atlanır, sonraki açılışta yeniden denenir. Kalender Lite'ın klasörlerine
+    /// (KalenderLite, Kalender-Lite-Kurulum*) dokunulmaz. Hatalar yalnızca
+    /// günlüğe yazılır.
+    /// </summary>
+    public static void EskiAcilimKlasorleriniSil()
+    {
+        try
+        {
+            string kendiAdi = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? string.Empty);
+            using Process surec = Process.GetCurrentProcess();
+            var moduller = surec.Modules.Cast<ProcessModule>().Select(m => m.FileName).ToList();
+            EskiAcilimKlasorleriniSil(kendiAdi, AcilimKlasoruAdi(kendiAdi, moduller));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Eski açılım klasörleri temizlenemedi.", ex);
+        }
+    }
+
+    /// <summary>Eski açılım klasörlerini siler; silinen klasör sayısını döndürür.</summary>
+    /// <param name="kendiAdi">Bu sürecin exe adı (uzantısız); kendi açılım klasörleri bu adlı klasörün altında.</param>
+    /// <param name="kendiKlasoru">
+    /// Bu sürecin kendi açılım klasörünün adı (paket kimliği). Bilinmiyorsa null;
+    /// o zaman <paramref name="kendiAdi"/> klasörünün içine hiç dokunulmaz.
+    /// </param>
+    internal static int EskiAcilimKlasorleriniSil(string kendiAdi, string? kendiKlasoru)
+    {
+        int silinen = 0;
+        foreach (string klasor in SingleFileExtractionFolders())
+        {
+            if (!string.Equals(Path.GetFileName(klasor), kendiAdi, StringComparison.OrdinalIgnoreCase))
+            {
+                // Kurucunun klasörü: kullanılmıyorsa bütünüyle.
+                silinen += KullanilmiyorsaSil(klasor) ? 1 : 0;
+                continue;
+            }
+
+            if (kendiKlasoru is null)
+            {
+                Log.Info("Bu sürecin açılım klasörü bulunamadı; içine dokunulmadı: " + klasor);
+                continue;
+            }
+
+            try
+            {
+                foreach (string surum in Directory.EnumerateDirectories(klasor))
+                {
+                    if (!string.Equals(Path.GetFileName(surum), kendiKlasoru, StringComparison.OrdinalIgnoreCase))
+                    {
+                        silinen += KullanilmiyorsaSil(surum) ? 1 : 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Açılım klasörü taranamadı: " + klasor, ex);
+            }
+        }
+
+        if (silinen > 0)
+        {
+            Log.Info($"Eski açılım klasörlerinden {silinen} tanesi silindi.");
+        }
+
+        return silinen;
+    }
+
+    /// <summary>
+    /// Bu sürecin açılım klasörünün adı (paket kimliği), içinden yüklenmiş
+    /// kütüphanelerin yolundan: ...\.net\&lt;exe adı&gt;\&lt;paket kimliği&gt;\dosya.
+    /// Yolun başı kısa ad (KULLAN~1 gibi) olabildiği için yalnız sondaki
+    /// bölümlere bakılır. Bulunamazsa null.
+    /// </summary>
+    internal static string? AcilimKlasoruAdi(string kendiAdi, IEnumerable<string?> modulYollari)
+    {
+        foreach (string? yol in modulYollari)
+        {
+            string[] bolumler = (yol ?? string.Empty).Split('\\', '/');
+            for (int i = 0; i + 3 < bolumler.Length; i++)
+            {
+                if (string.Equals(bolumler[i], ".net", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(bolumler[i + 1], kendiAdi, StringComparison.OrdinalIgnoreCase)
+                    && bolumler[i + 2].Length > 0)
+                {
+                    return bolumler[i + 2];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Klasör kullanımda değilse siler; silindiyse true.</summary>
+    private static bool KullanilmiyorsaSil(string klasor)
+    {
+        if (KullanimdaMi(klasor))
+        {
+            Log.Info("Açılım klasörü kullanımda, silinmedi: " + klasor);
+            return false;
+        }
+
+        return TryDeleteNow(klasor);
+    }
+
+    /// <summary>
+    /// Klasördeki dosyalardan biri açık ya da bir süreçte yüklü mü? Yüklü bir
+    /// kütüphane okunabilir ama yazmaya ve paylaşımsız açılamaz. Kullanımdaki
+    /// klasör hiç silinmez: silme kilitli dosyaya gelene dek ötekileri silerdi,
+    /// çalışan süreç sonradan yükleyeceği kütüphaneyi bulamazdı.
+    /// </summary>
+    private static bool KullanimdaMi(string klasor)
+    {
+        try
+        {
+            foreach (string dosya in Directory.EnumerateFiles(klasor, "*", SearchOption.AllDirectories))
+            {
+                new FileStream(dosya, FileMode.Open, FileAccess.ReadWrite, FileShare.None).Dispose();
+            }
+
+            return false;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     /// <summary>

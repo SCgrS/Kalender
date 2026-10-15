@@ -2,11 +2,17 @@ using System.Collections;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 // Kalender'de ikinci genel kod incelemesinin (2026-10-15) düzeltmelerinin
 // sınaması (yansımayla). Madde numaraları kalender.md'deki listeden:
@@ -22,12 +28,31 @@ using System.Windows.Controls;
 //  21. Aynı güne düşen iki tatil de saklanır ve gün kutusunda ayrı satırlarda
 //      görünür (tam gün kırmızı, arife olağan renkte); gün, tam gün bir tatil
 //      varsa kırmızı.
+//  22. Kurulum ve kaldırma hatasında .NET'in İngilizce iletisi yerine hata
+//      türüne göre sade Türkçe ileti: dosya kullanımda (kapatıp yeniden
+//      deneyin), yazma izni yok, disk dolu, öbürleri için genel ileti. Ayrıntı
+//      yine günlüğe yazılır.
+//  23. Güncellemelerden kalan eski açılım klasörleri (%TEMP%\.net) silinir:
+//      bu sürecin kendi klasörü korunur; kullanımdaki (yüklü kütüphanesi ya da
+//      açık dosyası olan) klasör hiç silinmez; Kalender Lite'ın ve başka
+//      uygulamaların klasörlerine dokunulmaz. Yalnız kurulu kopyada, ilk
+//      güncelleme denetimiyle birlikte arka planda.
+//  24. Kurulum penceresi Ayarlar'dan yalnız açılışta başlamanın
+//      kapatılabileceğini söyler (kısayol için ayar yok).
+//  28. Güncelleme denetimi sürerken indirme başlarsa denetim bitince durum ve
+//      bulunan sürüm değişmez; indirme sürerken ikinci tıklama ikinci bir
+//      indirme başlatmaz.
 //
-// Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz.
-// Uygulamanın klasörü (Paths.RootFolder) %TEMP% altında geçici bir klasöre
-// çevrilir: kurulu Kalender'in ayarlarına ve tatil ön belleğine dokunulmaz
-// (sonda denetlenir). Gün kutusu penceresi kurulur ama gösterilmez. Kurucu ve
-// kurulu uygulama başlatılmaz. Geçici klasör sonunda silinir.
+// Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
+// GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
+// klasörü (Paths.RootFolder) %TEMP% altında geçici bir klasöre çevrilir:
+// kurulu Kalender'in ayarlarına ve tatil ön belleğine dokunulmaz (sonda
+// denetlenir). 22, 23 ve 28. maddelerde %TEMP% de (TMP, TEMP) geçici bir
+// klasöre çevrilir: açılım klasörleri ve güncelleme indirmeleri oraya gider,
+// gerçek Temp'teki .net ve indirme klasörlerine dokunulmaz (denetlenir). Gün
+// kutusu ve kurulum pencereleri kurulur ama gösterilmez. Kurucu ve kurulu
+// uygulama başlatılmaz; kurulum ve kaldırma çağrılmaz (çalışan Kalender'i
+// kapatırdı), sırası derlenmiş koddan okunur. Geçici klasörler sonunda silinir.
 // Çıkış kodu 0 = hepsi geçti.
 // Kullanım: dotnet run -c Release
 internal static class Program
@@ -104,6 +129,10 @@ internal static class Program
             Bolum(Madde1);
             Bolum(Madde20);
             Bolum(Madde21);
+            Bolum(Madde22);
+            Bolum(Madde23);
+            Bolum(Madde24);
+            Bolum(Madde28);
         }
         finally
         {
@@ -703,6 +732,692 @@ internal static class Program
         finally
         {
             ((IDisposable)servis).Dispose();
+        }
+    }
+
+    // ------------------------------------------------- derlenmiş koddaki komutlar
+
+    /// <summary>Bir IL komutu: yeri, işlem kodu, varsa çağrılan yöntem ya da alan, dallanıyorsa hedefi.</summary>
+    private sealed record Komut(int Yer, OpCode Kod, MemberInfo? Uye, int Hedef);
+
+    private static readonly Dictionary<short, OpCode> IslemKodlari = typeof(OpCodes)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Select(f => (OpCode)f.GetValue(null)!)
+        .GroupBy(k => k.Value)
+        .ToDictionary(g => g.Key, g => g.First());
+
+    /// <summary>Yöntemin gövdesini komut komut çözer (KodIncelemesi'ndeki gibi).</summary>
+    private static List<Komut> Komutlar(MethodBase yontem)
+    {
+        byte[] il = yontem.GetMethodBody()!.GetILAsByteArray()!;
+        var sonuc = new List<Komut>();
+        int i = 0;
+        while (i < il.Length)
+        {
+            int yer = i;
+            short deger = il[i] == 0xFE ? unchecked((short)(0xFE00 | il[i + 1])) : il[i];
+            OpCode kod = IslemKodlari[deger];
+            i += kod.Size;
+
+            MemberInfo? uye = null;
+            try
+            {
+                uye = kod.OperandType switch
+                {
+                    OperandType.InlineMethod => yontem.Module.ResolveMethod(BitConverter.ToInt32(il, i)),
+                    OperandType.InlineField => yontem.Module.ResolveField(BitConverter.ToInt32(il, i)),
+                    _ => null,
+                };
+            }
+            catch (ArgumentException)
+            {
+                // Genel türün açık örneği; bu sınamada aranan bir şey değil.
+            }
+
+            int uzunluk = kod.OperandType switch
+            {
+                OperandType.InlineNone => 0,
+                OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+                OperandType.InlineVar => 2,
+                OperandType.InlineI8 or OperandType.InlineR => 8,
+                OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(il, i)),
+                _ => 4,
+            };
+
+            int hedef = kod.OperandType switch
+            {
+                OperandType.ShortInlineBrTarget => i + 1 + unchecked((sbyte)il[i]),
+                OperandType.InlineBrTarget => i + 4 + BitConverter.ToInt32(il, i),
+                _ => -1,
+            };
+
+            i += uzunluk;
+            sonuc.Add(new Komut(yer, kod, uye, hedef));
+        }
+
+        return sonuc;
+    }
+
+    private static bool Cagri(Komut k, Type tip, string ad)
+        => k.Uye is MethodBase m && m.DeclaringType == tip && m.Name == ad;
+
+    private static int Bul(List<Komut> komutlar, Func<Komut, bool> kosul, int bas = 0)
+    {
+        for (int i = Math.Max(0, bas); i < komutlar.Count; i++)
+        {
+            if (kosul(komutlar[i]))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Türün iç türlerindeki (lambda ve async gövdeleri) yöntemlerin komutları.</summary>
+    private static List<List<Komut>> IcYontemler(Type tip)
+        => tip.GetNestedTypes(Hepsi)
+            .SelectMany(t => t.GetMethods(Hepsi | BindingFlags.DeclaredOnly))
+            .Where(m => m.GetMethodBody() is not null)
+            .Select(Komutlar)
+            .ToList();
+
+    // ------------------------------------------- 22, 23, 28: ortak yardımcılar
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr LoadLibraryExW(string yol, IntPtr dosya, uint bayraklar);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeLibrary(IntPtr modul);
+
+    /// <summary>
+    /// LOAD_LIBRARY_AS_IMAGE_RESOURCE: kütüphane çalışan bir uygulamadaki gibi
+    /// görüntü olarak eşlenir (dosyası kilitlenir), kodu çalıştırılmaz.
+    /// </summary>
+    private const uint GoruntuOlarak = 0x20;
+
+    /// <summary>Kopyası "yüklü kütüphane" olarak eşlenecek küçük bir Windows kütüphanesi.</summary>
+    private static string SistemKutuphanesi => Path.Combine(Environment.SystemDirectory, "version.dll");
+
+    /// <summary>Ürünün adı: "Kalender" ya da "Kalender Lite".</summary>
+    private static string Urun => Uyg.GetCustomAttribute<AssemblyProductAttribute>()!.Product;
+
+    /// <summary>Kurulu exe'nin adı (uzantısız): açılım klasörü bu adla açılır.</summary>
+    private static string KendiAdi
+        => Path.GetFileNameWithoutExtension((string)Tip("Kalender.Core.Installer").GetProperty("InstalledExe", Hepsi)!.GetValue(null)!);
+
+    /// <summary>Kurucunun adı (uzantısız; Kalender-Kurulum ya da Kalender-Lite-Kurulum).</summary>
+    private static string KurucuAdi
+        => Path.GetFileNameWithoutExtension((string)Tip("Kalender.Core.UpdateService").GetField("AssetName", Hepsi)!.GetValue(null)!);
+
+    private static Exception? Yakala(Action islem)
+    {
+        try
+        {
+            islem();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    /// <summary>Klasördeki her şeyin göreli yolu ve boyu (yoksa "yok"): dokunulmadığını denetlemek için.</summary>
+    private static string KlasorOzeti(string klasor)
+    {
+        if (!Directory.Exists(klasor))
+        {
+            return "yok";
+        }
+
+        return string.Join("|", Directory.EnumerateFileSystemEntries(klasor, "*", SearchOption.AllDirectories)
+            .Select(y => Path.GetRelativePath(klasor, y) + (File.Exists(y) ? ":" + new FileInfo(y).Length : ""))
+            .Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// İşi, %TEMP%'i (TMP ve TEMP) geçici bir klasöre çevirerek çalıştırır:
+    /// açılım klasörleri (%TEMP%\.net) ve güncelleme indirmeleri oraya gider.
+    /// Sonunda eski değerler geri konur, klasör silinir.
+    /// </summary>
+    private static void GeciciTempte(Action<string> islem)
+    {
+        string? tmp = Environment.GetEnvironmentVariable("TMP");
+        string? temp = Environment.GetEnvironmentVariable("TEMP");
+        string klasor = Path.Combine(Path.GetTempPath(), "Kalender İnceleme Temp ğüşıöç " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(klasor);
+        Environment.SetEnvironmentVariable("TMP", klasor);
+        Environment.SetEnvironmentVariable("TEMP", klasor);
+        try
+        {
+            if (!string.Equals(Path.GetFullPath(Path.GetTempPath()).TrimEnd('\\'), klasor, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Temp klasörü çevrilemedi: " + Path.GetTempPath());
+            }
+
+            islem(klasor);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TMP", tmp);
+            Environment.SetEnvironmentVariable("TEMP", temp);
+            try
+            {
+                Directory.Delete(klasor, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("   (geçici Temp klasörü silinemedi: " + ex.Message + ")");
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------- 22. madde
+
+    private static void Madde22()
+    {
+        Console.WriteLine("22) Kurulum ve kaldırma hatasında sade Türkçe ileti; ayrıntı günlükte");
+        Type kurucu = Tip("Kalender.Core.Installer");
+        string urun = Urun;
+        string Ileti(Exception ex) => (string)Statik(kurucu, "HataAciklamasi", ex)!;
+        string gunlukKlasoru = (string)Tip("Kalender.Core.Paths").GetProperty("LogFolder", Hepsi)!.GetValue(null)!;
+
+        bool KullanimdaMi(string ileti) => ileti.StartsWith(urun + "'") && ileti.Contains("şu an kullanımda")
+            && ileti.Contains("açık olan " + urun + " kapatılamamış olabilir") && ileti.EndsWith("kapatıp yeniden deneyin.");
+
+        GeciciTempte(temp =>
+        {
+            string kaynak = Path.Combine(temp, "yeni.exe");
+            File.WriteAllBytes(kaynak, new byte[] { 0x4D, 0x5A, 1, 2, 3 });
+
+            // Çalışan exe gibi: kurulu dosya bir süreçte yüklü (görüntü olarak eşlenmiş).
+            string calisan = Path.Combine(temp, "calisan.exe");
+            File.Copy(SistemKutuphanesi, calisan);
+            IntPtr modul = LoadLibraryExW(calisan, IntPtr.Zero, GoruntuOlarak);
+            Exception? yuklu = Yakala(() => File.Copy(kaynak, calisan, overwrite: true));
+            FreeLibrary(modul);
+            Denetle("sınama düzeni: yüklü exe'nin üzerine yazılamadı (IOException)", modul != IntPtr.Zero && yuklu is IOException,
+                yuklu?.GetType().Name ?? "hata yok");
+            if (yuklu is not null)
+            {
+                Denetle("kurulu exe çalışıyorken: dosya kullanımda, kapatıp yeniden deneyin", KullanimdaMi(Ileti(yuklu)), Ileti(yuklu));
+                Denetle(".NET'in İngilizce iletisi gösterilmiyor", !Ileti(yuklu).Contains(yuklu.Message), yuklu.Message);
+            }
+
+            // Başka bir programın (virüs koruması gibi) açık tuttuğu dosya.
+            string acik = Path.Combine(temp, "acik.exe");
+            File.WriteAllBytes(acik, new byte[] { 1 });
+            Exception? tutulan;
+            using (new FileStream(acik, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                tutulan = Yakala(() => File.Copy(kaynak, acik, overwrite: true));
+            }
+
+            Denetle("başka programın açık tuttuğu dosya: kullanımda, kapatıp yeniden deneyin",
+                tutulan is IOException && KullanimdaMi(Ileti(tutulan)), tutulan is null ? "hata yok" : Ileti(tutulan));
+
+            // Yazma izni yok: salt okunur hedef.
+            string saltOkunur = Path.Combine(temp, "salt-okunur.exe");
+            File.WriteAllBytes(saltOkunur, new byte[] { 1 });
+            File.SetAttributes(saltOkunur, FileAttributes.ReadOnly);
+            Exception? izin = Yakala(() => File.Copy(kaynak, saltOkunur, overwrite: true));
+            File.SetAttributes(saltOkunur, FileAttributes.Normal);
+            Denetle("yazma izni yokken: klasöre yazma izni yok",
+                izin is UnauthorizedAccessException && Ileti(izin) == urun + (urun.EndsWith("Lite") ? "'ın" : "'in") + " klasörüne yazma izni yok.",
+                izin is null ? "hata yok" : Ileti(izin));
+        });
+
+        // Disk dolu (ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL): .NET'in verdiği biçimde kurulur.
+        const string dolu = "Diskte yeterli boş yer yok. Biraz yer açıp yeniden deneyin.";
+        Denetle("disk doluyken: yer açıp yeniden deneyin",
+            Ileti(new IOException("There is not enough space on the disk.", unchecked((int)0x80070070))) == dolu
+            && Ileti(new IOException("The disk is full.", unchecked((int)0x80070027))) == dolu);
+
+        var ornekler = new Exception[]
+        {
+            new IOException("Unknown I/O error."),
+            new InvalidOperationException("Operation is not valid due to the current state of the object."),
+            new IOException("The network path was not found.", unchecked((int)0x80070035)),
+        };
+        var tutmayan = ornekler.Where(e => !(Ileti(e).StartsWith("Beklenmeyen bir sorun çıktı.")
+            && Ileti(e).Contains("günlük dosyasına yazıldı") && Ileti(e).Contains(gunlukKlasoru) && !Ileti(e).Contains(e.Message))).ToList();
+        Denetle("öbür hatalarda genel Türkçe ileti, günlüğün yeriyle; İngilizce ileti yok", tutmayan.Count == 0,
+            string.Join(" ; ", tutmayan.Select(Ileti)));
+
+        // Kurulum ve kaldırma (çağrılmaz; çalışan uygulamayı kapatırdı): derlenmiş koddan.
+        Type gunluk = Tip("Kalender.Core.Log");
+        foreach (string ad in new[] { "Install", "Uninstall" })
+        {
+            List<Komut> k = Komutlar(kurucu.GetMethod(ad, Hepsi)!);
+            int yaz = Bul(k, x => Cagri(x, gunluk, "Error"));
+            int aciklama = Bul(k, x => Cagri(x, kurucu, "HataAciklamasi"));
+            Denetle($"{ad}: hata önce günlüğe yazılıyor, kullanıcıya Türkçe açıklama gidiyor; .NET'in iletisi kullanılmıyor",
+                yaz >= 0 && aciklama > yaz && !k.Any(x => x.Uye is MethodBase { Name: "get_Message" }), $"{yaz} / {aciklama}");
+        }
+    }
+
+    // ----------------------------------------------------------------- 23. madde
+
+    private static void Madde23()
+    {
+        Console.WriteLine("23) Eski açılım klasörleri siliniyor; kendi, kullanımdaki ve öbür uygulamanınki kalıyor");
+        Type kurucu = Tip("Kalender.Core.Installer");
+        Type hizmetTipi = Tip("Kalender.Core.UpdateService");
+        string kendiAdi = KendiAdi;
+        string kurucuAdi = KurucuAdi;
+        bool lite = kendiAdi == "KalenderLite";
+        string oburAdi = lite ? "Kalender" : "KalenderLite";
+        string oburKurucu = lite ? "Kalender-Kurulum" : "Kalender-Lite-Kurulum";
+        Console.WriteLine($"   ({kendiAdi}, {kurucuAdi}*; dokunulmayacak: {oburAdi}, {oburKurucu}*)");
+
+        MethodInfo silYontemi = kurucu.GetMethod("EskiAcilimKlasorleriniSil", Hepsi, new[] { typeof(string), typeof(string) })!;
+        int Sil(string? kendi) => (int)silYontemi.Invoke(null, new object?[] { kendiAdi, kendi })!;
+
+        string gercekNet = Path.Combine(Path.GetTempPath(), ".net");
+        string gercekOnce = KlasorOzeti(gercekNet);
+
+        GeciciTempte(temp =>
+        {
+            string net = Path.Combine(temp, ".net");
+            string Kur(string goreli, params string[] dosyalar)
+            {
+                string k = Path.Combine(net, goreli);
+                Directory.CreateDirectory(k);
+                foreach (string d in dosyalar)
+                {
+                    File.WriteAllBytes(Path.Combine(k, d), new byte[] { 0x4D, 0x5A, 1, 2 });
+                }
+
+                return k;
+            }
+
+            bool Var(string goreli) => Directory.Exists(Path.Combine(net, goreli));
+            int Dosyalar(string goreli) => Var(goreli)
+                ? Directory.GetFiles(Path.Combine(net, goreli), "*", SearchOption.AllDirectories).Length
+                : -1;
+
+            // Uygulamanın kendi adındaki klasör: iki eski sürüm, bu sürecin sürümü,
+            // kütüphanesi bir süreçte yüklü olan bir sürüm.
+            Kur(kendiAdi + @"\eskiSurum1", "wpfgfx_cor3.dll", "vcruntime140_cor3.dll");
+            Kur(kendiAdi + @"\eskiSurum2\alt", "PenImc_cor3.dll");
+            Kur(kendiAdi + @"\kendiSurum", "wpfgfx_cor3.dll", "PresentationNative_cor3.dll");
+            string yukluSurum = Kur(kendiAdi + @"\yukluSurum", "vcruntime140_cor3.dll");
+            File.Copy(SistemKutuphanesi, Path.Combine(yukluSurum, "PresentationNative_cor3.dll"));
+
+            // Kurucunun klasörleri: biri kullanılmıyor, biri tarayıcıdan "(1)" ekiyle
+            // inmiş, biri çalışan bir kurucunun (dosyası açık).
+            Kur(kurucuAdi + @"\paket1", "wpfgfx_cor3.dll");
+            Kur(kurucuAdi + @" (1)\paket1", "wpfgfx_cor3.dll");
+            string calisanKurucu = Kur(kurucuAdi + @"-9.9\paket2", "wpfgfx_cor3.dll", "vcruntime140_cor3.dll");
+
+            // Öbür uygulamanın ve başka bir uygulamanın klasörleri.
+            Kur(oburAdi + @"\paket3", "wpfgfx_cor3.dll");
+            Kur(oburKurucu + @"\paket3", "wpfgfx_cor3.dll");
+            Kur(oburKurucu + @"-9.9\paket3", "wpfgfx_cor3.dll");
+            Kur(@"BaskaUygulama\paket4", "wpfgfx_cor3.dll");
+
+            IntPtr modul = LoadLibraryExW(Path.Combine(yukluSurum, "PresentationNative_cor3.dll"), IntPtr.Zero, GoruntuOlarak);
+            Denetle("sınama düzeni: kütüphane görüntü olarak yüklendi", modul != IntPtr.Zero);
+            int silinen;
+            try
+            {
+                using (new FileStream(Path.Combine(calisanKurucu, "wpfgfx_cor3.dll"), FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    silinen = Sil("kendiSurum");
+                }
+            }
+            finally
+            {
+                FreeLibrary(modul);
+            }
+
+            Denetle("eski sürümlerin açılım klasörleri silindi", !Var(kendiAdi + @"\eskiSurum1") && !Var(kendiAdi + @"\eskiSurum2"));
+            Denetle("bu sürecin kendi açılım klasörü dosyalarıyla duruyor", Dosyalar(kendiAdi + @"\kendiSurum") == 2);
+            Denetle("kütüphanesi yüklü klasör atlandı, öbür dosyası da silinmedi (yarım silme yok)",
+                Dosyalar(kendiAdi + @"\yukluSurum") == 2, Dosyalar(kendiAdi + @"\yukluSurum") + " dosya");
+            Denetle("kullanılmayan kurucu klasörleri bütünüyle silindi", !Var(kurucuAdi) && !Var(kurucuAdi + " (1)"));
+            Denetle("çalışan kurucunun (dosyası açık) klasörü eksiksiz duruyor", Dosyalar(kurucuAdi + @"-9.9\paket2") == 2);
+            Denetle("öbür uygulamanın ve başka uygulamaların klasörlerine dokunulmadı",
+                Dosyalar(oburAdi + @"\paket3") == 1 && Dosyalar(oburKurucu + @"\paket3") == 1
+                && Dosyalar(oburKurucu + @"-9.9\paket3") == 1 && Dosyalar(@"BaskaUygulama\paket4") == 1);
+            Denetle("silinen klasör sayısı 4", silinen == 4, silinen.ToString());
+
+            int ikinci = Sil("kendiSurum");
+            Denetle("kilit kalkınca sonraki çalıştırmada onlar da siliniyor, kendi klasörü yine duruyor",
+                ikinci == 2 && !Var(kendiAdi + @"\yukluSurum") && !Var(kurucuAdi + "-9.9")
+                && Dosyalar(kendiAdi + @"\kendiSurum") == 2 && Dosyalar(oburAdi + @"\paket3") == 1, ikinci.ToString());
+
+            Kur(kendiAdi + @"\eskiSurum3", "wpfgfx_cor3.dll");
+            Kur(kurucuAdi + @"\paket5", "wpfgfx_cor3.dll");
+            int ucuncu = Sil(null);
+            Denetle("kendi klasörü bulunamazsa uygulamanın klasörünün içine hiç dokunulmuyor; kurucununki yine siliniyor",
+                ucuncu == 1 && Var(kendiAdi + @"\eskiSurum3") && Dosyalar(kendiAdi + @"\kendiSurum") == 2 && !Var(kurucuAdi),
+                ucuncu.ToString());
+
+            // Yalnız kurulu kopyada: bu sınama kurulu kopya değil; ilk denetimin temizliği hiçbir şey silmemeli.
+            string bekleyen = Kur(kurucuAdi + @"\paket6", "wpfgfx_cor3.dll");
+            object hizmet = YeniHizmet();
+            try
+            {
+                Cagir(hizmet, "EskiAcilimKlasorleriniTemizle");
+                Thread.Sleep(500);
+                Denetle("kurulu olmayan kopyada (bu sınama) ilk denetimin temizliği başlamıyor",
+                    Directory.Exists(bekleyen) && !(bool)AlanOku(hizmet, "_acilimTemizligiBasladi"));
+            }
+            finally
+            {
+                ((IDisposable)hizmet).Dispose();
+            }
+        });
+
+        Denetle("gerçek Temp'teki açılım klasörlerine dokunulmadı", KlasorOzeti(gercekNet) == gercekOnce);
+
+        // Bu sürecin açılım klasörü, yüklü kütüphanelerinin yolundan.
+        MethodInfo adYontemi = kurucu.GetMethod("AcilimKlasoruAdi", Hepsi)!;
+        string? Ad(params string?[] yollar) => (string?)adYontemi.Invoke(null, new object[] { kendiAdi, yollar });
+        Denetle("kendi açılım klasörü yüklü kütüphanenin yolundan bulunuyor (Temp'in kısa adlı yolu dâhil)",
+            Ad(@"C:\Windows\System32\ntdll.dll",
+                @"C:\Users\KULLAN~1\AppData\Local\Temp\.net\" + kendiAdi + @"\0ehY4UDA8bTx\PresentationNative_cor3.dll") == "0ehY4UDA8bTx"
+            && Ad(@"C:\Temp\.NET\" + kendiAdi.ToLowerInvariant() + @"\Abc_1-x\wpfgfx_cor3.dll") == "Abc_1-x");
+        Denetle("öbür uygulamanın, kurucunun ya da kurulu exe'nin yolu kendi klasörü sayılmıyor",
+            Ad(@"C:\T\.net\" + oburAdi + @"\X\wpfgfx_cor3.dll", @"C:\T\.net\" + kurucuAdi + @"\Y\wpfgfx_cor3.dll",
+                @"C:\Users\u\AppData\Local\Kalender\app\Kalender.exe", @"C:\T\.net\" + kendiAdi + @"\yalnizKlasor", null) is null);
+
+        // Kuruluş: ilk denetimle birlikte, yalnız kurulu kopyada, arka planda.
+        List<Komut> temizle = Komutlar(hizmetTipi.GetMethod("EskiAcilimKlasorleriniTemizle", Hepsi)!);
+        int kuruluMu = Bul(temizle, x => Cagri(x, kurucu, "get_RunningInstalled"));
+        int arkaPlan = Bul(temizle, x => x.Uye is MethodInfo { Name: "Run" } m && m.DeclaringType == typeof(Task));
+        Denetle("temizlik önce kurulu kopya mı diye bakıyor, sonra arka planda başlıyor",
+            kuruluMu >= 0 && arkaPlan > kuruluMu, $"{kuruluMu} / {arkaPlan}");
+        List<List<Komut>> ic = IcYontemler(hizmetTipi);
+        Denetle("arka planda kurucunun eski açılım klasörü temizliği çalışıyor",
+            ic.Any(k => k.Any(x => Cagri(x, kurucu, "EskiAcilimKlasorleriniSil"))));
+        Denetle("zamanlayıcıda ilk denetimle birlikte (denetimden önce) başlatılıyor",
+            ic.Any(k => Bul(k, x => Cagri(x, hizmetTipi, "EskiAcilimKlasorleriniTemizle")) is int t && t >= 0
+                && Bul(k, x => Cagri(x, hizmetTipi, "CheckAsync")) > t));
+    }
+
+    // ----------------------------------------------------------------- 24. madde
+
+    private static void Madde24()
+    {
+        Console.WriteLine("24) Kurulum penceresi: Ayarlar'dan yalnız açılışta başlama kapatılabiliyor");
+        object kip = Enum.Parse(Tip("Kalender.Ui.SetupMode"), "Install");
+        var pencere = (Window)Activator.CreateInstance(Tip("Kalender.Ui.SetupWindow"), Hepsi, null, new[] { kip }, null)!;
+        try
+        {
+            string not = ((TextBlock)pencere.FindName("NoteText")).Text;
+            Denetle("kurulum notu kısayolun da kapatılabileceğini söylemiyor, yalnız açılışta başlamayı anlatıyor",
+                !not.Contains("İkisini") && not.EndsWith("Windows açılışında kendiliğinden başlar. Bunu Ayarlar'dan kapatabilirsiniz."),
+                not);
+        }
+        finally
+        {
+            pencere.Close();
+        }
+    }
+
+    // ----------------------------------------------------------------- 28. madde
+
+    /// <summary>GitHub'ın yerine geçen küçük HTTP sunucusu (Guncelleme sınamasındaki gibi).</summary>
+    private sealed class Sunucu : IDisposable
+    {
+        private readonly TcpListener _dinleyici = new(IPAddress.Loopback, 0);
+        private readonly Dictionary<string, (byte[] Govde, int Parca, TimeSpan Ara)> _yollar = new();
+        private readonly Dictionary<string, int> _sayac = new();
+
+        public Sunucu()
+        {
+            _dinleyici.Start();
+            _ = Task.Run(DonguAsync);
+        }
+
+        public string Adres => $"http://127.0.0.1:{((IPEndPoint)_dinleyici.LocalEndpoint).Port}";
+
+        /// <summary>Gövde <paramref name="parca"/> parçada, aralarında <paramref name="ara"/> bekleyerek gönderilir.</summary>
+        public void Koy(string yol, byte[] govde, int parca = 1, TimeSpan ara = default)
+        {
+            lock (_yollar)
+            {
+                _yollar[yol] = (govde, parca, ara);
+            }
+        }
+
+        public int Istek(string yol)
+        {
+            lock (_yollar)
+            {
+                return _sayac.GetValueOrDefault(yol);
+            }
+        }
+
+        private async Task DonguAsync()
+        {
+            while (true)
+            {
+                TcpClient istemci;
+                try
+                {
+                    istemci = await _dinleyici.AcceptTcpClientAsync();
+                }
+                catch
+                {
+                    return; // Dinleyici kapandı.
+                }
+
+                _ = Task.Run(() => YanitlaAsync(istemci));
+            }
+        }
+
+        private async Task YanitlaAsync(TcpClient istemci)
+        {
+            try
+            {
+                using (istemci)
+                {
+                    istemci.NoDelay = true;
+                    NetworkStream akis = istemci.GetStream();
+                    var baslik = new StringBuilder();
+                    byte[] tampon = new byte[4096];
+                    while (!baslik.ToString().Contains("\r\n\r\n"))
+                    {
+                        int n = await akis.ReadAsync(tampon);
+                        if (n <= 0)
+                        {
+                            break;
+                        }
+
+                        baslik.Append(Encoding.ASCII.GetString(tampon, 0, n));
+                    }
+
+                    string yol = baslik.ToString().Split(' ') is { Length: > 1 } p ? p[1] : "/";
+                    (byte[] Govde, int Parca, TimeSpan Ara)? yanit;
+                    lock (_yollar)
+                    {
+                        _sayac[yol] = _sayac.GetValueOrDefault(yol) + 1;
+                        yanit = _yollar.TryGetValue(yol, out var y) ? y : null;
+                    }
+
+                    if (yanit is not (byte[] govde, int parca, TimeSpan ara))
+                    {
+                        await akis.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 404 X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"));
+                        return;
+                    }
+
+                    await akis.WriteAsync(Encoding.ASCII.GetBytes(
+                        $"HTTP/1.1 200 X\r\nContent-Length: {govde.Length}\r\n"
+                        + "Content-Type: application/octet-stream\r\nConnection: close\r\n\r\n"));
+                    int boy = (govde.Length + parca - 1) / parca;
+                    for (int i = 0; i < parca; i++)
+                    {
+                        if (i > 0)
+                        {
+                            await Task.Delay(ara);
+                        }
+
+                        int bas = i * boy;
+                        await akis.WriteAsync(govde.AsMemory(bas, Math.Min(boy, govde.Length - bas)));
+                        await akis.FlushAsync();
+                    }
+                }
+            }
+            catch
+            {
+                // İstemci bağlantıyı kesti; sınama sonucu zaten bunu gösterir.
+            }
+        }
+
+        public void Dispose() => _dinleyici.Stop();
+    }
+
+    /// <summary>Ayar dosyasına dokunmayan, bellekte duran ayarlarla bir güncelleme hizmeti.</summary>
+    private static object YeniHizmet()
+    {
+        object depo = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"), nonPublic: true)!;
+        return Activator.CreateInstance(Tip("Kalender.Core.UpdateService"), Hepsi, null, new[] { depo }, null)!;
+    }
+
+    /// <summary>GitHub'ın "en son sürüm" yanıtı; indirme adresi https olmalı, bu yüzden uydurma bir adres.</summary>
+    private static byte[] SurumYaniti(string etiket) => JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object?>
+    {
+        ["tag_name"] = etiket,
+        ["html_url"] = "https://example.invalid/surum",
+        ["assets"] = new[]
+        {
+            new Dictionary<string, object?>
+            {
+                ["name"] = (string)Tip("Kalender.Core.UpdateService").GetField("AssetName", Hepsi)!.GetValue(null)!,
+                ["browser_download_url"] = "https://example.invalid/kurulum.exe",
+                ["size"] = 0,
+            },
+        },
+    });
+
+    /// <summary>İşi arayüz iş parçacığındaki gibi bir Dispatcher döngüsünde çalıştırır (await'ler oraya döner).</summary>
+    private static void DispatcherdaCalistir(Func<Task> islem)
+    {
+        var cerceve = new DispatcherFrame();
+        Exception? hata = null;
+        Dispatcher.CurrentDispatcher.BeginInvoke(async () =>
+        {
+            try
+            {
+                await islem();
+            }
+            catch (Exception ex)
+            {
+                hata = ex;
+            }
+            finally
+            {
+                cerceve.Continue = false;
+            }
+        });
+        Dispatcher.PushFrame(cerceve);
+        if (hata is not null)
+        {
+            ExceptionDispatchInfo.Capture(hata).Throw();
+        }
+    }
+
+    private static void Madde28()
+    {
+        Console.WriteLine("28) Denetim sürerken başlayan indirme: durum ve bulunan sürüm değişmiyor, ikinci tıklama bir şey yapmıyor");
+        string gercekIndirme = (string)Tip("Kalender.Core.UpdateService").GetProperty("DownloadFolder", Hepsi)!.GetValue(null)!;
+        string indirmeOnce = KlasorOzeti(gercekIndirme);
+
+        GeciciTempte(_ => DispatcherdaCalistir(Madde28Async));
+
+        Denetle("gerçek güncelleme indirme klasörüne dokunulmadı", KlasorOzeti(gercekIndirme) == indirmeOnce);
+    }
+
+    private static async Task Madde28Async()
+    {
+        Type hizmetTipi = Tip("Kalender.Core.UpdateService");
+        PropertyInfo api = hizmetTipi.GetProperty("LatestReleaseApi", Hepsi)!;
+        string gercekApi = (string)api.GetValue(null)!;
+        Version kurulu = (Version)hizmetTipi.GetProperty("CurrentVersion", Hepsi)!.GetValue(null)!;
+        string urun = Urun;
+
+        using var sunucu = new Sunucu();
+        api.SetValue(null, sunucu.Adres + "/latest");
+        object h = YeniHizmet();
+        try
+        {
+            Task Denetim() => (Task)Cagir(h, "CheckAsync", false)!;
+            Task Kur() => (Task)Cagir(h, "InstallAsync", false)!;
+            string Durum() => Oku(h, "State")!.ToString()!;
+            int Indirme() => sunucu.Istek("/indir.exe");
+
+            sunucu.Koy("/latest", SurumYaniti("v99.0"));
+            await Denetim();
+            Denetle("sınama düzeni: yeni sürüm bulundu", Durum() == "Available", Durum());
+
+            // Kurulum dosyası yerel sunucudan, yavaş (~4 sn). Rastgele baytlar
+            // uygulama olmadığı için indirme doğrulamada durur, kurucu başlatılmaz.
+            byte[] govde = RandomNumberGenerator.GetBytes(400_000);
+            object bilgi = Activator.CreateInstance(Tip("Kalender.Core.UpdateInfo"), Hepsi, null, new object?[]
+            {
+                new Version(99, 0, 0), sunucu.Adres + "/indir.exe", (long)govde.Length,
+                Convert.ToHexString(SHA256.HashData(govde)), "https://example.invalid/surum",
+            }, null)!;
+            sunucu.Koy("/indir.exe", govde, parca: 10, ara: TimeSpan.FromMilliseconds(400));
+
+            // Ayarlar penceresi açılırken başlayan denetimin yanıtı yavaş (~1,5 sn);
+            // kullanıcı bu arada bildirime tıklıyor.
+            sunucu.Koy("/latest", SurumYaniti("v99.0"), parca: 2, ara: TimeSpan.FromMilliseconds(1500));
+            hizmetTipi.GetProperty("Available", Hepsi)!.SetValue(h, bilgi);
+            Task denetim = Denetim();
+            Task kurulum = Kur();
+            Denetle("sınama düzeni: denetim sürerken indirme başladı", Durum() == "Downloading" && !denetim.IsCompleted, Durum());
+
+            await denetim;
+            Denetle("denetim bitince durum yine 'indiriliyor', bulunan sürüm aynı",
+                Durum() == "Downloading" && ReferenceEquals(Oku(h, "Available"), bilgi) && !kurulum.IsCompleted, Durum());
+
+            Task ikinci = Kur();
+            Denetle("indirme sürerken ikinci tıklama hiçbir şey yapmıyor", ikinci.IsCompleted && Indirme() == 1,
+                $"{Indirme()} indirme");
+            await ikinci;
+            await kurulum;
+            string hata = (string?)Oku(h, "Error") ?? "";
+            Denetle("indirme bir kez yapıldı, \"diske yazılamadı\" hatası çıkmadı (dosya doğrulamada durdu)",
+                Indirme() == 1 && Durum() == "Failed" && hata.Contains("beklenen " + urun) && !hata.Contains("diske"),
+                $"{Indirme()} indirme; {hata}");
+
+            // Sürüm geri çekilmiş: denetim yeni sürüm bulamıyor, indirme sürüyor.
+            hizmetTipi.GetProperty("Available", Hepsi)!.SetValue(h, bilgi);
+            sunucu.Koy("/latest", SurumYaniti("v" + kurulu.ToString(3)), parca: 2, ara: TimeSpan.FromMilliseconds(1500));
+            Task denetim2 = Denetim();
+            Task kurulum2 = Kur();
+            await denetim2;
+            Denetle("denetim yeni sürüm bulamasa da indirme sürerken durum ve bulunan sürüm yerinde",
+                Durum() == "Downloading" && ReferenceEquals(Oku(h, "Available"), bilgi), Durum());
+            await kurulum2;
+
+            // Durum başka bir yoldan "yeni sürüm var"a dönse bile indirme sürerken ikinci tıklama bir şey yapmaz.
+            int once = Indirme();
+            Task kurulum3 = Kur();
+            await Task.Delay(200);
+            hizmetTipi.GetProperty("State", Hepsi)!.SetValue(h, Enum.Parse(Tip("Kalender.Core.UpdateState"), "Available"));
+            Task ucuncu = Kur();
+            Denetle("indirme sürerken durum ne gösterirse göstersin ikinci indirme başlamıyor",
+                ucuncu.IsCompleted && Indirme() == once + 1, $"{Indirme() - once} indirme");
+            await ucuncu;
+            await kurulum3;
+
+            // İndirme başarısız olunca "Yeniden dene" yine çalışıyor.
+            string onceki = Durum();
+            Task yeniden = Kur();
+            Denetle("başarısız indirmeden sonra yeniden denenebiliyor",
+                onceki == "Failed" && Durum() == "Downloading" && !yeniden.IsCompleted, $"{onceki} > {Durum()}");
+            await yeniden;
+        }
+        finally
+        {
+            ((IDisposable)h).Dispose();
+            api.SetValue(null, gercekApi);
         }
     }
 }
