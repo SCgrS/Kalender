@@ -69,6 +69,12 @@ internal static class WallpaperService
     internal static string BekleyenYedekDosyasi => Path.ChangeExtension(Paths.BackupFile, ".bekliyor.json");
 
     /// <summary>
+    /// Düz renge dönüldükten sonra Windows'un ekranlarda bildirmeyi sürdürdüğü
+    /// duvar kâğıdı yolları (bkz. <see cref="DuzRengiNotEt"/>).
+    /// </summary>
+    internal static string DuzRenkDosyasi => Path.ChangeExtension(Paths.BackupFile, ".duz-renk.txt");
+
+    /// <summary>
     /// Duvar kağıdında resim kipini açar.
     ///
     /// Dikkat: bu çağrı ancak ortada gerçekten bir duvar kağıdı dosyası varken
@@ -121,6 +127,9 @@ internal static class WallpaperService
             Directory.CreateDirectory(Paths.RootFolder);
             YedegiYaz(Paths.BackupFile, backup);
             File.Delete(BekleyenYedekDosyasi);
+
+            // Düz renk notu bu yedekte kullanıldı; bundan sonra ekrana yeni görüntüler yazılıyor.
+            File.Delete(DuzRenkDosyasi);
 
             Log.Info($"Önceki duvar kâğıdı yedeklendi (resim: {backup.WallpaperEnabled}).");
         }
@@ -314,8 +323,10 @@ internal static class WallpaperService
             // yalnız resim kipini kapatıyor. Windows ekranların yolunu bundan
             // sonra da takvimin görüntüsü olarak veriyorsa (ölçülmedi) önceden
             // yedek hiç alınmıyor, sonraki geri dönüş düz renk yerine takvimsiz
-            // zemini koyup uyarı veriyordu.
-            if (ResimKipiKapali())
+            // zemini koyup uyarı veriyordu. Windows o sırada resim kipini de
+            // açık bildirirse ekranların düz renge dönüldüğü andaki gibi
+            // durmasına bakılır (bkz. DuzRenkSuruyor).
+            if (ResimKipiKapali() || DuzRenkSuruyor(EkrandakiDosyalar(wallpaper), DuzRenkDosyasi))
             {
                 Log.Debug("Ekranlarda takvimin görüntüleri var ama resim kipi kapalı; düz renk yedeklendi.");
                 return backup;
@@ -346,7 +357,9 @@ internal static class WallpaperService
     /// <param name="eksikKaldi">
     /// Ekranlarda Kalender'in görüntüsü kalmış olabilir mi? Yedek yoksa ve
     /// ekranda takvimin görüntüsü duruyorsa, geri yükleme yarıda kaldıysa ya da
-    /// bir ekran geri yüklenemediyse doğru.
+    /// bir ekran geri yüklenemediyse doğru. Düz renge dönüldükten sonra
+    /// Windows'un bildirmeyi sürdürdüğü görüntüler sayılmaz (bkz.
+    /// <see cref="DuzRenkSuruyor"/>): ekranda düz renk duruyor.
     /// </param>
     /// <returns>
     /// Önceki duvar kâğıdı ekrandaysa true: yedek uygulandı (bir ekran geri
@@ -371,7 +384,8 @@ internal static class WallpaperService
                 // Yedek yoksa bile bizim ürettiğimiz görüntüler ortada kalmasın.
                 // Ekranda takvimin görüntüsü yoksa önceki duvar kâğıdı zaten yerinde.
                 HashSet<string>? ekrandakiler = ClearCanvasFiles(null);
-                eksikKaldi = ekrandakiler is null || ekrandakiler.Any(ZeminDosyasiMi);
+                eksikKaldi = ekrandakiler is null
+                    || (ekrandakiler.Any(ZeminDosyasiMi) && !DuzRenkSuruyor(ekrandakiler, DuzRenkDosyasi));
                 return !eksikKaldi;
             }
 
@@ -397,6 +411,7 @@ internal static class WallpaperService
             {
                 // Kullanıcı düz renk kullanıyordu.
                 wallpaper.Enable(false);
+                DuzRengiNotEt(wallpaper, DuzRenkDosyasi);
                 eksikKaldi = false;
             }
             else
@@ -459,6 +474,64 @@ internal static class WallpaperService
         catch (Exception ex)
         {
             Log.Debug("Duvar kâğıdı yedeği kaldırılamadı: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Düz renge dönüldükten sonra Windows ekranlarda hâlâ takvimin görüntüsünün
+    /// yolunu bildiriyorsa bildirdiği yolları not eder; bildirmiyorsa eski notu
+    /// siler. Windows'un bunu yapıp yapmadığı ölçülmedi. Yapar ve resim kipini
+    /// de açık bildirirse, ekranda düz renk dururken takvim duruyor sanılırdı:
+    /// açılışta ya da sonraki geri dönüşte düz rengin yerine takvimsiz zemin
+    /// yazılırdı (bkz. <see cref="DuzRenkSuruyor"/>).
+    /// </summary>
+    /// <param name="dosya">Notun yazılacağı dosya (<see cref="DuzRenkDosyasi"/>).</param>
+    internal static void DuzRengiNotEt(IDesktopWallpaper wallpaper, string dosya)
+    {
+        try
+        {
+            HashSet<string>? ekrandakiler = EkrandakiDosyalar(wallpaper);
+            if (ekrandakiler is not null && ekrandakiler.Any(ZeminDosyasiMi))
+            {
+                File.WriteAllLines(dosya, ekrandakiler, new UTF8Encoding(false));
+            }
+            else
+            {
+                File.Delete(dosya);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Düz renk notu yazılamadı: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Ekranlar düz renge dönüldüğü andaki gibi mi: Windows'un şimdi bildirdiği
+    /// her yol <see cref="DuzRengiNotEt"/>'in not ettikleri arasında mı? Öyleyse
+    /// ekranda düz renk duruyor, yollardaki takvim görüntüleri görünmüyor.
+    /// Kullanıcı sonradan bir duvar kâğıdı seçtiyse ya da takvim yeniden
+    /// yazıldıysa yollar değişir, not geçersiz olur. Not yoksa ya da
+    /// okunamazsa false: eski davranış sürer.
+    /// </summary>
+    /// <param name="ekrandakiler">Ekranlarda şu an duran dosyalar (<see cref="EkrandakiDosyalar"/>).</param>
+    /// <param name="dosya">Not dosyası (<see cref="DuzRenkDosyasi"/>).</param>
+    internal static bool DuzRenkSuruyor(HashSet<string>? ekrandakiler, string dosya)
+    {
+        try
+        {
+            if (ekrandakiler is null || ekrandakiler.Count == 0 || !File.Exists(dosya))
+            {
+                return false;
+            }
+
+            var notlar = new HashSet<string>(File.ReadAllLines(dosya, Encoding.UTF8), StringComparer.OrdinalIgnoreCase);
+            return ekrandakiler.All(notlar.Contains);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Düz renk notu okunamadı: " + ex.Message);
+            return false;
         }
     }
 

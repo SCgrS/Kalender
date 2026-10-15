@@ -208,7 +208,11 @@ internal sealed class WallpaperCanvas
                 }
 
                 HasPainted = true;
-                CleanUnusedFiles();
+
+                // Takvim kaldırılırken ekranda bu sürecin yazmadığı görüntüler de
+                // durabilir (açılışta, önceki oturumun başka ekrana yazdığı
+                // takvimsiz zemin); temizlik onları da ekrana bakarak korur.
+                CleanUnusedFiles(kaldirirken ? wallpaper : null);
                 TemizligiPlanla();
             }
 
@@ -505,21 +509,46 @@ internal sealed class WallpaperCanvas
     }
 
     /// <summary>
+    /// Artık kullanılmayan görüntüleri siler (bkz. <see cref="KullanilmayanlariSil"/>).
+    /// </summary>
+    /// <param name="wallpaper">Verilirse ekranda duran bütün dosyalar da korunur.</param>
+    private void CleanUnusedFiles(IDesktopWallpaper? wallpaper = null)
+        => KullanilmayanlariSil(
+            Paths.CanvasFolder, _sonYazilanlar.Values.Select(v => v.Dosya), wallpaper, DateTime.UtcNow - FileGrace);
+
+    /// <summary>
     /// Artık kullanılmayan görüntüleri siler. Windows dosyayı uygulamadan
     /// hemen sonra hâlâ okuyor olabildiği için yeni yazılanlara dokunmuyoruz.
     /// Ekranda duran görüntüler de korunur: Explorer yeniden başladığında ya
     /// da çözünürlük değiştiğinde Windows onları yeniden okuyor.
     /// </summary>
-    private void CleanUnusedFiles()
+    /// <param name="klasor">Zemin klasörü.</param>
+    /// <param name="sonYazilanlar">Bu sürecin ekranlara en son yazdığı dosyalar.</param>
+    /// <param name="wallpaper">
+    /// Verilirse ekranda duran bütün dosyalar da korunur; ekran okunamazsa o
+    /// turda hiçbir dosya silinmez. Takvim kaldırılırken verilir: ekranda bu
+    /// sürecin yazmadığı bir zemin durabiliyor, önceden silinebiliyordu.
+    /// </param>
+    /// <param name="esik">Bundan sonra yazılan dosyalara dokunulmaz.</param>
+    internal static void KullanilmayanlariSil(
+        string klasor, IEnumerable<string> sonYazilanlar, IDesktopWallpaper? wallpaper, DateTime esik)
     {
         try
         {
-            DateTime esik = DateTime.UtcNow - FileGrace;
-            var ekrandakiler = new HashSet<string>(
-                _sonYazilanlar.Values.Select(v => v.Dosya), StringComparer.OrdinalIgnoreCase);
+            var ekrandakiler = new HashSet<string>(sonYazilanlar, StringComparer.OrdinalIgnoreCase);
+            if (wallpaper is not null)
+            {
+                HashSet<string>? gorunenler = WallpaperService.EkrandakiDosyalar(wallpaper);
+                if (gorunenler is null)
+                {
+                    return;
+                }
+
+                ekrandakiler.UnionWith(gorunenler);
+            }
 
             // Uzantısız: 1.4.4'e kadar yazılan PNG'ler de temizlensin.
-            foreach (string file in Directory.EnumerateFiles(Paths.CanvasFolder, "zemin-*"))
+            foreach (string file in Directory.EnumerateFiles(klasor, "zemin-*"))
             {
                 if (!ekrandakiler.Contains(file) && File.GetLastWriteTimeUtc(file) < esik)
                 {

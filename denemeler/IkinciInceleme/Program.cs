@@ -49,8 +49,13 @@ using Ifade = System.Linq.Expressions.Expression;
 //      yazdığına değil ekrana bakılarak bulunur (açılışta eski sürümden donmuş
 //      kalan takvim de). Takvimsiz zeminin adı ekli: yeniden yazılmaz, her
 //      açılışta boşuna yazım olmaz. Windows'ta düz renk seçiliyse ekranda
-//      takvim yok sayılır.
-//   8. "Takvimi taşı" ekranı takvimi masaüstündeki çizimle aynı sınırda tutar:
+//      takvim yok sayılır. Onarım: takvimsiz zemin yazıldıktan sonraki
+//      temizlik ekranda duran dosyaları da korur (öbür ekrandaki eski
+//      takvimsiz zemin silinmez); ekran okunamazsa o turda silmez. Düz renge
+//      dönüldükten sonra Windows ekranlarda takvimin yolunu bildirmeyi
+//      sürdürürse yollar not edilir; ekranlar o andaki gibi durdukça takvim yok
+//      sayılır (resim kipi açık bildirilse de düz rengin yerine zemin yazılmaz).
+//   8."Takvimi taşı" ekranı takvimi masaüstündeki çizimle aynı sınırda tutar:
 //      ekran kenarından 12 × ölçek piksel içeride (sürüklerken, yapışırken ve
 //      boyut değişince). Kaydedilen yer yeniden açılınca ve masaüstünde aynı;
 //      kenar yakınındaki yapışma çizgileri (ekranın %6'sı) eskisi gibi.
@@ -136,7 +141,9 @@ using Ifade = System.Linq.Expressions.Expression;
 //      yükleme (bağlanınca, bağlantıyı kesince) kutuları yine doldurur.
 //  32. Ekranlarda yalnız takvimin görüntüsünün yolu görünse de Windows'ta
 //      resim kipi kapalıysa (düz renk) yedek düz renk olarak alınır; Windows
-//      yolu boş verince ya da resim kipi açıkken eskisi gibi.
+//      yolu boş verince ya da resim kipi açıkken eskisi gibi. Onarım: resim
+//      kipi açık bildirilse de ekranlar düz renge dönüldüğü andaki gibiyse
+//      (7'deki not) yedek düz renk alınır; yeni yedekle not silinir.
 //  33. "Masaüstü simgelerini göster" kapalıyken (liste gizli) gizli simgenin
 //      yeri simge sayılmaz; tıklama takvime gider. Windows'un erişilebilirlik
 //      arayüzü gizli listedeki simgeye de isabet veriyor (ölçülür).
@@ -178,7 +185,8 @@ using Ifade = System.Linq.Expressions.Expression;
 // kullanılır; Windows'un duvar kâğıdı ayarı (SPI_GETDESKWALLPAPER) bir kez
 // yalnız okunur, öbür denetimlerde bu program verir. Duvar kâğıdına yazan
 // geri yükleme çağrılmaz; yalnız yedeksiz dalı çağrılır, orada gerçek ekran
-// yalnız okunur. Geçici klasörler sonunda silinir.
+// yalnız okunur. 7. maddenin onarımında zemin temizliği uygulamanın geçici
+// klasöründeki deneme dosyalarıyla yapılır. Geçici klasörler sonunda silinir.
 // Çıkış kodu 0 = hepsi geçti.
 // Kullanım: dotnet run -c Release
 internal static class Program
@@ -1774,6 +1782,154 @@ internal static class Program
         Denetle("geri yükleme eksik kalınca takvimsiz zemin ekrana bakılarak yazılıyor, bu sürecin yazmış olması aranmıyor",
             restore >= 0 && ekrana > restore && zeminYaz > ekrana && Bul(k, x => Cagri(x, tuvalTipi, "get_HasPainted")) < 0,
             $"{restore} / {ekrana} / {zeminYaz}");
+
+        // Onarım: takvimsiz zeminden sonraki temizlik ve düz renk notu. Dosyalar
+        // uygulamanın geçici klasöründe.
+        string kok = Path.GetDirectoryName((string)Tip("Kalender.Core.Paths").GetProperty("BackupFile")!.GetValue(null)!)!;
+        string klasor = Path.Combine(kok, "temizlik sınaması");
+        Directory.CreateDirectory(klasor);
+        TemizlikDenetimleri(tuvalTipi, klasor);
+        DuzRenkNotuDenetimleri(servis, klasor);
+    }
+
+    /// <summary>
+    /// Takvim kaldırılırken yazılan zeminden sonraki temizlik ekranda duran
+    /// dosyaları da koruyor (onarım; verilen klasördeki dosyalarla, sahte duvar
+    /// kâğıdıyla). Önceden yalnız bu sürecin son yazdıkları korunuyordu: açılışta
+    /// bir ekrana takvimsiz zemin yazılınca öbür ekranda duran, önceki oturumun
+    /// takvimsiz zemini siliniyordu.
+    /// </summary>
+    private static void TemizlikDenetimleri(Type tuvalTipi, string klasor)
+    {
+        MethodInfo? sil = tuvalTipi.GetMethod("KullanilmayanlariSil", Hepsi);
+        Denetle("zemin temizliği ekranda duranlara da bakabiliyor", sil is not null);
+        if (sil is null)
+        {
+            return;
+        }
+
+        string Dosya(string ad, bool eski)
+        {
+            string yol = Path.Combine(klasor, ad);
+            File.WriteAllText(yol, "deneme");
+            File.SetLastWriteTimeUtc(yol, eski ? DateTime.UtcNow.AddMinutes(-10) : DateTime.UtcNow);
+            return yol;
+        }
+
+        // A'da önceki oturumun takvimsiz zemini (bu süreç yazmadı), B'de bu sürecin son yazdığı.
+        string ekrandaki = string.Empty, sonYazilan = string.Empty, kullanilmayan = string.Empty, yeni = string.Empty, baska = string.Empty;
+        SahteDuvarKagidi s = Sahte("A", "B");
+        void Kur()
+        {
+            ekrandaki = Dosya("zemin-aaaaaaaa-20261015-090000-000-takvimsiz.bmp", true);
+            sonYazilan = Dosya("zemin-bbbbbbbb-20261015-090500-000-takvimsiz.bmp", true);
+            kullanilmayan = Dosya("zemin-bbbbbbbb-20261015-090000-000.bmp", true);
+            yeni = Dosya("zemin-cccccccc-20261015-101000-000.bmp", false);
+            baska = Dosya("deniz.jpg", true);
+            s.Ekranda["A"] = ekrandaki;
+            s.Ekranda["B"] = sonYazilan;
+        }
+
+        void Sil(SahteDuvarKagidi? t)
+            => sil.Invoke(null, new object?[] { klasor, new[] { sonYazilan }, t, DateTime.UtcNow.AddMinutes(-2) });
+
+        Kur();
+        Sil(s);
+        Denetle("takvim kaldırılırken ekranda duran, bu sürecin yazmadığı eski zemin silinmiyor; kullanılmayan siliniyor",
+            File.Exists(ekrandaki) && File.Exists(sonYazilan) && File.Exists(yeni) && File.Exists(baska) && !File.Exists(kullanilmayan));
+
+        Kur();
+        Sil(null);
+        Denetle("olağan yazımda ekran okunmuyor, eskisi gibi yalnız son yazılanlar korunuyor",
+            !File.Exists(ekrandaki) && File.Exists(sonYazilan) && File.Exists(yeni) && !File.Exists(kullanilmayan));
+
+        Kur();
+        s.OkumadaHata = true;
+        Sil(s);
+        s.OkumadaHata = false;
+        Denetle("ekran okunamazsa o turda hiçbir dosya silinmiyor",
+            File.Exists(ekrandaki) && File.Exists(sonYazilan) && File.Exists(kullanilmayan));
+
+        // Yazımda: duvar kâğıdı arayüzü temizliğe yalnız takvim kaldırılırken veriliyor (derlenmiş koddan).
+        List<Komut> uygula = Komutlar(tuvalTipi.GetMethod("Apply", Hepsi)!);
+        int temizle = Bul(uygula, x => Cagri(x, tuvalTipi, "CleanUnusedFiles"));
+        Denetle("takvim kaldırılırken yazılan zeminden sonra temizlik ekrana bakıyor",
+            temizle > 6 && uygula.GetRange(temizle - 6, 6).Any(x => x.Kod == OpCodes.Ldarg_2)
+            && Bul(uygula, x => Cagri(x, tuvalTipi, "TemizligiPlanla"), temizle) > temizle);
+    }
+
+    /// <summary>
+    /// Düz renge dönüldükten sonra Windows ekranlarda takvimin yolunu
+    /// bildirmeyi sürdürürse yollar not ediliyor; ekranlar o andaki gibi
+    /// durdukça takvim yok sayılıyor (onarım; verilen klasördeki not dosyasıyla,
+    /// sahte duvar kâğıdıyla). Windows'un ne yaptığı ölçülmedi; not olmasaydı
+    /// resim kipini de açık bildiren bir Windows'ta açılışta düz rengin yerine
+    /// takvimsiz zemin yazılırdı.
+    /// </summary>
+    private static void DuzRenkNotuDenetimleri(Type servis, string klasor)
+    {
+        MethodInfo? notEt = servis.GetMethod("DuzRengiNotEt", Hepsi);
+        MethodInfo? suruyor = servis.GetMethod("DuzRenkSuruyor", Hepsi);
+        Denetle("düz renge dönülürken Windows'un bildirdiği yollar not edilebiliyor", notEt is not null && suruyor is not null);
+        if (notEt is null || suruyor is null)
+        {
+            return;
+        }
+
+        string zemin = (string)Tip("Kalender.Core.Paths").GetProperty("CanvasFolder")!.GetValue(null)!;
+        string bizimA = Path.Combine(zemin, "zemin-aaaaaaaa-20261015-101010-123.bmp");
+        string bizimB = Path.Combine(zemin, "zemin-bbbbbbbb-20261015-101010-123.bmp");
+        string yeniB = Path.Combine(zemin, "zemin-bbbbbbbb-20261015-111111-123.bmp");
+        string foto = @"C:\Users\deneme\Pictures\deniz.jpg";
+        string dosya = Path.Combine(klasor, "onceki-duvar-kagidi.duz-renk.txt");
+        File.Delete(dosya);
+
+        SahteDuvarKagidi IkiEkran(string a, string b)
+        {
+            SahteDuvarKagidi t = Sahte("A", "B");
+            t.Ekranda["A"] = a;
+            t.Ekranda["B"] = b;
+            return t;
+        }
+
+        bool Suruyor(SahteDuvarKagidi? t)
+            => (bool)suruyor.Invoke(null, new[] { t is null ? null : Statik(servis, "EkrandakiDosyalar", t), dosya })!;
+
+        notEt.Invoke(null, new object[] { IkiEkran(bizimA, bizimB), dosya });
+        Denetle("düz renge dönüldükten sonra Windows takvimin yolunu bildirirse not ediliyor; ekranlar değişmedikçe düz renk sürüyor sayılıyor",
+            File.Exists(dosya) && Suruyor(IkiEkran(bizimA, bizimB)) && Suruyor(IkiEkran(bizimA, string.Empty)));
+        Denetle("kullanıcı bir ekrana duvar kâğıdı seçince ya da takvim yeniden yazılınca not geçersiz",
+            !Suruyor(IkiEkran(bizimA, foto)) && !Suruyor(IkiEkran(bizimA, yeniB)));
+        Denetle("ekranlar okunamazsa ya da boşsa düz renk sürüyor sayılmıyor",
+            !Suruyor(null) && !Suruyor(IkiEkran(string.Empty, string.Empty)));
+
+        notEt.Invoke(null, new object[] { IkiEkran(string.Empty, string.Empty), dosya });
+        Denetle("Windows düz renkte takvimin yolunu bildirmiyorsa not tutulmuyor, eski not siliniyor",
+            !File.Exists(dosya) && !Suruyor(IkiEkran(bizimA, bizimB)));
+
+        // Derlenmiş koddan: geri yükleme, yedek hazırlama ve yedek alma nota bakıyor.
+        Type arayuz = Tip("Kalender.Interop.IDesktopWallpaper");
+        List<Komut> geri = Komutlar(servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!);
+        int kapat = Bul(geri, x => Cagri(x, arayuz, "Enable"));
+        int notla = Bul(geri, x => Cagri(x, servis, "DuzRengiNotEt"), kapat);
+        Denetle("düz renge dönüşte resim kipi kapatıldıktan sonra Windows'un bildirdikleri not ediliyor",
+            kapat >= 0 && notla > kapat && Cagri(geri[notla - 1], servis, "get_DuzRenkDosyasi"), $"{kapat} / {notla}");
+        int temizle = Bul(geri, x => Cagri(x, servis, "ClearCanvasFiles"));
+        int bak = Bul(geri, x => Cagri(x, servis, "DuzRenkSuruyor"), temizle);
+        int oku = Bul(geri, x => Cagri(x, typeof(File), "ReadAllText"));
+        Denetle("yedek yokken ekranlar düz renge dönüldüğü andaki gibiyse takvim duruyor sayılmıyor (takvimsiz zemin yazılmaz)",
+            temizle >= 0 && bak > temizle && bak < oku, $"{temizle} / {bak} / {oku}");
+
+        List<Komut> hazirla = Komutlar(servis.GetMethod("YedekHazirla", Hepsi)!);
+        int kip = Bul(hazirla, x => Cagri(x, servis, "ResimKipiKapali"));
+        Denetle("yedek hazırlanırken resim kipinin yanında düz renk notuna da bakılıyor",
+            kip >= 0 && Bul(hazirla, x => Cagri(x, servis, "DuzRenkSuruyor"), kip) > kip);
+
+        List<Komut> alma = Komutlar(servis.GetMethod("EnsureBackup", Hepsi)!);
+        int yaz = Bul(alma, x => Cagri(x, servis, "YedegiYaz"));
+        int notDosyasi = Bul(alma, x => Cagri(x, servis, "get_DuzRenkDosyasi"), yaz);
+        Denetle("yeni yedek yazılınca düz renk notu siliniyor",
+            yaz >= 0 && notDosyasi > yaz && Cagri(alma[notDosyasi + 1], typeof(File), "Delete"));
     }
 
     // ------------------------------------------------------------------ 29. madde
@@ -2009,6 +2165,28 @@ internal static class Program
         object? yazilan = YedekOku(yedekDosyasi, Tip("Kalender.Desktop.WallpaperBackup"));
         Denetle("düz renkte yazma yeniden açılınca düz renk yedeği yazılıyor (ikinci geri dönüş düz rengi getirir)",
             yazilan is not null && !(bool)Oku(yazilan, "WallpaperEnabled")!);
+        File.Delete(yedekDosyasi);
+
+        // Onarım: Windows düz renge dönüldükten sonra resim kipini de açık
+        // bildirirse (ölçülmedi) ekranların o andaki gibi durmasına bakılıyor.
+        PropertyInfo? notOzelligi = servis.GetProperty("DuzRenkDosyasi", Hepsi);
+        string notDosyasi = (string?)notOzelligi?.GetValue(null) ?? Path.Combine(Path.GetDirectoryName(yedekDosyasi)!, "yok.txt");
+        Denetle("düz renk notu uygulamanın klasöründe, yedeğin yanında",
+            notOzelligi is not null && Path.GetDirectoryName(notDosyasi) == Path.GetDirectoryName(yedekDosyasi) && notDosyasi != yedekDosyasi);
+        Statik(servis, "DuzRengiNotEt", s, notDosyasi);
+        object? hazir = null;
+        SistemDuvarKagidiyla(ResimAcik, () => hazir = Statik(servis, "YedekHazirla", s));
+        Denetle("resim kipi açık bildirilse de ekranlar düz renge dönüldüğü andaki gibiyse yedek düz renk",
+            hazir is not null && !(bool)Oku(hazir, "WallpaperEnabled")!);
+
+        SistemDuvarKagidiyla(ResimAcik, () => Statik(servis, "EnsureBackup", s));
+        object? notla = YedekOku(yedekDosyasi, Tip("Kalender.Desktop.WallpaperBackup"));
+        Denetle("yazma yeniden açılınca düz renk yedeği yazılıyor, not siliniyor",
+            notla is not null && !(bool)Oku(notla, "WallpaperEnabled")! && !File.Exists(notDosyasi));
+
+        object? notsuz = new object();
+        SistemDuvarKagidiyla(ResimAcik, () => notsuz = Statik(servis, "YedekHazirla", s));
+        Denetle("not yokken aynı ekranlarda resim kipi açıksa eskisi gibi yedek alınmıyor", notsuz is null);
         File.Delete(yedekDosyasi);
     }
 
