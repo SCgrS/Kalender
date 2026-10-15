@@ -18,7 +18,7 @@ namespace Kalender.Calendar.Holidays;
 /// Tarihler Kalender Lite'taki TurkishHolidays tablosuyla aynı: Diyanet
 /// İşleri Başkanlığının yıllık "Dinî Günler Listesi"
 /// (vakithesaplama.diyanet.gov.tr), 2026–2035. Biri değişirse öbürü de
-/// değişmeli.
+/// değişmeli; denemeler/IkinciInceleme iki tabloyu karşılaştırır.
 /// </summary>
 internal static partial class DiniBayramlar
 {
@@ -92,8 +92,9 @@ internal static partial class DiniBayramlar
 
     /// <summary>
     /// Akıştaki dinî bayram adını Türkçeye çevirir: "Kurban Bayrami Day 2" →
-    /// "Kurban Bayramı 2. gün", "Sacrifice Feast Holiday" → "Kurban Bayramı".
-    /// "(kesin değil)" eki korunur. Dinî bayram olmayan ad olduğu gibi kalır.
+    /// "Kurban Bayramı 2. gün", "Sacrifice Feast Holiday" → "Kurban Bayramı
+    /// (idari izin)". "(kesin değil)" eki korunur. Dinî bayram olmayan ad
+    /// olduğu gibi kalır.
     /// </summary>
     public static string AdiDuzelt(string ad)
     {
@@ -220,7 +221,9 @@ internal static partial class DiniBayramlar
     [GeneratedRegex(@"half[\s-]*day|yarim\s+gun", RegexOptions.CultureInvariant)]
     private static partial Regex YarimGun();
 
-    [GeneratedRegex(@"public\s+sector", RegexOptions.CultureInvariant)]
+    // Google bayrama eklenen idari izin günlerini İngilizce adla veriyor:
+    // "Sacrifice Feast Holiday", "Eid al Adha Public Sector Holiday".
+    [GeneratedRegex(@"public\s+sector|\bholiday\b", RegexOptions.CultureInvariant)]
     private static partial Regex KamuIzni();
 
     [GeneratedRegex(@"\b([Bb])ayrami\b", RegexOptions.CultureInvariant)]

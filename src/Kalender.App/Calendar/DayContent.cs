@@ -68,7 +68,7 @@ internal sealed class DayContent
     public IReadOnlyList<DayEntry> Entries { get; init; } = Array.Empty<DayEntry>();
 
     /// <summary>
-    /// Gün kırmızı yazılmalı mı? Yalnızca tam gün resmi tatillerde. Şartname
+    /// Gün kırmızı yazılmalı mı? Yalnızca tam gün resmî tatillerde. Şartname
     /// gereği arifeler (yarım gün) özel renk almaz, adları yalnızca gün
     /// kutusunda görünür; aynı güne tam gün bir tatil de düşerse gün kırmızı.
     /// </summary>

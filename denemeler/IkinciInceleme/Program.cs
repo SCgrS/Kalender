@@ -31,6 +31,8 @@ using Ifade = System.Linq.Expressions.Expression;
 //      (bayrama eklenen idari izin günleri dâhil) atılır; sabit tatiller hiç
 //      atılmaz; akışın kapsamadığı yıllara bayram eklenmez. 1.13'ün ön belleği
 //      yeniden indirilmeden düzelir; yeni dosyanın biçimi aynı, 1.13 okuyabilir.
+//      Tablo Kalender Lite'takiyle aynı (iki dosya karşılaştırılır). Ayarlar
+//      ve README bayramların yalnız listedeki yıllarda gösterildiğini söyler.
 //   2. İmlecin altındaki liste ancak kökü masaüstüyse (Progman ya da WorkerW)
 //      masaüstü sayılır: takvimin üstünde duran başka bir programın listesi
 //      (düz ya da SHELLDLL_DefView içinde) sayılmaz.
@@ -100,7 +102,8 @@ using Ifade = System.Linq.Expressions.Expression;
 //      satırı kimlik değişir değişmez "Yeniden bağlan"a basılmasını söyler.
 //  20. Tablonun dışındaki yıllarda İngilizce ya da yanlış yazılmış bayram
 //      adları Türkçe ("Kurban Bayrami Day 2" → "Kurban Bayramı 2. gün",
-//      "Sacrifice Feast Holiday" → "Kurban Bayramı"); "(kesin değil)" eki kalır.
+//      "Sacrifice Feast Holiday" → "Kurban Bayramı (idari izin)"); "(kesin
+//      değil)" eki kalır.
 //  21. Aynı güne düşen iki tatil de saklanır ve gün kutusunda ayrı satırlarda
 //      görünür (tam gün kırmızı, arife olağan renkte); gün, tam gün bir tatil
 //      varsa kırmızı.
@@ -157,8 +160,9 @@ using Ifade = System.Linq.Expressions.Expression;
 // onayı bu program yerel dinleyiciye (127.0.0.1) gönderir; uygulama kurucusu
 // çalıştırılmadan kurulur (tepsisi, masaüstü katmanı yok, duvar kâğıdına
 // yazılmaz) ve bağlanma yolu bu programın dağıtıcısında çalışır. Yetki dosyası,
-// Google'ın yerel kopyası ve günlük geçici klasöre yazılır. 25 ve 26. maddelerde
-// pencerenin derlenmiş metnine ve README'ye bakılır.
+// Google'ın yerel kopyası ve günlük geçici klasöre yazılır. 1, 25 ve 26.
+// maddelerde pencerenin derlenmiş metnine ve README'ye bakılır; 1. maddede
+// Kalender Lite deposundaki tatil tablosu da yalnız okunur.
 //
 // Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
 // GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
@@ -689,6 +693,55 @@ internal static class Program
         {
             ((IDisposable)servis2).Dispose();
         }
+
+        // Tarih tablosu Kalender Lite'ta da var (TurkishHolidays); biri
+        // düzeltilip öbürü unutulmasın. Lite'ın dosyası yalnız okunur.
+        Type dini = Tip("Kalender.Calendar.Holidays.DiniBayramlar");
+        string liteDosyasi = Path.Combine(Path.GetDirectoryName(DepoKoku())!,
+            "kalender-lite", "src", "Kalender.App", "Calendar", "TurkishHolidays.cs");
+        if (!File.Exists(liteDosyasi))
+        {
+            Denetle("Kalender Lite'ın tatil tablosu karşılaştırılıyor", false, "dosya bulunamadı: " + liteDosyasi);
+        }
+        else
+        {
+            string lite = File.ReadAllText(liteDosyasi);
+
+            List<DateOnly> LiteGunleri(string dizi)
+            {
+                System.Text.RegularExpressions.Match blok = System.Text.RegularExpressions.Regex.Match(lite, dizi + @"\s*=\s*\{(?<g>[^}]*)\}");
+                return System.Text.RegularExpressions.Regex.Matches(blok.Groups["g"].Value, @"new\((\d+),\s*(\d+),\s*(\d+)\)")
+                    .Select(m => new DateOnly(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value)))
+                    .ToList();
+            }
+
+            int LiteUzunlugu(string ad)
+                => int.Parse(System.Text.RegularExpressions.Regex.Match(lite, ad + @"\s*=\s*(\d+)\s*;").Groups[1].Value);
+
+            var ramazan = (DateOnly[])dini.GetField("RamazanIlkGunleri", Hepsi)!.GetValue(null)!;
+            var kurban = (DateOnly[])dini.GetField("KurbanIlkGunleri", Hepsi)!.GetValue(null)!;
+            List<DateOnly> liteRamazan = LiteGunleri("RamazanFirstDays");
+            List<DateOnly> liteKurban = LiteGunleri("KurbanFirstDays");
+            Denetle("Ramazan ve Kurban bayramlarının ilk günleri Kalender Lite'ın tablosuyla aynı",
+                liteRamazan.Count > 0 && liteKurban.Count > 0
+                && ramazan.SequenceEqual(liteRamazan) && kurban.SequenceEqual(liteKurban),
+                $"Kalender {ramazan.Length}+{kurban.Length}, Lite {liteRamazan.Count}+{liteKurban.Count} gün");
+            Denetle("bayramların uzunluğu (Ramazan 3, Kurban 4 gün) Kalender Lite'takiyle aynı",
+                (int)dini.GetField("RamazanUzunlugu", Hepsi)!.GetValue(null)! == LiteUzunlugu("RamazanLength")
+                && (int)dini.GetField("KurbanUzunlugu", Hepsi)!.GetValue(null)! == LiteUzunlugu("KurbanLength"));
+        }
+
+        // Bayramlar yalnız akışın da kapsadığı yıllarda gösteriliyor (yukarıda
+        // 2032 boş): ayarlar ve README "2035'e kadar gösterilir" demiyor.
+        string ayarMetni = AyarPenceresiMetni();
+        string beniOku = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(Path.Combine(DepoKoku(), "README.md")), @"\s+", " ");
+        const string yeniCumle = "Listedeki Ramazan ve Kurban bayramları 2035'e kadar Diyanet'in tarihleriyle gösterilir.";
+        Denetle("ayarlar ve README bayram tarihlerinin listedeki yıllarda Diyanet'e göre olduğunu söylüyor",
+            ayarMetni.Contains(yeniCumle, StringComparison.Ordinal) && beniOku.Contains(yeniCumle, StringComparison.Ordinal)
+            && !ayarMetni.Contains("tarihleri 2035'e kadar", StringComparison.Ordinal)
+            && !beniOku.Contains("tarihleri 2035'e kadar", StringComparison.Ordinal),
+            ayarMetni.Length == 0 ? "pencerenin derlenmiş metni bulunamadı" : "");
     }
 
     // ----------------------------------------------------------------- 20. madde
@@ -709,7 +762,8 @@ internal static class Program
                 (new(2023, 6, 29), "Kurban Bayramı 2. gün"),
                 (new(2023, 6, 30), "Kurban Bayramı 3. gün"),
                 (new(2023, 7, 1), "Kurban Bayramı 4. gün"),
-                (new(2024, 6, 20), "Kurban Bayramı"),
+                // 4. günün ertesindeki idari izin günü bayramın ilk günü gibi okunmuyor.
+                (new(2024, 6, 20), "Kurban Bayramı (idari izin)"),
                 (new(2024, 6, 21), "Kurban Bayramı (idari izin)"),
                 (new(2025, 6, 7), "Kurban Bayramı 2. gün"),
             };
@@ -733,8 +787,8 @@ internal static class Program
                 ("Kurban Bayrami Day 3 (kesin değil)", "Kurban Bayramı 3. gün (kesin değil)"),
                 ("Kurban Bayrami", "Kurban Bayramı"),
                 ("Ramazan Bayrami", "Ramazan Bayramı"),
-                ("Sacrifice Feast Holiday", "Kurban Bayramı"),
-                ("Sacrifice Feast Holiday (kesin değil)", "Kurban Bayramı (kesin değil)"),
+                ("Sacrifice Feast Holiday", "Kurban Bayramı (idari izin)"),
+                ("Sacrifice Feast Holiday (kesin değil)", "Kurban Bayramı (idari izin) (kesin değil)"),
                 ("Eid al Adha Public Sector Holiday", "Kurban Bayramı (idari izin)"),
                 ("Eid al Fitr", "Ramazan Bayramı"),
                 ("Ramadan Feast Day 2", "Ramazan Bayramı 2. gün"),
