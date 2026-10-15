@@ -616,7 +616,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     /// söker. Önceden yalnız ay değişimi böyle çiziliyordu; Google verisi, tatil
     /// güncellemesi, gün dönümü ve ayar değişikliği kanca takılıyken çiziliyordu.
     /// Kanca yuttuğu bir basışın bırakışını bekliyorsa sökülmez (bırakış kabuğa
-    /// gider, sağ tıkta menü açılmazdı): çizim bırakıştan sonraya kalır.
+    /// gider, sağ tıkta menü açılmazdı): çizim bırakıştan sonraya kalır. Bırakış
+    /// on saniyede gelmezse kaçmış sayılır, çizim yapılır (bkz.
+    /// CalendarMouseHook.BirakisBekleniyor).
     /// </summary>
     /// <returns>Şimdi çizilebilirse true.</returns>
     private bool KancayiCizimIcinSok()

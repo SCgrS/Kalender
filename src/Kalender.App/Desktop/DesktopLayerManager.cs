@@ -286,7 +286,18 @@ internal sealed class DesktopLayerManager : IDisposable
         if (configChanged)
         {
             Log.Info("Ekran yapılandırması: " + signature);
-            MonitorsChanged?.Invoke();
+
+            // Çizim bekletildiyse ekran listesi (Monitors) henüz eski; ayarlar
+            // penceresi eski listeyi göstermesin diye bekletilen çizimden sonra
+            // bildirilir (bkz. Refresh).
+            if (CizimBekliyor)
+            {
+                _ekranDegisikligiBekliyor = true;
+            }
+            else
+            {
+                MonitorsChanged?.Invoke();
+            }
         }
     }
 
@@ -298,6 +309,15 @@ internal sealed class DesktopLayerManager : IDisposable
 
     /// <summary>Bekletilen çizimi yeniden deneyen zamanlayıcı; ilk bekletmede kurulur.</summary>
     private DispatcherTimer? _bekleyenCizimTimer;
+
+    /// <summary>Çizim bekletiliyor mu (bkz. <see cref="CizimeBaslarken"/>)?</summary>
+    private bool CizimBekliyor => _bekleyenCizimTimer?.IsEnabled == true;
+
+    /// <summary>Çizim bekletilirken ekran listesi değişti; bekletilen çizimden sonra bildirilir (bkz. <see cref="Rebuild"/>).</summary>
+    private bool _ekranDegisikligiBekliyor;
+
+    /// <summary>Masaüstü bekletilen çizimden sonra yeniden boyatılacak (bkz. <see cref="ZorlaTazele"/>).</summary>
+    private bool _boyamaBekliyor;
 
     /// <summary>
     /// Görüntüleri yeniden üretir ve değişenleri duvar kağıdına yazar.
@@ -341,6 +361,20 @@ internal sealed class DesktopLayerManager : IDisposable
         {
             _refreshing = false;
             CizimBitti?.Invoke();
+        }
+
+        // Çizim bekletilirken ertelenen adımlar: ekran listesinin değiştiği
+        // bildirilir, güvence yazımından sonra masaüstü yeniden boyatılır.
+        if (_ekranDegisikligiBekliyor)
+        {
+            _ekranDegisikligiBekliyor = false;
+            MonitorsChanged?.Invoke();
+        }
+
+        if (_boyamaBekliyor)
+        {
+            _boyamaBekliyor = false;
+            DesktopRefresher.ForceRedraw();
         }
     }
 
@@ -554,7 +588,17 @@ internal sealed class DesktopLayerManager : IDisposable
         Log.Info("Görüntü güvence için yeniden yazılıyor.");
         _canvas.Forget();
         Refresh();
-        DesktopRefresher.ForceRedraw();
+
+        // Çizim bekletildiyse görüntü henüz yazılmadı; masaüstü yazımdan sonra
+        // yeniden boyatılır (bkz. Refresh).
+        if (CizimBekliyor)
+        {
+            _boyamaBekliyor = true;
+        }
+        else
+        {
+            DesktopRefresher.ForceRedraw();
+        }
     }
 
     /// <summary>

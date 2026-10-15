@@ -43,6 +43,16 @@ internal sealed class CalendarMouseHook : IDisposable
     /// </summary>
     private const long KararSiniri = 250;
 
+    /// <summary>
+    /// Bırakışın en çok ne kadar bekleneceği (ms). Tuş basılıyken güvenli
+    /// masaüstü (kullanıcı hesabı denetimi, kilit ekranı) açılırsa kanca
+    /// bırakışı hiç görmez. Bırakış hep bekleniyor sanılsaydı duvar kâğıdı
+    /// çizimi ve bu aya dönüş ertelenip durur, kanca takvimin dışında da takılı
+    /// kalırdı. Bu kadar uzun basılı tutulan tuş tıklama sayılmaz: süre dolunca
+    /// bırakış kaçmış sayılır (bkz. <see cref="BirakisBekleniyor"/>).
+    /// </summary>
+    private const long BirakisBeklemeSiniri = 10_000;
+
     private readonly Dispatcher _dispatcher;
     private readonly Func<Point, bool> _isOverCalendar;
     private readonly Func<Point, NavButton> _navAt;
@@ -59,6 +69,9 @@ internal sealed class CalendarMouseHook : IDisposable
 
     /// <summary>Son sağ basışın noktası; basış yutulduysa menü bu noktada (bu günde) açılır.</summary>
     private Point _rightDownPoint;
+
+    /// <summary>Bırakışı beklenen son basışın anı (<see cref="Environment.TickCount64"/>).</summary>
+    private long _yutulanBasisAni;
 
     /// <summary>Kancanın son çağrıldığı an (<see cref="Environment.TickCount64"/>).</summary>
     private long _lastCallAt;
@@ -101,9 +114,11 @@ internal sealed class CalendarMouseHook : IDisposable
     /// <summary>
     /// Kanca yuttuğu bir basışın bırakışını mı bekliyor? Bu sürede imleç
     /// takvimden çıksa da sökülmemeli: bırakış kabuğa giderse kabuk basışını
-    /// görmediği bir bırakış alır, sağ tıkta menü de hiç açılmaz.
+    /// görmediği bir bırakış alır, sağ tıkta menü de hiç açılmaz. Bırakış on
+    /// saniyedir gelmediyse kaçmış sayılır (<see cref="BirakisBeklemeSiniri"/>).
     /// </summary>
-    public bool BirakisBekleniyor => _hook != IntPtr.Zero && (_swallowingUp || _swallowingLeftUp);
+    public bool BirakisBekleniyor => _hook != IntPtr.Zero && (_swallowingUp || _swallowingLeftUp)
+        && Environment.TickCount64 - _yutulanBasisAni < BirakisBeklemeSiniri;
 
     /// <summary>Kancayı takar. Zaten takılıysa hiçbir şey yapmaz.</summary>
     public void Arm()
@@ -222,6 +237,7 @@ internal sealed class CalendarMouseHook : IDisposable
 
             _swallowingUp = takvimde;
             _rightDownPoint = point;
+            _yutulanBasisAni = Environment.TickCount64;
             return _swallowingUp ? new IntPtr(1) : NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
         }
 
@@ -256,6 +272,8 @@ internal sealed class CalendarMouseHook : IDisposable
             {
                 return NativeMethods.CallNextHookEx(_hook, nCode, wParam, lParam);
             }
+
+            _yutulanBasisAni = Environment.TickCount64;
 
             // Yeni ayın çizimi kancanın içinde yapılamaz; arayüz iş parçacığına bırakılır.
             _dispatcher.BeginInvoke(() => NavClicked?.Invoke(dugme));

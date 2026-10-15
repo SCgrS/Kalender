@@ -40,7 +40,12 @@ using Ifade = System.Linq.Expressions.Expression;
 //      veri değişince (Google, tatil) ve gün dönünce de. Çizim sürerken araya
 //      giren yoklama kancayı takmaz. Kanca yuttuğu sağ basışın bırakışını
 //      bekliyorsa çizim bırakıştan sonraya kalır (bırakış kabuğa gitmez, menü
-//      açılır); bu aya dönüş süresi de o sırada dolarsa ay değişmez.
+//      açılır); bu aya dönüş süresi de o sırada dolarsa ay değişmez. Onarım:
+//      on saniyedir gelmeyen bırakış kaçmış sayılır (tuş basılıyken güvenli
+//      masaüstü açılırsa kanca bırakışı görmez): çizim, bu aya dönüş ve kancanın
+//      sökülmesi sonsuza dek ertelenmez. Çizim bekletildiyse ekran değişikliği
+//      bildirimi ve güvence yazımından sonraki yeniden boyama, bekletilen
+//      çizimden sonra yapılır.
 //   4. Tepsi menüsü açıkken takvime sağ tık ya da ok tıklaması, takvimin menüsü
 //      açıkkenki gibi: açık menü kapatılır; kapanınca takvimin menüsü tıklanan
 //      noktada açılır ya da ay değişir. Menü açıkken fare kancası takılı kalır.
@@ -281,6 +286,8 @@ internal static class Program
             Bolum(Madde16);
             Bolum(Madde2);
             Bolum(Madde3);
+            Bolum(Madde3KacanBirakis);
+            Bolum(Madde3BekletilenAdimlar);
             Bolum(Madde4);
             Bolum(Madde30);
             Bolum(Madde33);
@@ -2413,6 +2420,121 @@ internal static class Program
         }
 
         Denetle("bu aya dönüş sayacı açılışta bırakışı bekleyen yola bağlanıyor", sayacYeni && !sayacEski);
+    }
+
+    // ------------------------------------------------------------ 3. madde, onarım
+
+    private static void Madde3KacanBirakis()
+    {
+        Console.WriteLine("3) Onarım: on saniyedir gelmeyen bırakış kaçmış sayılıyor; çizim, bu aya dönüş ve kancanın sökülmesi ertelenmiyor (kanca takılmaz)");
+        const uint RDown = 0x0204;
+        Type katmanTipi = Tip("Kalender.Desktop.DesktopLayerManager");
+        object veri = Tip("Kalender.Calendar.CalendarDataSnapshot").GetProperty("Empty")!.GetValue(null)!;
+        object kanca = Kanca();
+        object katman = Katman();
+        var cizimde = new List<bool>();
+        katmanTipi.GetEvent("CizimBitti")!.AddEventHandler(katman, new Action(() => cizimde.Add(Takili(kanca))));
+        object host = Uygulama(kanca, katman);
+
+        // Sağ tuş takvimde basıldı, bırakışı kancaya hiç ulaşmadı (ör. tuş basılıyken
+        // kullanıcı hesabı denetimi açıldı). Süre, basışın anı geriye alınarak geçirilir.
+        bool basis = Gonder(kanca, RDown, 100);
+        AlanAta(kanca, "_yutulanBasisAni", Environment.TickCount64 - 9_000);
+        bool dokuzda = Bekliyor(kanca);
+        AlanAta(kanca, "_yutulanBasisAni", Environment.TickCount64 - 11_000);
+        Denetle("bırakış dokuz saniye sonra hâlâ bekleniyor, on saniyeden sonra kaçmış sayılıyor",
+            basis && dokuzda && !Bekliyor(kanca));
+
+        Cagir(katman, "SetData", veri, true);
+        bool bekletilmedi = (AlanOku(katman, "_bekleyenCizimTimer") as DispatcherTimer)?.IsEnabled != true;
+        Denetle("bırakışı kaçan basıştan sonra gelen veri bekletilmeden, kanca sökülüyken çiziliyor; yarım basış unutuluyor",
+            cizimde.SequenceEqual(new[] { false }) && bekletilmedi && !(bool)AlanOku(kanca, "_swallowingUp")
+            && (int)AlanOku(host, "_cizimSuruyor") == 0, string.Join(",", cizimde));
+
+        var ay = new DateOnly(2030, 3, 1);
+        var buAy = new DateOnly(DateTime.Now.Year, DateTime.Now.Month, 1);
+        var sayac = new DispatcherTimer { Interval = TimeSpan.FromHours(1) };
+        sayac.Start();
+        AlanAta(host, "_viewResetTimer", sayac);
+        AlanAta(host, "_viewMonth", ay);
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        Gonder(kanca, RDown, 100);
+        AlanAta(kanca, "_yutulanBasisAni", Environment.TickCount64 - 11_000);
+        Cagir(host, "AyaDonusSuresiDoldu");
+        sayac.Stop();
+        Denetle("bırakışı kaçan basışta bu aya dönüş ertelenmiyor", (DateOnly)AlanOku(host, "_viewMonth") == buAy);
+
+        // İmleç takvimin dışında: kanca bırakışı bekler, bırakış kaçtıysa takılı kalmaz.
+        AlanAta(kanca, "_hook", new IntPtr(1));
+        AlanAta(host, "_hoverInside", false);
+        Gonder(kanca, RDown, 100);
+        Cagir(host, "UpdateMouseHook");
+        bool tutuldu = Takili(kanca);
+        AlanAta(kanca, "_yutulanBasisAni", Environment.TickCount64 - 11_000);
+        Cagir(host, "UpdateMouseHook");
+        Denetle("imleç takvimin dışındayken kanca bırakışı bekliyor, bırakış kaçtıysa takılı kalmıyor",
+            tutuldu && !Takili(kanca));
+    }
+
+    private static void Madde3BekletilenAdimlar()
+    {
+        Console.WriteLine("3) Onarım: çizim bekletildiyse ekran değişikliği bildirimi ve yeniden boyama bekletilen çizimden sonra (ekranlar yalnız okunur, duvar kâğıdına yazılmaz)");
+        Type katmanTipi = Tip("Kalender.Desktop.DesktopLayerManager");
+        object katman = Katman();
+        AlanAta(katman, "_rebuildTimer", new DispatcherTimer());
+        AlanAta(katman, "_canvas", Activator.CreateInstance(Tip("Kalender.Desktop.WallpaperCanvas"), nonPublic: true)!);
+        AlanAta(katman, "_screens", Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Desktop.EkrandakiTakvim")))!);
+        int EkranSayisi() => ((IEnumerable)AlanOku(katman, "_monitors")).Cast<object>().Count();
+
+        // Ekran o an kapalıysa Windows kimliğini vermiyor, katman çizimi kimlik
+        // gelene dek erteliyor; sınama buna takılmasın diye her ekrana bilinen
+        // bir kimlik verilir (yalnız kimliği okunamayan ekranda kullanılır).
+        var bilinen = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (object m in (IEnumerable)Statik(Tip("Kalender.Interop.MonitorEnumerator"), "All")!)
+        {
+            bilinen[(string)Oku(m, "DeviceName")!] = "sinama-" + Oku(m, "DeviceName");
+        }
+
+        AlanAta(katman, "_bilinenKimlikler", bilinen);
+
+        // Ekran listesi boşaltılmadan çizime izin verilmez: gerçek ekranlara
+        // çizilmez, duvar kâğıdına yazılmaz (Rebuild ekranları yalnız okur).
+        bool izin = false;
+        Yaz(katman, "CizimeBaslarken", new Func<bool>(() => izin && EkranSayisi() == 0));
+        var olaylar = new List<string>();
+        katmanTipi.GetEvent("CizimBitti")!.AddEventHandler(katman, new Action(() => olaylar.Add("çizim")));
+        katmanTipi.GetEvent("MonitorsChanged")!.AddEventHandler(katman, new Action(() => olaylar.Add("ekranlar")));
+
+        // Ekranlar değişti (ilk okuma), o sırada çizim bekletiliyor (sağ tuş basılı).
+        Cagir(katman, "Rebuild", false);
+        int ekran = EkranSayisi();
+        bool bekletildi = (AlanOku(katman, "_bekleyenCizimTimer") as DispatcherTimer)?.IsEnabled == true;
+        Denetle("çizim bekletildiyse ekran değişikliği hemen bildirilmiyor (ekran listesi henüz eski)",
+            ekran > 0 && bekletildi && olaylar.Count == 0,
+            $"ekran {ekran} ({string.Join(", ", bilinen.Keys)}), olaylar: {string.Join(",", olaylar)}");
+
+        AlanAta(katman, "_monitors", Array.CreateInstance(Tip("Kalender.Interop.MonitorTarget"), 0));
+        izin = true;
+        Bekle(300);
+        Denetle("bekletilen çizim yapılınca ekran değişikliği bir kez, çizimden sonra bildiriliyor",
+            olaylar.SequenceEqual(new[] { "çizim", "ekranlar" }), string.Join(",", olaylar));
+
+        // Güvence yazımı (ZorlaTazele) gerçek masaüstünü boyattığı için çalıştırılmaz;
+        // derlenmiş koddan okunur.
+        Type boyayici = Tip("Kalender.Desktop.DesktopRefresher");
+        List<Komut> z = Komutlar(katmanTipi.GetMethod("ZorlaTazele", Hepsi)!);
+        int zCiz = Bul(z, x => Cagri(x, katmanTipi, "Refresh"));
+        int zSor = Bul(z, x => Cagri(x, katmanTipi, "get_CizimBekliyor"), zCiz);
+        int zBoya = Bul(z, x => Cagri(x, boyayici, "ForceRedraw"), zCiz);
+        Denetle("güvence yazımında çizim bekletildiyse masaüstü hemen boyatılmıyor (önce bekletmeye bakılıyor)",
+            zCiz >= 0 && zSor > zCiz && zBoya > zSor);
+
+        MethodInfo yenile = katmanTipi.GetMethod("Refresh", Hepsi)!;
+        List<Komut> r = Komutlar(yenile);
+        int rCiz = Bul(r, x => Cagri(x, katmanTipi, "RefreshOnce"));
+        int rBoya = Bul(r, x => Cagri(x, boyayici, "ForceRedraw"), rCiz);
+        Denetle("bekletilen boyama, bekletilen çizim yazıldıktan sonra yapılıyor",
+            rCiz >= 0 && rBoya > rCiz && Finally(yenile, r[rBoya].Yer) is null);
     }
 
     // ------------------------------------------------------------------- 4. madde
