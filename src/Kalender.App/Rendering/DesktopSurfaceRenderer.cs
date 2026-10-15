@@ -187,6 +187,12 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     }
 
     /// <summary>
+    /// Takvimin ekran kenarından en az ne kadar içeride durduğu (piksel); "Takvimi
+    /// taşı" ekranında kenara yapışma da bu çizgiye.
+    /// </summary>
+    public static float KenarPayi(float scale) => EdgeMargin * scale;
+
+    /// <summary>
     /// Takvim bloğunun sol üst köşesini ekranın içine, kenarlardan
     /// <see cref="EdgeMargin"/> × ölçek içeride kalacak biçimde sıkıştırır.
     /// Masaüstündeki çizim ve "Takvimi taşı" ekranı aynı sınırı kullanır; önceden
@@ -195,7 +201,7 @@ internal sealed class DesktopSurfaceRenderer : IDisposable
     /// </summary>
     public static PointF KenarPayiIcinde(PointF nokta, SizeF blok, Size ekran, float scale)
     {
-        float margin = EdgeMargin * scale;
+        float margin = KenarPayi(scale);
 
         float maxX = Math.Max(margin, ekran.Width - blok.Width - margin);
         float maxY = Math.Max(margin, ekran.Height - blok.Height - margin);

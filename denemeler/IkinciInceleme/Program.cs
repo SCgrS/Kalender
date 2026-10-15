@@ -64,6 +64,9 @@ using Ifade = System.Linq.Expressions.Expression;
 //      ekran kenarından 12 × ölçek piksel içeride (sürüklerken, yapışırken ve
 //      boyut değişince). Kaydedilen yer yeniden açılınca ve masaüstünde aynı;
 //      kenar yakınındaki yapışma çizgileri (ekranın %6'sı) eskisi gibi.
+//      Onarım: kenara yaklaşan ya da kenarı aşan takvim pay çizgisine yapışır
+//      (%6'lık çizgiler önce gelir). Taşıma ekranında takvimin resmi ve
+//      karartma masaüstündeki pikselde (önceden çerçeve yüzünden 2 px kayıktı).
 //   9. "Takvimi taşı" ekranında fotoğraf zemininde takvimin arkasındaki
 //      karartma çizilir: masaüstündekiyle aynı boyut ve renk, takvimi ortalar,
 //      takvimle birlikte taşınır, boyutla büyür. Düz renk zeminde ve %0'da yok.
@@ -158,7 +161,8 @@ using Ifade = System.Linq.Expressions.Expression;
 // maddelerde fare kancası takılmaz, gerçek fareye dokunulmaz, menü açılmaz
 // (KodIncelemesi'ndeki gibi); katmanın ekranı yok, duvar kâğıdına yazılmaz.
 // 8 ve 9. maddelerde "Takvimi taşı" penceresi kurulur ama gösterilmez (ekrana
-// çıkmaz), ekranı hayalidir; 9'un fotoğrafı geçici klasörde üretilip silinir.
+// çıkmaz), ekranı hayalidir; 9'un ve 8'in onarımının fotoğrafı geçici klasörde
+// üretilip silinir.
 // 13–16. maddelerde ayarlar penceresi kurucusu çalıştırılmadan kurulur
 // (KodIncelemesi'ndeki gibi): ekranda açılmaz, adlı denetimleri boş kurulur,
 // uygulamaya açılan kapısı sahtedir (duvar kâğıdına yazılmaz, ayar
@@ -277,6 +281,7 @@ internal static class Program
             Bolum(Madde32);
             Bolum(Madde8);
             Bolum(Madde9);
+            Bolum(Madde8Onarim);
             Bolum(Madde10);
             Bolum(Madde11);
             Bolum(Madde12);
@@ -3642,6 +3647,119 @@ internal static class Program
                 System.Windows.Window p = TasimaPenceresi(ekran, ayarlar, yer);
                 Denetle($"{ad}: pencerede karartma yok", ((System.Windows.Controls.Image)p.FindName("BackdropImage")).Source is null);
                 TasimaPenceresiniBirak(p);
+            }
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(klasor, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Silinemezse geçici klasörde kalır.
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ 8. madde, onarım
+
+    private static void Madde8Onarim()
+    {
+        Console.WriteLine("8) Onarım: kenara yaklaşan takvim pay çizgisine yapışıyor; taşıma ekranında takvim ve karartma masaüstündeki pikselde");
+
+        // Yapıştırıcı (2560 × 1440, ölçek 1,5: pay 18 px). Sağ pay çizgisi 1842, alt 718.
+        MethodInfo yapistir = Tip("Kalender.Settings.PlacementSnapper").GetMethod("Snap", Hepsi)!;
+        (DPointF Nokta, int Kenar) Yapistir(float x, float y)
+        {
+            object?[] a = { new DPointF(x, y), new DSizeF(700, 704), new DSize(2560, 1440), 1.5f, null };
+            var nokta = (DPointF)yapistir.Invoke(null, a)!;
+            return (nokta, Convert.ToInt32(a[4]));
+        }
+
+        const int Sol = 1, Sag = 4, Ust = 8, Alt = 32;
+        (DPointF solUst, int solUstKenar) = Yapistir(18 + 20, 18 + 20);
+        (DPointF sagAlt, int sagAltKenar) = Yapistir(1842 - 20, 718 - 20);
+        Denetle("pay çizgisinin 20 px içinde bırakılan takvim çizgiye yapışıyor (sol üst ve sağ alt), yapışma vurgusu yanıyor",
+            Yakin(solUst, new DPointF(18, 18)) && solUstKenar == (Sol | Ust)
+            && Yakin(sagAlt, new DPointF(1842, 718)) && sagAltKenar == (Sag | Alt),
+            $"sol üst {solUst} ({solUstKenar}), sağ alt {sagAlt} ({sagAltKenar})");
+
+        (DPointF disari, int disariKenar) = Yapistir(-300, 99999);
+        Denetle("kenarı aşan takvim de pay çizgisinde, yapışma vurgusuyla",
+            Yakin(disari, new DPointF(18, 718)) && disariKenar == (Sol | Alt), $"{disari} ({disariKenar})");
+
+        (DPointF uzak, int uzakKenar) = Yapistir(18 + 35, 18 + 35);
+        Denetle("pay çizgisinden 35 px içerideki takvim yerinde kalıyor",
+            Yakin(uzak, new DPointF(53, 53)) && uzakKenar == 0, $"{uzak} ({uzakKenar})");
+
+        // Taşıma ekranında takvimin resmi ve karartma, kaydedilince masaüstünde
+        // çizilen yerde (çerçevenin kalınlığı resmi kaydırmıyor).
+        string klasor = Path.Combine(Path.GetTempPath(), "Kalender ikinci inceleme pay " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(klasor);
+        try
+        {
+            string foto = Path.Combine(klasor, "duz-gri.png");
+            using (var resim = new DBitmap(640, 360, System.Drawing.Imaging.PixelFormat.Format24bppRgb))
+            {
+                using (DGraphics c = DGraphics.FromImage(resim))
+                {
+                    c.Clear(DColor.FromArgb(0xB4, 0xB4, 0xB4));
+                }
+
+                resim.Save(foto, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+            object gorunum = Oku(ayarlar, "Appearance")!;
+            Yaz(gorunum, "BackgroundMode", Secenek("BackgroundMode", "Photo"));
+            Yaz(gorunum, "PhotoPath", foto);
+            Yaz(gorunum, "BackdropDim", 60);
+
+            foreach ((int g, int y, int yuzde) in new[] { (2560, 1440, 100), (3840, 2160, 150) })
+            {
+                System.Windows.Window pencere = TasimaPenceresi(TasimaEkrani(g, y), ayarlar, TasimaYeri(0.5, 0.5, yuzde));
+                var cerceve = (System.Windows.Controls.Border)pencere.FindName("CalendarHost");
+                var karartmaGoruntusu = (System.Windows.Controls.Image)pencere.FindName("BackdropImage");
+                float olcek = (float)Oku(pencere, "TotalScale")!;
+
+                var kalanlar = new List<string>();
+                foreach ((DPointF hedef, bool yapistirarak) in new[]
+                {
+                    (new DPointF(-5000, -5000), true), (new DPointF(g * 0.37f, y * 0.41f), false), (new DPointF(50000, 50000), false),
+                })
+                {
+                    Cagir(pencere, "MoveTo", hedef, yapistirarak);
+                    var resimYeri = new DPointF(
+                        (float)(System.Windows.Controls.Canvas.GetLeft(cerceve) + cerceve.BorderThickness.Left),
+                        (float)(System.Windows.Controls.Canvas.GetTop(cerceve) + cerceve.BorderThickness.Top));
+                    var karartmaYeri = new DPointF(
+                        (float)System.Windows.Controls.Canvas.GetLeft(karartmaGoruntusu),
+                        (float)System.Windows.Controls.Canvas.GetTop(karartmaGoruntusu));
+
+                    object sonuc = TasimayiKaydet(pencere);
+                    (DBitmap masaustuResmi, DRectangleF masaustu) = MasaustuCizimi(ayarlar, sonuc, g, y);
+                    masaustuResmi.Dispose();
+
+                    // Masaüstündeki karartma karesi: takvim bloğu + çizicinin verdiği kayma.
+                    object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!;
+                    object?[] a = { olcek, ayarlar, sonuc, null };
+                    using (var karartmaResmi = (DBitmap?)cizici.GetType().GetMethod("KarartmaYuzeyi")!.Invoke(cizici, a))
+                    {
+                        ((IDisposable)cizici).Dispose();
+                        var kayma = (DPointF)a[3]!;
+                        var masaustuKarartmasi = new DPointF(masaustu.X + kayma.X, masaustu.Y + kayma.Y);
+                        if (karartmaResmi is null || karartmaGoruntusu.Source is null
+                            || !Yakin(resimYeri, masaustu.Location) || !Yakin(karartmaYeri, masaustuKarartmasi))
+                        {
+                            kalanlar.Add($"resim {resimYeri}, masaüstünde {masaustu.Location}; karartma {karartmaYeri}, masaüstünde {masaustuKarartmasi}");
+                        }
+                    }
+                }
+
+                Denetle($"{g}×{y} %{yuzde}: taşıma ekranında takvimin resmi ve karartması masaüstündeki yerde (kenarlarda ve ortada)",
+                    kalanlar.Count == 0, string.Join("; ", kalanlar));
+                TasimaPenceresiniBirak(pencere);
             }
         }
         finally

@@ -309,13 +309,16 @@ public partial class PlacementOverlayWindow : Window
 
         _origin = point;
 
-        Canvas.SetLeft(CalendarHost, point.X);
-        Canvas.SetTop(CalendarHost, point.Y);
+        // Takvimin resmi çerçevenin (yapışma vurgusu) içinde duruyor; çerçeve
+        // kalınlığı kadar geriye konuyor ki resim masaüstündeki çizimle aynı
+        // pikselde dursun. Önceden resim kaydedilen yerden 2 piksel sağda ve
+        // aşağıda görünüyordu.
+        Canvas.SetLeft(CalendarHost, point.X - CalendarHost.BorderThickness.Left);
+        Canvas.SetTop(CalendarHost, point.Y - CalendarHost.BorderThickness.Top);
 
-        // Takvimin resmi çerçevenin (yapışma vurgusu) içinde duruyor; karartma
-        // masaüstündeki gibi resmin ortasına gelsin.
-        Canvas.SetLeft(BackdropImage, point.X + CalendarHost.BorderThickness.Left + _karartmaKaymasi.X);
-        Canvas.SetTop(BackdropImage, point.Y + CalendarHost.BorderThickness.Top + _karartmaKaymasi.Y);
+        // Karartma masaüstündeki gibi takvimin ortasına gelsin.
+        Canvas.SetLeft(BackdropImage, point.X + _karartmaKaymasi.X);
+        Canvas.SetTop(BackdropImage, point.Y + _karartmaKaymasi.Y);
 
         UpdateGuides(edge);
     }

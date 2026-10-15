@@ -37,13 +37,19 @@ internal static class PlacementSnapper
         float marginX = (float)(monitor.Width * EdgeMarginRatio);
         float marginY = (float)(monitor.Height * EdgeMarginRatio);
 
+        // Ekranın kenarına en yakın yer: masaüstündeki çizimin takvimi tuttuğu
+        // pay çizgisi. Kenara yaklaşan ya da kenarı aşan takvim bu çizgiye yapışır.
+        float pay = DesktopSurfaceRenderer.KenarPayi(scale);
+
         float x = proposed.X;
         float y = proposed.Y;
 
-        // Yatay hizalar: sol pay, orta, sağ pay.
+        // Yatay hizalar: sol pay, orta, sağ pay; sonra ekran kenarları.
         float left = marginX;
         float center = (monitor.Width - block.Width) / 2f;
         float right = monitor.Width - block.Width - marginX;
+        float solKenar = pay;
+        float sagKenar = monitor.Width - block.Width - pay;
 
         if (Near(x, left))
         {
@@ -60,11 +66,23 @@ internal static class PlacementSnapper
             x = right;
             edge |= SnapEdge.Right;
         }
+        else if (x <= solKenar + Threshold)
+        {
+            x = solKenar;
+            edge |= SnapEdge.Left;
+        }
+        else if (x >= sagKenar - Threshold)
+        {
+            x = sagKenar;
+            edge |= SnapEdge.Right;
+        }
 
-        // Dikey hizalar: üst pay, orta, alt pay.
+        // Dikey hizalar: üst pay, orta, alt pay; sonra ekran kenarları.
         float top = marginY;
         float middle = (monitor.Height - block.Height) / 2f;
         float bottom = monitor.Height - block.Height - marginY;
+        float ustKenar = pay;
+        float altKenar = monitor.Height - block.Height - pay;
 
         if (Near(y, top))
         {
@@ -81,9 +99,19 @@ internal static class PlacementSnapper
             y = bottom;
             edge |= SnapEdge.Bottom;
         }
+        else if (y <= ustKenar + Threshold)
+        {
+            y = ustKenar;
+            edge |= SnapEdge.Top;
+        }
+        else if (y >= altKenar - Threshold)
+        {
+            y = altKenar;
+            edge |= SnapEdge.Bottom;
+        }
 
         // Her hâlükârda ekran içinde, masaüstündeki çizimle aynı kenar payıyla
-        // kalsın; kenara dayanan takvim bu pay çizgisinde durur.
+        // kalsın (takvim ekrandan büyükse de).
         return DesktopSurfaceRenderer.KenarPayiIcinde(new PointF(x, y), block, monitor, scale);
     }
 
