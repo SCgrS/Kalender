@@ -80,9 +80,11 @@ internal sealed class GoogleAuthenticator : IDisposable
     /// Bağlıyken ayarlardaki istemci kimliği değiştirildi mi? Kayıtlı izin eski
     /// kimliğe ait: bellekteki erişim anahtarının süresi dolunca (en çok bir saat)
     /// bağlantı kesilir. Ayarlar penceresi bunu görüp yeniden bağlanmayı söyler.
+    /// Kimlik boşaltıldıysa yanlış: o zaman bağlantı kesilmiyor, yalnız Google'a
+    /// sorulamıyor (ayarlar penceresi bunu ayrıca söyler).
     /// </summary>
     public bool IstemciKimligiDegisti
-        => IsConnected && _token?.ClientId is string kayitli && kayitli != _config.ClientId;
+        => IsConnected && _config.IsReady && _token?.ClientId is string kayitli && kayitli != _config.ClientId;
 
     /// <summary>
     /// Bağlantı her kesildiğinde ya da yeniden kurulduğunda artar. Eşitleme

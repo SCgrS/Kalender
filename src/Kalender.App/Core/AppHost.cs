@@ -96,8 +96,8 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     private bool _applying;
 
     /// <summary>
-    /// "Yeniden bağlan"dan önce bağlı olan hesabın e-postası; yeni hesabın
-    /// e-postası gelip karşılaştırılınca boşalır.
+    /// "Yeniden bağlan"dan önce bağlı olan (ya da izni kendiliğinden düşen)
+    /// hesabın e-postası; yeni hesabın e-postası gelip karşılaştırılınca boşalır.
     /// </summary>
     private string? _oncekiHesap;
 
@@ -160,7 +160,11 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
         if (result.Success)
         {
-            _oncekiHesap = oncekiHesap;
+            // Bağlı hesabın e-postası yoksa (önceki "Yeniden bağlan"ın ilk
+            // eşitlemesi tutmadı ya da izin düşmüştü) bilinen önceki hesap
+            // korunur. Önceden boşla eziliyordu: ikinci denemede başka hesaba
+            // geçilse de seçim önceki hesabın takvimlerinden oluşuyordu.
+            _oncekiHesap = oncekiHesap ?? _oncekiHesap;
             progress?.Invoke("Bağlandı; takvimler ve görevler alınıyor…");
             await RefreshGoogleAsync(force: true).ConfigureAwait(true);
         }
@@ -786,6 +790,16 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         Application.Current?.Dispatcher.BeginInvoke(() =>
         {
+            // İzin kendiliğinden düştüyse (ya da istemci kimliği değiştiyse)
+            // son hesabın e-postası silinmeden saklanır: sonra "Google'a bağlan"
+            // ile başka bir hesaba bağlanılırsa seçim yine sıfırlanır (bkz.
+            // HesapDegistiyseSecimiSifirla). "Bağlantıyı kes" e-postayı ve
+            // seçimi bu haberden önce siliyor; orada saklanacak bir şey yok.
+            if (_googleAuth?.IsConnected != true)
+            {
+                _oncekiHesap ??= _settings.Current.Google.AccountEmail;
+            }
+
             _settings.Update(s => s.Google.AccountEmail = _googleAuth?.AccountEmail);
 
             int kusak = _googleAuth?.BaglantiKusagi ?? 0;
@@ -819,8 +833,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     }
 
     /// <summary>
-    /// "Yeniden bağlan"dan sonra yeni hesabın e-postası ilk eşitlemeyle gelince
-    /// öncekiyle karşılaştırılır. Başka bir hesapsa takvim ve görev listesi
+    /// "Yeniden bağlan"dan (ya da izin düştükten sonra "Google'a bağlan"dan)
+    /// sonra yeni hesabın e-postası ilk eşitlemeyle gelince öncekiyle
+    /// karşılaştırılır. Başka bir hesapsa takvim ve görev listesi
     /// seçimi önceki hesabın kimliklerinden oluşuyor; yeni hesabın takvimleri
     /// onda olmadığı için hiçbir etkinlik görünmüyordu. Seçim "hepsi"ne döner ve
     /// yeniden eşitlenir. Aynı hesapsa seçim korunur.

@@ -110,16 +110,24 @@ using Ifade = System.Linq.Expressions.Expression;
 //      takvimin ve listenin kayıtları bellekten gelen ayda (çevrim dışıyken de)
 //      çizilmez. Eşitleme sürerken seçim değişirse o ayın sıradaki eşitlemesi
 //      tam. Ayarlar penceresi anahtar değişince önce bunu, sonra zorlanmış
-//      yenilemeyi ister.
+//      yenilemeyi ister. Onarım: seçim değişince yerel kopya da yeniden yazılır;
+//      çevrim dışıyken açılan takvim, uygulama yeniden açılınca açılıştaki
+//      eşitlemeyle gelir.
 //  18. "Yeniden bağlan"da yeni yetki kaydına önceki hesabın e-postası yazılmaz.
 //      Bağlantı yeniden kurulunca ay belleği ve yerel kopya silinir. Yeni
 //      hesabın e-postası öncekinden farklıysa takvim ve görev listesi seçimi
 //      "hepsi"ne döner ve yeniden eşitlenir; aynı hesapsa seçim korunur.
 //      Ayarlar penceresindeki anahtarlar, satırlar aynı kalsa da seçime eşitlenir.
+//      Onarım: ilk eşitlemesi tutmayan "Yeniden bağlan"dan sonraki ikinci
+//      denemede de önceki hesap bilinir; izin kendiliğinden düştükten sonra
+//      "Google'a bağlan" ile başka hesaba geçilince de seçim sıfırlanır (aynı
+//      hesapsa korunur). "Bağlantıyı kes"te önceki hesap saklanmaz.
 //  19. Bağlıyken istemci kimliği değiştirilip yeniden bağlanılmazsa erişim
 //      anahtarı yenilenirken bağlantı kesilir, ama izni düşen bağlantıdaki gibi
 //      haber verilir (YetkiDustu, günlükte hata). Ayarlar penceresinin durum
 //      satırı kimlik değişir değişmez "Yeniden bağlan"a basılmasını söyler.
+//      Onarım: kimlik boşaltılınca "bir saat içinde kesilir" denmez (bağlantı
+//      kesilmiyor); durum satırı kimliğin boş olduğunu söyler.
 //  20. Tablonun dışındaki yıllarda İngilizce ya da yanlış yazılmış bayram
 //      adları Türkçe ("Kurban Bayrami Day 2" → "Kurban Bayramı 2. gün",
 //      "Sacrifice Feast Holiday" → "Kurban Bayramı (idari izin)"); "(kesin
@@ -176,9 +184,9 @@ using Ifade = System.Linq.Expressions.Expression;
 // kaydedilmez), iki ekranı hayalidir. Dosya seçme penceresi açılmaz; ekrana
 // fotoğraf verme, seçimden sonraki adımlarıyla çağrılır. Deneme fotoğrafları
 // geçici klasörde üretilip silinir.
-// 17, 18 ve 19. maddelerde Google yerine bu programdaki sahtesi yanıt verir
-// (GoogleEsitleme'deki gibi), ağa çıkılmaz, gerçek hesaba dokunulmaz. Bu
-// maddelerde ve 31. maddede ayarlar penceresi 13–16. maddelerdeki gibi
+// 17, 18 ve 19. maddelerde (onarımları dâhil) Google yerine bu programdaki
+// sahtesi yanıt verir (GoogleEsitleme'deki gibi), ağa çıkılmaz, gerçek hesaba
+// dokunulmaz. Bu maddelerde ve 31. maddede ayarlar penceresi 13–16. maddelerdeki gibi
 // kurulur (ekranda açılmaz). 18. maddede tarayıcı açılmaz:
 // onayı bu program yerel dinleyiciye (127.0.0.1) gönderir; uygulama kurucusu
 // çalıştırılmadan kurulur (tepsisi, masaüstü katmanı yok, duvar kâğıdına
@@ -310,6 +318,9 @@ internal static class Program
             Bolum(Madde25);
             Bolum(Madde26);
             Bolum(Madde31);
+            Bolum(Madde17Onarim);
+            Bolum(Madde18Onarim);
+            Bolum(Madde19Onarim);
         }
         finally
         {
@@ -4470,6 +4481,9 @@ internal static class Program
         /// <summary>Her yanıttan önceki bekleme (anahtar adresi dışında).</summary>
         public TimeSpan Gecikme;
 
+        /// <summary>Doğruysa anahtar adresi dışındaki istekler ağ yokmuş gibi hata verir.</summary>
+        public bool AgYok;
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage istek, CancellationToken iptal)
         {
             string adres = Uri.UnescapeDataString(istek.RequestUri!.AbsoluteUri);
@@ -4477,6 +4491,11 @@ internal static class Program
             {
                 int sira = Interlocked.Increment(ref AnahtarIstegi);
                 return Yanit(200, new { access_token = "ERISIM" + sira, refresh_token = "yenileme", expires_in = 3599 });
+            }
+
+            if (AgYok)
+            {
+                throw new HttpRequestException("Ağa ulaşılamadı (deneme).");
             }
 
             lock (Adresler)
@@ -5104,6 +5123,172 @@ internal static class Program
             sonra.Replace("\n", " / "));
     }
 
+    // ------------------------------------------------- 17, 18 ve 19'un onarımı
+
+    private static void Madde17Onarim()
+    {
+        Console.WriteLine("17 onarım) Seçim değişince yerel kopya da baştan alınmayı istiyor: çevrim dışıyken açılan takvim, uygulama yeniden açılınca gelir");
+        SahteGoogleHesabi google = AHesabi();
+        var (depo, yetki, saglayici) = GoogleKur(google);
+        List<string> takvimler = Secim(depo, "SelectedCalendarIds");
+        takvimler.Add("a@deneme");
+        bool hazir = AyiEsitle(saglayici, 10, tam: true);
+
+        // Ağ yok; ayarlarda "Ev" takvimi açılıyor, zorlanmış yenileme tutmuyor.
+        google.AgYok = true;
+        takvimler.Clear();
+        Cagir(saglayici, "SecimDegisti");
+        bool tutmadi = !AyiEsitle(saglayici, 10, tam: true);
+
+        // Uygulama kapatılıp yarım saat dolmadan, ağ gelince yeniden açılıyor: yerel kopya yükleniyor.
+        google.AgYok = false;
+        object yeni = Activator.CreateInstance(Tip("Kalender.Google.GoogleCalendarProvider"), yetki, depo)!;
+        ((IDisposable)AlanOku(yeni, "_http")).Dispose();
+        AlanAta(yeni, "_http", new HttpClient(google));
+        Cagir(yeni, "LoadCache");
+        bool yuklendi = Kayitlar(yeni).Contains("is-ekim");
+        int once = AdresSayisi(google);
+        bool tuttu = AyiEsitle(yeni, 10, tam: false);
+        List<string> sorulan = AdreslerSonra(google, once);
+        Denetle("açılıştaki (zorlanmamış) eşitleme ayı baştan alıyor, çevrim dışıyken açılan takvimin kaydı geliyor",
+            hazir && tutmadi && yuklendi && tuttu && Kayitlar(yeni).Contains("ev-ekim")
+            && !sorulan.Any(a => a.Contains("updatedMin=", StringComparison.Ordinal)),
+            $"yerel kopya {(yuklendi ? "yüklendi" : "yüklenmedi")}; kayıtlar {string.Join(", ", Kayitlar(yeni))}");
+        Cagir(yeni, "ClearCache");
+    }
+
+    private static void Madde18Onarim()
+    {
+        Console.WriteLine("18 onarım) Önceki hesap, ilk eşitlemesi tutmayan \"Yeniden bağlan\"dan ve izin düştükten sonra da biliniyor");
+        PropertyInfo acici = Tip("Kalender.Google.GoogleAuthenticator").GetProperty("TarayiciAcici", Hepsi)!;
+        object asil = acici.GetValue(null)!;
+        int acilan = 0;
+        acici.SetValue(null, new Action<string>(adres =>
+        {
+            Interlocked.Increment(ref acilan);
+            _ = Task.Run(() => OnayVer(adres));
+        }));
+
+        var yoklayicilar = new List<object>();
+        try
+        {
+            // A hesabıyla bağlı, "Ev" takvimi ve ikinci liste kapalı.
+            (GoogleUygulamasi, List<string>, List<string>) Kur(SahteGoogleHesabi google)
+            {
+                GoogleUygulamasi u = GoogleUygulamasiKur(google);
+                yoklayicilar.Add(u.Yoklayici);
+                List<string> takvimler = Secim(u.Depo, "SelectedCalendarIds");
+                List<string> listeler = Secim(u.Depo, "SelectedTaskListIds");
+                takvimler.Add("a@deneme");
+                listeler.Add("liste1");
+                Yaz(GoogleAyari(u.Depo), "AccountEmail", "a@deneme");
+                AyiEsitle(u.Saglayici, 10, tam: true);
+                return (u, takvimler, listeler);
+            }
+
+            bool BHesabinda(GoogleUygulamasi u, List<string> takvimler)
+                => (string?)Oku(u.Yetki, "AccountEmail") == "b@deneme" && takvimler.Count == 0
+                    && Kayitlar(u.Saglayici).Contains("b-is-ekim");
+
+            // "Yeniden bağlan"da B seçiliyor, ama ağ kesik: ilk eşitleme tutmuyor.
+            SahteGoogleHesabi google = AHesabi();
+            var (u, takvimler, listeler) = Kur(google);
+            BHesabinaGec(google);
+            google.AgYok = true;
+            var (basari1, ileti1) = YenidenBaglan(u, () => true);
+            bool bekliyor = basari1 && Oku(u.Yetki, "AccountEmail") is null && takvimler.SequenceEqual(new[] { "a@deneme" });
+
+            // Ağ geliyor; kullanıcı yine "Yeniden bağlan"a basıp B'yi seçiyor.
+            google.AgYok = false;
+            var (basari2, ileti2) = YenidenBaglan(u, () => BHesabinda(u, takvimler));
+            HashSet<string> kayit = Kayitlar(u.Saglayici);
+            Denetle("ikinci \"Yeniden bağlan\"da da önceki hesap biliniyor: seçim \"hepsi\"ne dönüyor, yeni hesabın bütün kayıtları geliyor",
+                bekliyor && basari2 && takvimler.Count == 0 && listeler.Count == 0
+                && kayit.SetEquals(new[] { "b-ekim", "b-is-ekim", "b-gorev" }),
+                $"{ileti1} / {ileti2}; seçim [{string.Join(", ", takvimler)}] [{string.Join(", ", listeler)}]; kayıtlar {string.Join(", ", kayit)}");
+
+            // İzin kendiliğinden düşüyor (ör. istemci kimliği değişti); sonra "Google'a bağlan" ile B seçiliyor.
+            SahteGoogleHesabi google2 = AHesabi();
+            var (w, takvimler2, listeler2) = Kur(google2);
+            Cagir(w.Yetki, "InvalidateAuthorization", true, null);
+            Bekle(100);
+            bool koptu = !(bool)Oku(w.Yetki, "IsConnected")! && Oku(GoogleAyari(w.Depo), "AccountEmail") is null
+                && takvimler2.SequenceEqual(new[] { "a@deneme" });
+            BHesabinaGec(google2);
+            var (basari3, ileti3) = YenidenBaglan(w, () => BHesabinda(w, takvimler2));
+            HashSet<string> kayit2 = Kayitlar(w.Saglayici);
+            Denetle("izin düştükten sonra başka hesaba bağlanınca seçim \"hepsi\"ne dönüyor, yeni hesabın bütün kayıtları geliyor",
+                koptu && basari3 && takvimler2.Count == 0 && listeler2.Count == 0
+                && kayit2.SetEquals(new[] { "b-ekim", "b-is-ekim", "b-gorev" }),
+                $"{ileti3}; seçim [{string.Join(", ", takvimler2)}] [{string.Join(", ", listeler2)}]; kayıtlar {string.Join(", ", kayit2)}");
+
+            // Aynı yol, ama yeniden aynı hesaba bağlanılıyor.
+            SahteGoogleHesabi google3 = AHesabi();
+            var (x, takvimler3, listeler3) = Kur(google3);
+            Cagir(x.Yetki, "InvalidateAuthorization", true, null);
+            Bekle(100);
+            var (basari4, ileti4) = YenidenBaglan(x, () => (string?)Oku(x.Yetki, "AccountEmail") == "a@deneme");
+            HashSet<string> kayit3 = Kayitlar(x.Saglayici);
+            Denetle("izin düştükten sonra aynı hesaba bağlanınca seçim korunuyor (kapalı takvim kapalı kalıyor)",
+                basari4 && takvimler3.SequenceEqual(new[] { "a@deneme" }) && listeler3.SequenceEqual(new[] { "liste1" })
+                && kayit3.SetEquals(new[] { "is-ekim", "gorev-ekim" }),
+                $"{ileti4}; seçim [{string.Join(", ", takvimler3)}]; kayıtlar {string.Join(", ", kayit3)}");
+
+            // "Bağlantıyı kes" seçimi ve e-postayı zaten siliyor; önceki hesap saklanmıyor.
+            Cagir(x.Host, "DisconnectGoogle");
+            Bekle(100);
+            Denetle("\"Bağlantıyı kes\"te önceki hesap saklanmıyor",
+                AlanOku(x.Host, "_oncekiHesap") is null && Oku(GoogleAyari(x.Depo), "AccountEmail") is null
+                && takvimler3.Count == 0);
+
+            Denetle("gerçek tarayıcı açılmadı, onayı sınama verdi", acilan == 4, $"{acilan} kez");
+        }
+        finally
+        {
+            acici.SetValue(null, asil);
+            foreach (object yoklayici in yoklayicilar)
+            {
+                ((IDisposable)yoklayici).Dispose();
+            }
+        }
+    }
+
+    private static void Madde19Onarim()
+    {
+        Console.WriteLine("19 onarım) Bağlıyken istemci kimliği boşaltılınca \"bir saat içinde kesilir\" denmiyor; Google'a sorulamadığı söyleniyor");
+        SahteGoogleHesabi google = AHesabi();
+        var (depo, yetki, _) = GoogleKur(google);
+
+        // Ayarlar penceresinin kapısı kimlik değişikliğini uygulamadaki gibi yetkiye sorar.
+        object pencere = GooglePenceresi(depo);
+        var kapi = (SahteAyarKapisi)AlanOku(pencere, "_host");
+        kapi.Degerler["GoogleConnected"] = true;
+        kapi.Degerler["GoogleOnline"] = true;
+        kapi.Degerler["GoogleAccountEmail"] = "a@deneme";
+        kapi.Degerler["GoogleCalendars"] = Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Google.ProviderCalendar")));
+        kapi.Degerler["GoogleTaskLists"] = Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Google.ProviderTaskList")));
+        kapi.Degerler["GoogleIstemciKimligiDegisti"] = new Func<object?>(() => Oku(yetki, "IstemciKimligiDegisti"));
+        Cagir(pencere, "UpdateGoogleUi");
+        string once = Metin(pencere, "GoogleStatusText");
+
+        // Kimlik kutusu boşaltılıp odak çıkıyor.
+        ((TextBox)AlanOku(pencere, "ClientIdBox")).Text = string.Empty;
+        Cagir(pencere, "OnGoogleCredentialsChanged", null, null);
+        string sonra = Metin(pencere, "GoogleStatusText");
+        bool degisti = (bool)Oku(yetki, "IstemciKimligiDegisti")!;
+
+        string? anahtar = Task.Run(() => (Task<string?>)Cagir(yetki, "GetAccessTokenAsync", CancellationToken.None)!)
+            .GetAwaiter().GetResult();
+        Denetle("kimlik boşken yetki \"değişti\" demiyor: bağlantı kesilmiyor, yalnız Google'a sorulamıyor",
+            Oku(GoogleAyari(depo), "ClientId") is null && !degisti && anahtar is null
+            && (bool)Oku(yetki, "IsConnected")! && google.AnahtarIstegi == 0);
+        Denetle("durum satırı kimliğin boş olduğunu ve Google'dan veri alınamadığını söylüyor, \"bir saat içinde kesilir\" demiyor; boşaltmadan önce söylemiyor",
+            !once.Contains("İstemci kimliği", StringComparison.Ordinal)
+            && sonra.Contains("İstemci kimliği boş", StringComparison.Ordinal)
+            && !sonra.Contains("bir saat içinde", StringComparison.Ordinal),
+            sonra.Replace("\n", " / "));
+    }
+
     // ------------------------------------------------------- 25. ve 26. maddeler
 
     /// <summary>Derlenmiş ayarlar penceresinin (BAML) metni; dizgiler UTF-8 yazılıyor.</summary>
@@ -5210,7 +5395,10 @@ public class SahteAyarKapisi : DispatchProxy
     /// <summary>ApplyAppearance kaç kez çağrıldı.</summary>
     public int Uygulama { get; private set; }
 
-    /// <summary>Özellik adı → verilecek değer (ör. GoogleConnected); verilmeyen özellik boş değer verir.</summary>
+    /// <summary>
+    /// Özellik adı → verilecek değer (ör. GoogleConnected) ya da her okunuşta onu
+    /// hesaplayan Func&lt;object?&gt;; verilmeyen özellik boş değer verir.
+    /// </summary>
     public Dictionary<string, object?> Degerler { get; } = new();
 
     /// <summary>
@@ -5253,7 +5441,7 @@ public class SahteAyarKapisi : DispatchProxy
         {
             if (Degerler.TryGetValue(ad[4..], out object? deger))
             {
-                return deger;
+                return deger is Func<object?> hesapla ? hesapla() : deger;
             }
 
             return yontem.ReturnType.IsValueType ? Activator.CreateInstance(yontem.ReturnType) : null;

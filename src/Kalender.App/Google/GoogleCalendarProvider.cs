@@ -317,6 +317,9 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// görünmüyorlardı. Aylar bellekte kalır, ama hepsinin tam yenileme zamanı
     /// silinir: o aya geçilince (zorlanmasa da) ay baştan alınır. Kapatılan
     /// takvimin kayıtları gösterilirken süzülüyor (bkz. CalendarDataService).
+    /// Yerel kopya da yeniden yazılır: yoksa çevrim dışıyken seçim değişip
+    /// uygulama yeniden açılınca diskteki eski tam yenileme zamanı yükleniyor,
+    /// açılıştaki eşitleme artımlı oluyordu.
     /// </summary>
     public void SecimDegisti()
     {
@@ -328,6 +331,12 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             foreach (ProviderBundle bundle in _gecmis)
             {
                 bundle.FullSyncUtc = null;
+            }
+
+            // Bağlantı kesildiyse kopya silinmiş ya da silinecek; geri yazılmaz.
+            if (IsConnected)
+            {
+                SaveCache();
             }
         }
     }

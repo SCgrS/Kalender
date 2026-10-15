@@ -1168,8 +1168,14 @@ public partial class SettingsWindow : Window
                 + $"\nBu ayda {_host.GoogleEventCount} etkinlik, {_host.GoogleTaskCount} görev.";
 
             // Kayıtlı izin eski kimliğe ait; yeniden bağlanılmazsa bağlantı en
-            // çok bir saat içinde kesilir. Önceden bu hiç söylenmiyordu.
-            if (_host.GoogleIstemciKimligiDegisti)
+            // çok bir saat içinde kesilir. Önceden bu hiç söylenmiyordu. Kimlik
+            // boşaltıldıysa bağlantı kesilmiyor, ama Google'a sorulamıyor.
+            if (string.IsNullOrWhiteSpace(S.Google.ClientId))
+            {
+                GoogleStatusText.Text += "\nİstemci kimliği boş; Google'dan yeni veri alınamıyor. "
+                    + "Kimliği yeniden yapıştırın.";
+            }
+            else if (_host.GoogleIstemciKimligiDegisti)
             {
                 GoogleStatusText.Text += "\nİstemci kimliği değişti. Yeni kimliği kullanmak için \"Yeniden bağlan\"a "
                     + "basın; yoksa bağlantı bir saat içinde kesilir.";
