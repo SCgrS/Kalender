@@ -22,6 +22,12 @@ using System.Windows.Threading;
 //      (bayrama eklenen idari izin günleri dâhil) atılır; sabit tatiller hiç
 //      atılmaz; akışın kapsamadığı yıllara bayram eklenmez. 1.13'ün ön belleği
 //      yeniden indirilmeden düzelir; yeni dosyanın biçimi aynı, 1.13 okuyabilir.
+//   7. Duvar kâğıdından kaldırılırken önceki duvar kâğıdı geri konamayan
+//      ekrana takvimsiz zemin yazılır; takvimin durduğu ekranlar bu sürecin ne
+//      yazdığına değil ekrana bakılarak bulunur (açılışta eski sürümden donmuş
+//      kalan takvim de). Takvimsiz zeminin adı ekli: yeniden yazılmaz, her
+//      açılışta boşuna yazım olmaz. Windows'ta düz renk seçiliyse ekranda
+//      takvim yok sayılır.
 //  20. Tablonun dışındaki yıllarda İngilizce ya da yanlış yazılmış bayram
 //      adları Türkçe ("Kurban Bayrami Day 2" → "Kurban Bayramı 2. gün",
 //      "Sacrifice Feast Holiday" → "Kurban Bayramı"); "(kesin değil)" eki kalır.
@@ -42,6 +48,13 @@ using System.Windows.Threading;
 //  28. Güncelleme denetimi sürerken indirme başlarsa denetim bitince durum ve
 //      bulunan sürüm değişmez; indirme sürerken ikinci tıklama ikinci bir
 //      indirme başlatmaz.
+//  29. Duvar kâğıdı yedeği geçici dosyaya yazılıp diske boşaltılır, sonra
+//      yerine taşınır. Okunamayan (boş, yarım, bozuk) yedek "bozuk-<tarih>"
+//      adıyla kenara alınır: geri yükleme yedek yokmuş gibi davranır, yazma
+//      açılınca taze yedek alınır.
+//  32. Ekranlarda yalnız takvimin görüntüsünün yolu görünse de Windows'ta
+//      resim kipi kapalıysa (düz renk) yedek düz renk olarak alınır; Windows
+//      yolu boş verince ya da resim kipi açıkken eskisi gibi.
 //
 // Google'ın tatil akışı yerine bu programdaki sahtesi kullanılır, ağa çıkılmaz;
 // GitHub yerine de bu programın açtığı yerel sunucuya sorulur. Uygulamanın
@@ -52,7 +65,12 @@ using System.Windows.Threading;
 // gerçek Temp'teki .net ve indirme klasörlerine dokunulmaz (denetlenir). Gün
 // kutusu ve kurulum pencereleri kurulur ama gösterilmez. Kurucu ve kurulu
 // uygulama başlatılmaz; kurulum ve kaldırma çağrılmaz (çalışan Kalender'i
-// kapatırdı), sırası derlenmiş koddan okunur. Geçici klasörler sonunda silinir.
+// kapatırdı), sırası derlenmiş koddan okunur. 7, 29 ve 32. maddelerde
+// Windows'un duvar kâğıdı arayüzü yerine KodIncelemesi'ndeki gibi sahtesi
+// kullanılır; Windows'un duvar kâğıdı ayarı (SPI_GETDESKWALLPAPER) bir kez
+// yalnız okunur, öbür denetimlerde bu program verir. Duvar kâğıdına yazan
+// geri yükleme çağrılmaz; yalnız yedeksiz dalı çağrılır, orada gerçek ekran
+// yalnız okunur. Geçici klasörler sonunda silinir.
 // Çıkış kodu 0 = hepsi geçti.
 // Kullanım: dotnet run -c Release
 internal static class Program
@@ -133,6 +151,9 @@ internal static class Program
             Bolum(Madde23);
             Bolum(Madde24);
             Bolum(Madde28);
+            Bolum(Madde7);
+            Bolum(Madde29);
+            Bolum(Madde32);
         }
         finally
         {
@@ -1418,6 +1439,491 @@ internal static class Program
         {
             ((IDisposable)h).Dispose();
             api.SetValue(null, gercekApi);
+        }
+    }
+
+    // ------------------------------------- duvar kâğıdı: ortak yardımcılar
+
+    private static void Yaz(object o, string ad, object? deger) => o.GetType().GetProperty(ad, Hepsi)!.SetValue(o, deger);
+
+    /// <summary>Resim kipi açıkken Windows'un verdiği türden bir yol.</summary>
+    private const string ResimAcik = @"C:\Users\deneme\AppData\Roaming\Microsoft\Windows\Themes\TranscodedWallpaper";
+
+    /// <summary>Windows'un duvar kâğıdı arayüzünün sahtesi; aygıt yolları verilir, ekranlar boş başlar.</summary>
+    private static SahteDuvarKagidi Sahte(params string[] aygitlar)
+    {
+        var s = (SahteDuvarKagidi)DispatchProxy.Create(Tip("Kalender.Interop.IDesktopWallpaper"), typeof(SahteDuvarKagidi));
+        s.Aygitlar.AddRange(aygitlar);
+        foreach (string a in aygitlar)
+        {
+            s.Ekranda[a] = string.Empty;
+        }
+
+        return s;
+    }
+
+    /// <summary>Yan yana hayali ekranlar; kimlikleri aygıt yollarıyla aynı.</summary>
+    private static IList Ekranlar(params string[] aygitlar)
+    {
+        Type ekranTipi = Tip("Kalender.Interop.MonitorTarget");
+        var liste = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(ekranTipi))!;
+        for (int i = 0; i < aygitlar.Length; i++)
+        {
+            object m = Activator.CreateInstance(ekranTipi, true)!;
+            Yaz(m, "Handle", IntPtr.Zero);
+            Yaz(m, "DeviceName", aygitlar[i]);
+            Yaz(m, "StableId", aygitlar[i]);
+            Yaz(m, "Bounds", new System.Drawing.Rectangle(i * 1920, 0, 1920, 1080));
+            Yaz(m, "WorkArea", new System.Drawing.Rectangle(i * 1920, 0, 1920, 1032));
+            Yaz(m, "Dpi", 96u);
+            Yaz(m, "IsPrimary", i == 0);
+            liste.Add(m);
+        }
+
+        return liste;
+    }
+
+    /// <summary>
+    /// Windows'un duvar kâğıdı ayarını (SPI_GETDESKWALLPAPER) okuyan kancayı
+    /// verilen değerle değiştirip işi çalıştırır; gerçek ayar okunmaz. Boş
+    /// metin düz renk (resim kipi kapalı), null okunamadı demek.
+    /// </summary>
+    private static void SistemDuvarKagidiyla(string? deger, Action islem)
+    {
+        PropertyInfo okuyucu = Tip("Kalender.Desktop.WallpaperService").GetProperty("SistemDuvarKagidiOkuyucu", Hepsi)!;
+        object? gercek = okuyucu.GetValue(null);
+        okuyucu.SetValue(null, new Func<string?>(() => deger));
+        try
+        {
+            islem();
+        }
+        finally
+        {
+            okuyucu.SetValue(null, gercek);
+        }
+    }
+
+    /// <summary>Yedek dosyasını okur; yoksa ya da okunamıyorsa null.</summary>
+    private static object? YedekOku(string dosya, Type yedekTipi)
+    {
+        try
+        {
+            return File.Exists(dosya) ? JsonSerializer.Deserialize(File.ReadAllText(dosya), yedekTipi) : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------- 7. madde
+
+    private static void Madde7()
+    {
+        Console.WriteLine("7) Açılışta ekranda kalmış donmuş takvim, önceki duvar kâğıdı geri konamazsa kaldırılıyor");
+        Type tuvalTipi = Tip("Kalender.Desktop.WallpaperCanvas");
+        Type servis = Tip("Kalender.Desktop.WallpaperService");
+        Type yoneticiTipi = Tip("Kalender.Desktop.DesktopLayerManager");
+        string zemin = (string)Tip("Kalender.Core.Paths").GetProperty("CanvasFolder")!.GetValue(null)!;
+        string takvimli = Path.Combine(zemin, "zemin-aaaaaaaa-20261015-101010-123.bmp");
+        string takvimsiz = Path.Combine(zemin, "zemin-aaaaaaaa-20261015-101011-456-takvimsiz.bmp");
+        string baskaKlasorde = Path.Combine(Path.GetTempPath(), "zemin-aaaaaaaa-20261015-101010-123.bmp");
+        string foto = @"C:\Users\deneme\Pictures\deniz.jpg";
+
+        // Ekrana bakış: Windows'un duvar kâğıdı arayüzünün sahtesiyle.
+        MethodInfo? gosterenler = tuvalTipi.GetMethod("TakvimGosterenler", Hepsi);
+        Denetle("takvimin durduğu ekranları ekrandan okuyan yöntem var", gosterenler is not null);
+        if (gosterenler is null)
+        {
+            return;
+        }
+
+        HashSet<string> Gosterenler(IList ekranlar, SahteDuvarKagidi t, string? sistem)
+        {
+            HashSet<string> sonuc = new();
+            SistemDuvarKagidiyla(sistem, () => sonuc = (HashSet<string>)gosterenler!.Invoke(null, new object?[] { ekranlar, t })!);
+            return sonuc;
+        }
+
+        SahteDuvarKagidi s = Sahte("A", "B", "C", "D", "E");
+        s.Ekranda["A"] = takvimli;
+        s.Ekranda["B"] = foto;
+        s.Ekranda["C"] = takvimsiz;
+        s.Ekranda["D"] = baskaKlasorde;
+        IList bes = Ekranlar("A", "B", "C", "D", "E");
+        HashSet<string> bulunan = Gosterenler(bes, s, ResimAcik);
+        Denetle("takvimli zeminin durduğu ekran bulunuyor (bu süreç hiç yazmamış olsa da)",
+            bulunan.Contains("A"), string.Join(", ", bulunan));
+        Denetle("kullanıcının fotoğrafı, başka klasördeki dosya ve boş ekran sayılmıyor",
+            !bulunan.Contains("B") && !bulunan.Contains("D") && !bulunan.Contains("E"));
+        Denetle("takvimsiz zemin sayılmıyor (her açılışta yeniden yazılmıyor)", !bulunan.Contains("C"));
+        Denetle("Windows'ta düz renk seçiliyken (resim kipi kapalı) ekranda takvim yok sayılıyor",
+            Gosterenler(bes, s, string.Empty).Count == 0);
+        s.OkumadaHata = true;
+        Denetle("ekrandakiler okunamazsa hiçbir ekran sayılmıyor", Gosterenler(bes, s, ResimAcik).Count == 0);
+
+        SahteDuvarKagidi tek = Sahte("X");
+        tek.Ortak = takvimli;
+        Denetle("tek ekranda aygıt yolu eşleşmezse ortak yola bakılıyor (yazımdaki gibi)",
+            Gosterenler(Ekranlar("M"), tek, ResimAcik).SetEquals(new[] { "M" }));
+        Denetle("birden çok ekranda aygıt yolu eşleşmeyen ekran sayılmıyor",
+            Gosterenler(Ekranlar("M", "N"), tek, ResimAcik).Count == 0);
+
+        // Takvimsiz zemin dosya adından tanınıyor; takvim kaldırılırken yazılan zemin o adla yazılıyor.
+        MethodInfo yol = tuvalTipi.GetMethod("DosyaYolu", Hepsi)!;
+        bool Takvimsiz(string? y) => (bool)Statik(tuvalTipi, "TakvimsizZeminMi", y)!;
+        bool ZeminMi(string? y) => (bool)Statik(servis, "ZeminDosyasiMi", y)!;
+        string takvimsizYolu = (string)yol.Invoke(null, new object[] { "MON-A", true })!;
+        string takvimliYolu = (string)yol.Invoke(null, new object[] { "MON-A", false })!;
+        Denetle("takvimsiz zeminin adı ekli ve yine takvimin kendi dosyası sayılıyor",
+            Takvimsiz(takvimsizYolu) && ZeminMi(takvimsizYolu)
+            && Path.GetFileName(takvimsizYolu).EndsWith("-takvimsiz.bmp", StringComparison.Ordinal),
+            Path.GetFileName(takvimsizYolu));
+        Denetle("takvimli görüntünün adı eksiz",
+            !Takvimsiz(takvimliYolu) && ZeminMi(takvimliYolu) && !Takvimsiz(takvimli) && Takvimsiz(takvimsiz) && !Takvimsiz(null));
+
+        List<Komut> uygula = Komutlar(tuvalTipi.GetMethod("Apply", Hepsi)!);
+        int dosyaAdi = Bul(uygula, x => Cagri(x, tuvalTipi, "DosyaYolu"));
+        Denetle("takvim kaldırılırken (kapanış, geri yükleme) yazılan zeminin adına ek geliyor",
+            dosyaAdi > 0 && uygula[dosyaAdi - 1].Kod == OpCodes.Ldarg_2);
+
+        // Geri yükleme eksik kalınca: takvimin durduğu ekranlar, bu süreç yazmış
+        // olsun olmasın, ekrandan okunuyor (derlenmiş koddan; gerçek duvar kâğıdına dokunmamak için).
+        List<Komut> k = Komutlar(yoneticiTipi.GetMethod("DuvarKagidiniGeriYukle", Hepsi)!);
+        int restore = Bul(k, x => Cagri(x, servis, "Restore"));
+        int ekrana = Bul(k, x => Cagri(x, tuvalTipi, "TakvimGosterenler"), restore);
+        int zeminYaz = Bul(k, x => Cagri(x, yoneticiTipi, "PaintPlainBackground"), ekrana);
+        Denetle("geri yükleme eksik kalınca takvimsiz zemin ekrana bakılarak yazılıyor, bu sürecin yazmış olması aranmıyor",
+            restore >= 0 && ekrana > restore && zeminYaz > ekrana && Bul(k, x => Cagri(x, tuvalTipi, "get_HasPainted")) < 0,
+            $"{restore} / {ekrana} / {zeminYaz}");
+    }
+
+    // ------------------------------------------------------------------ 29. madde
+
+    /// <summary>Yedeğin yazımı ve okunamayan yedeğin kenara alınması, verilen klasördeki dosyalarla.</summary>
+    private static void YedekDosyasiDenetimleri(Type servis, Type yedekTipi, string klasor)
+    {
+        string dosya = Path.Combine(klasor, "onceki-duvar-kagidi.json");
+        string foto = Path.Combine(klasor, "deniz.jpg");
+        string[] Bozuklar() => Directory.GetFiles(klasor, "onceki-duvar-kagidi.bozuk-*.json");
+        void Temizle()
+        {
+            foreach (string f in Directory.GetFiles(klasor))
+            {
+                File.Delete(f);
+            }
+        }
+
+        // Yazım: geçici dosya, diske boşaltma, yerine taşıma.
+        MethodInfo? yaz = servis.GetMethod("YedegiYaz", Hepsi);
+        object yedek = Activator.CreateInstance(yedekTipi, true)!;
+        Yaz(yedek, "Wallpaper", foto);
+        yaz?.Invoke(null, new[] { dosya, yedek });
+        object? okunan = YedekOku(dosya, yedekTipi);
+        Denetle("yedek yazılıyor ve okunabiliyor, geçici dosya kalmıyor",
+            yaz is not null && okunan is not null && (string?)Oku(okunan, "Wallpaper") == foto && !File.Exists(dosya + ".tmp"));
+
+        List<Komut> k = yaz is null ? new() : Komutlar(yaz);
+        int akis = Bul(k, x => x.Kod == OpCodes.Newobj && x.Uye?.DeclaringType == typeof(FileStream));
+        int bosalt = Bul(k, x => x.Uye is MethodInfo m && m.DeclaringType == typeof(FileStream) && m.Name == "Flush"
+            && m.GetParameters().Length == 1, akis);
+        int tasi = Bul(k, x => Cagri(x, typeof(File), "Move"), bosalt);
+        Denetle("önce geçici dosyaya yazılıp diske boşaltılıyor (Flush(true)), sonra yerine taşınıyor",
+            akis >= 0 && bosalt > akis && k[bosalt - 1].Kod == OpCodes.Ldc_I4_1 && tasi > bosalt, $"{akis} / {bosalt} / {tasi}");
+
+        // Okunamayan yedekler: boş, yarım, sıfır baytlarla dolu (elektrik kesintisinden sonra görülen), "null".
+        MethodInfo? kenara = servis.GetMethod("OkunamayanYedegiKenaraAl", Hepsi);
+        void KenaraAl() => kenara?.Invoke(null, new object[] { dosya });
+        var bozukIcerikler = new (string Ad, byte[] Icerik)[]
+        {
+            ("boş", Array.Empty<byte>()),
+            ("yarım", Encoding.UTF8.GetBytes("{\r\n  \"CreatedUtc\": \"2026-10-15T10:00:00+00:00\",\r\n  \"Wallpaper\": \"C:")),
+            ("sıfır baytlarla dolu", new byte[64]),
+            ("null", Encoding.UTF8.GetBytes("null")),
+        };
+        foreach ((string ad, byte[] icerik) in bozukIcerikler)
+        {
+            Temizle();
+            File.WriteAllBytes(dosya, icerik);
+            KenaraAl();
+            string[] bozuk = Bozuklar();
+            Denetle($"okunamayan yedek ({ad}) \"bozuk-<tarih>\" adıyla kenara alınıyor, içeriği korunuyor",
+                kenara is not null && !File.Exists(dosya) && bozuk.Length == 1
+                && File.ReadAllBytes(bozuk[0]).SequenceEqual(icerik)
+                && System.Text.RegularExpressions.Regex.IsMatch(
+                    Path.GetFileName(bozuk[0]), @"^onceki-duvar-kagidi\.bozuk-\d{4}-\d{2}-\d{2}-\d{6}\.json$"),
+                bozuk.Length == 1 ? Path.GetFileName(bozuk[0]) : $"{bozuk.Length} dosya");
+        }
+
+        Temizle();
+        File.WriteAllText(dosya, "{");
+        KenaraAl();
+        File.WriteAllText(dosya, "{{");
+        KenaraAl();
+        Denetle("ikinci okunamayan yedek öncekini ezmiyor", kenara is not null && !File.Exists(dosya) && Bozuklar().Length == 2);
+
+        Temizle();
+        yaz?.Invoke(null, new[] { dosya, yedek });
+        byte[] saglam = File.Exists(dosya) ? File.ReadAllBytes(dosya) : Array.Empty<byte>();
+        KenaraAl();
+        Denetle("okunabilen yedeğe dokunulmuyor",
+            kenara is not null && File.Exists(dosya) && File.ReadAllBytes(dosya).SequenceEqual(saglam) && Bozuklar().Length == 0);
+
+        Temizle();
+        File.WriteAllText(dosya, "{");
+        using (new FileStream(dosya, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            KenaraAl();
+        }
+
+        Denetle("o an açılamayan (kilitli) yedeğin içeriği bilinmiyor, kenara alınmıyor",
+            kenara is not null && File.Exists(dosya) && Bozuklar().Length == 0);
+
+        Temizle();
+        KenaraAl();
+        Denetle("yedek yoksa hiçbir dosya açılmıyor", kenara is not null && Directory.GetFiles(klasor).Length == 0);
+
+        // Yedek alma ve geri yükleme okunamayan yedeği önce kenara alıyor (derlenmiş koddan).
+        Type yollar = Tip("Kalender.Core.Paths");
+        List<Komut> alma = Komutlar(servis.GetMethod("EnsureBackup", Hepsi)!);
+        int almaKenara = Bul(alma, x => Cagri(x, servis, "OkunamayanYedegiKenaraAl"));
+        int varMi = Bul(alma, x => Cagri(x, typeof(File), "Exists"));
+        Denetle("yedek alınırken okunamayan yedek önce kenara alınıyor, sonra yedek var mı diye bakılıyor",
+            almaKenara > 0 && Cagri(alma[almaKenara - 1], yollar, "get_BackupFile") && varMi > almaKenara);
+        Denetle("yedek geçici dosya üzerinden yazılıyor (doğrudan WriteAllText yok)",
+            Bul(alma, x => Cagri(x, servis, "YedegiYaz")) >= 0 && Bul(alma, x => Cagri(x, typeof(File), "WriteAllText")) < 0);
+
+        List<Komut> geri = Komutlar(servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!);
+        int ilkOkuma = Bul(geri, x => Cagri(x, typeof(File), "ReadAllText"));
+        List<int> geriKenara = geri.Select((x, i) => (x, i)).Where(t => Cagri(t.x, servis, "OkunamayanYedegiKenaraAl")).Select(t => t.i).ToList();
+        Denetle("geri yüklemede asıl ve bekleyen yedek okunmadan önce denetleniyor",
+            geriKenara.Count == 2 && ilkOkuma > geriKenara[1]
+            && Cagri(geri[geriKenara[0] - 1], yollar, "get_BackupFile")
+            && Cagri(geri[geriKenara[1] - 1], servis, "get_BekleyenYedekDosyasi"));
+    }
+
+    // ------------------------------------------------------------------ 32. madde
+
+    /// <summary>Yedek hazırlanırken resim kipine de bakılıyor (sahte duvar kâğıdıyla).</summary>
+    private static void DuzRenkDenetimleri(Type servis)
+    {
+        string zemin = (string)Tip("Kalender.Core.Paths").GetProperty("CanvasFolder")!.GetValue(null)!;
+        string bizim = Path.Combine(zemin, "zemin-aaaaaaaa-20261015-101010-123.bmp");
+        string foto = @"C:\Users\deneme\Pictures\deniz.jpg";
+
+        // Gerçek ayar yalnız bir kez, yalnız okunarak.
+        var gercekOkuyucu = (Func<string?>?)servis.GetProperty("SistemDuvarKagidiOkuyucu", Hepsi)?.GetValue(null);
+        string? gercek = gercekOkuyucu?.Invoke();
+        Console.WriteLine("   bilgi: Windows'un duvar kâğıdı ayarı: "
+            + (gercek is null ? "okunamadı" : gercek.Length == 0 ? "boş (düz renk)" : Path.GetFileName(gercek)));
+        Denetle("Windows'un duvar kâğıdı ayarı okunabiliyor (yalnız okuma)", gercek is not null);
+
+        bool KipKapali(string? deger)
+        {
+            bool sonuc = false;
+            SistemDuvarKagidiyla(deger, () => sonuc = (bool)Statik(servis, "ResimKipiKapali")!);
+            return sonuc;
+        }
+
+        Denetle("düz renkte (yol boş) resim kipi kapalı sayılıyor; resim varken ya da ayar okunamazsa sayılmıyor",
+            KipKapali(string.Empty) && KipKapali("  ") && !KipKapali(ResimAcik) && !KipKapali(null));
+
+        SahteDuvarKagidi Takvimli()
+        {
+            SahteDuvarKagidi t = Sahte("A", "B");
+            t.Ekranda["A"] = bizim;
+            t.Ekranda["B"] = bizim;
+            t.Ortak = bizim;
+            t.Renk = 0x00336699;
+            return t;
+        }
+
+        object? Hazirla(SahteDuvarKagidi t, string? sistem)
+        {
+            object? sonuc = null;
+            SistemDuvarKagidiyla(sistem, () => sonuc = Statik(servis, "YedekHazirla", t));
+            return sonuc;
+        }
+
+        object? duz = Hazirla(Takvimli(), string.Empty);
+        Denetle("ekranlarda yalnız takvimin yolu var ama resim kipi kapalıysa yedek düz renk olarak alınıyor",
+            duz is not null && !(bool)Oku(duz, "WallpaperEnabled")!
+            && string.IsNullOrEmpty((string?)Oku(duz, "Wallpaper"))
+            && ((IDictionary<string, string>)Oku(duz, "PerMonitor")!).Count == 0
+            && (uint)Oku(duz, "BackgroundColor")! == 0x00336699u);
+        Denetle("aynı ekranlarda resim kipi açıksa ya da ayar okunamazsa eskisi gibi yedek alınmıyor",
+            Hazirla(Takvimli(), ResimAcik) is null && Hazirla(Takvimli(), null) is null);
+
+        SahteDuvarKagidi karisik = Takvimli();
+        karisik.Ekranda["B"] = foto;
+        object? fotolu = Hazirla(karisik, string.Empty);
+        Denetle("bir ekranda kullanıcının fotoğrafı varsa eskisi gibi o yedekleniyor",
+            fotolu is not null && (bool)Oku(fotolu, "WallpaperEnabled")!
+            && ((IDictionary<string, string>)Oku(fotolu, "PerMonitor")!).TryGetValue("B", out string? b) && b == foto);
+    }
+
+    private static void Madde29()
+    {
+        Console.WriteLine("29) Duvar kâğıdı yedeği geçici dosyayla yazılıyor; okunamayan yedek kenara alınıyor");
+        Type servis = Tip("Kalender.Desktop.WallpaperService");
+        Type yedekTipi = Tip("Kalender.Desktop.WallpaperBackup");
+        Type yollar = Tip("Kalender.Core.Paths");
+        string yedekDosyasi = (string)yollar.GetProperty("BackupFile")!.GetValue(null)!;
+        string kok = Path.GetDirectoryName(yedekDosyasi)!;
+        string klasor = Path.Combine(kok, "yedek sınaması");
+        Directory.CreateDirectory(klasor);
+        YedekDosyasiDenetimleri(servis, yedekTipi, klasor);
+
+        // Uygulamanın klasörü geçici: yedek alma ve geri yükleme bütünüyle.
+        string bekleyen = (string)servis.GetProperty("BekleyenYedekDosyasi", Hepsi)!.GetValue(null)!;
+        string[] Bozuklar() => Directory.GetFiles(kok, "onceki-duvar-kagidi*bozuk-*.json");
+        void YedekleriSil()
+        {
+            foreach (string f in Directory.GetFiles(kok, "onceki-duvar-kagidi*"))
+            {
+                File.Delete(f);
+            }
+        }
+
+        string foto = Path.Combine(klasor, "dağ.jpg");
+        File.WriteAllText(foto, "deneme");
+        SahteDuvarKagidi s = Sahte("A", "B");
+        s.Ekranda["A"] = foto;
+        s.Ekranda["B"] = foto;
+
+        YedekleriSil();
+        File.WriteAllBytes(yedekDosyasi, new byte[32]);
+        SistemDuvarKagidiyla(ResimAcik, () => Statik(servis, "EnsureBackup", s));
+        object? taze = YedekOku(yedekDosyasi, yedekTipi);
+        Denetle("okunamayan yedek varken yazmaya başlanınca o kenara alınıyor, ekrandaki duvar kâğıdı taze yedekleniyor",
+            taze is not null && ((IDictionary<string, string>)Oku(taze, "PerMonitor")!).TryGetValue("A", out string? a) && a == foto
+            && Bozuklar().Length == 1);
+
+        // Asıl yedek de bekleyen de okunamıyor: ikisi de kenara alınır, yedek
+        // yokmuş gibi davranılır. Yedek kalmadığı için gerçek duvar kâğıdı
+        // yalnız okunur (ekranda bu geçici klasörün görüntüsü yok).
+        YedekleriSil();
+        File.WriteAllText(yedekDosyasi, string.Empty);
+        File.WriteAllText(bekleyen, "{\"Wallpaper\":");
+        object?[] cikti = { true };
+        bool yuklendi = (bool)servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!.Invoke(null, cikti)!;
+        Denetle("geri yüklemede okunamayan yedek ve bekleyen kenara alınıyor, yedek yokmuş gibi davranılıyor (uyarı yok)",
+            !File.Exists(yedekDosyasi) && !File.Exists(bekleyen) && Bozuklar().Length == 2 && yuklendi && !(bool)cikti[0]!,
+            $"{Bozuklar().Length} kenarda, sonuç {yuklendi}, eksik {cikti[0]}");
+        YedekleriSil();
+    }
+
+    private static void Madde32()
+    {
+        Console.WriteLine("32) Düz renk kullananda ekranda takvimin yolu görünse de yedek düz renk olarak alınıyor");
+        Type servis = Tip("Kalender.Desktop.WallpaperService");
+        DuzRenkDenetimleri(servis);
+
+        // Uygulamanın klasörü geçici: yazma yeniden açılınca yedek gerçekten yazılıyor.
+        string yedekDosyasi = (string)Tip("Kalender.Core.Paths").GetProperty("BackupFile")!.GetValue(null)!;
+        string bizim = Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("CanvasFolder")!.GetValue(null)!,
+            "zemin-aaaaaaaa-20261015-101010-123.bmp");
+        SahteDuvarKagidi s = Sahte("A");
+        s.Ekranda["A"] = bizim;
+        s.Ortak = bizim;
+        File.Delete(yedekDosyasi);
+        SistemDuvarKagidiyla(string.Empty, () => Statik(servis, "EnsureBackup", s));
+        object? yazilan = YedekOku(yedekDosyasi, Tip("Kalender.Desktop.WallpaperBackup"));
+        Denetle("düz renkte yazma yeniden açılınca düz renk yedeği yazılıyor (ikinci geri dönüş düz rengi getirir)",
+            yazilan is not null && !(bool)Oku(yazilan, "WallpaperEnabled")!);
+        File.Delete(yedekDosyasi);
+    }
+}
+
+/// <summary>
+/// Windows'un duvar kâğıdı arayüzünün (IDesktopWallpaper) sahtesi: gerçek
+/// masaüstüne dokunmadan yedekleme ve geri yükleme mantığını sınamak için
+/// (KodIncelemesi'ndekinin aynısı).
+/// </summary>
+public class SahteDuvarKagidi : DispatchProxy
+{
+    /// <summary>Bağlı ekranların aygıt yolları, sırasıyla.</summary>
+    public List<string> Aygitlar { get; } = new();
+
+    /// <summary>Aygıt yolu -> ekranda duran duvar kâğıdı.</summary>
+    public Dictionary<string, string> Ekranda { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Ortak yol (aygıt yolu verilmeden okunan).</summary>
+    public string Ortak { get; set; } = string.Empty;
+
+    /// <summary>Windows'un kabul etmediği yollar: SetWallpaper bunlarda hata verir.</summary>
+    public HashSet<string> Reddet { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Doğruysa GetWallpaper hata verir.</summary>
+    public bool OkumadaHata { get; set; }
+
+    /// <summary>SetWallpaper çağrıları, sırasıyla.</summary>
+    public List<(string? Aygit, string Yol)> Yazilanlar { get; } = new();
+
+    public int Konum { get; set; } = 4;
+
+    public uint Renk { get; set; }
+
+    protected override object? Invoke(MethodInfo? yontem, object?[]? a)
+    {
+        switch (yontem!.Name)
+        {
+            case "GetMonitorDevicePathCount":
+                return (uint)Aygitlar.Count;
+
+            case "GetMonitorDevicePathAt":
+                return Aygitlar[(int)(uint)a![0]!];
+
+            case "GetWallpaper":
+                if (OkumadaHata)
+                {
+                    throw new COMException("Duvar kâğıdı okunamadı (deneme).", unchecked((int)0x80004005));
+                }
+
+                return a![0] is string aygit ? (Ekranda.TryGetValue(aygit, out string? yol) ? yol : string.Empty) : Ortak;
+
+            case "SetWallpaper":
+                string yeni = (string)a![1]!;
+                if (Reddet.Contains(yeni))
+                {
+                    throw new COMException("Dosya bulunamadı (deneme).", unchecked((int)0x80070002));
+                }
+
+                Yazilanlar.Add(((string?)a[0], yeni));
+                if (a[0] is string hedef)
+                {
+                    Ekranda[hedef] = yeni;
+                }
+                else
+                {
+                    Ortak = yeni;
+                    foreach (string ekran in Aygitlar)
+                    {
+                        Ekranda[ekran] = yeni;
+                    }
+                }
+
+                return null;
+
+            case "GetBackgroundColor":
+                return Renk;
+
+            case "SetBackgroundColor":
+                Renk = (uint)a![0]!;
+                return null;
+
+            case "GetPosition":
+                return Enum.ToObject(yontem.ReturnType, Konum);
+
+            case "SetPosition":
+                Konum = Convert.ToInt32(a![0]);
+                return null;
+
+            case "Enable":
+                return null;
+
+            default:
+                throw new NotSupportedException(yontem.Name);
         }
     }
 }

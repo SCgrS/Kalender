@@ -108,7 +108,8 @@ internal sealed class WallpaperCanvas
     /// takvimsiz zemin mi? Öyleyse önceki duvar kâğıdı yedeklenmez, sıkıştırma
     /// kalitesine dokunulmaz: geri yüklemenin hemen ardından yeni bir yedek
     /// açılır ya da kalite yeniden 100'e çekilirdi. Yerleşim de yalnız "Yay"daysa
-    /// değiştirilir (bkz. <see cref="DoldurYerlesimineCekilsinMi"/>).
+    /// değiştirilir (bkz. <see cref="DoldurYerlesimineCekilsinMi"/>). Dosyanın
+    /// adı takvimsiz olduğunu söyler (bkz. <see cref="TakvimGosterenler"/>).
     /// </param>
     public CanvasResult Apply(IReadOnlyList<CanvasScreen> screens, bool kaldirirken = false)
     {
@@ -177,7 +178,7 @@ internal sealed class WallpaperCanvas
                     continue;
                 }
 
-                string file = DosyaYolu(screen.Monitor.StableId);
+                string file = DosyaYolu(screen.Monitor.StableId, kaldirirken);
                 SaveBmp(screen.Image, file);
                 wallpaper.SetWallpaper(id, file);
 
@@ -326,7 +327,73 @@ internal sealed class WallpaperCanvas
         return duranlar;
     }
 
+    /// <summary>
+    /// Hangi ekranlarda takvimin donmuş bir görüntüsü duruyor? Takvim duvar
+    /// kâğıdından kaldırılırken takvimsiz zemin bu ekranlara yazılır. Bu sürecin
+    /// ne yazdığına değil ekrana bakılır: açılışta yazma kapalıyken önceki bir
+    /// sürümün bıraktığı takvimi bu süreç yazmadı; önceden o takvim, önceki duvar
+    /// kâğıdı geri konamayınca ekranda kalıyordu. Takvimsiz zemin sayılmaz: onu
+    /// yeniden yazmak bir şey değiştirmez, her açılışta boşuna yazılırdı. Windows'ta
+    /// resim kipi kapalıysa (düz renk) ekranda görüntü yoktur. Okunamayan ekran
+    /// sayılmaz; emin olamadığımız yere yazmıyoruz.
+    /// </summary>
+    /// <param name="ekranlar">Bakılacak ekranlar.</param>
+    /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
+    /// <returns>Monitör kimlikleri.</returns>
+    internal static HashSet<string> TakvimGosterenler(IReadOnlyList<MonitorTarget> ekranlar, IDesktopWallpaper? wallpaper = null)
+    {
+        var gosterenler = new HashSet<string>(StringComparer.Ordinal);
+        if (ekranlar.Count == 0 || WallpaperService.ResimKipiKapali())
+        {
+            return gosterenler;
+        }
+
+        try
+        {
+            wallpaper ??= (IDesktopWallpaper)new DesktopWallpaperClass();
+            IReadOnlyList<string> devicePaths = ReadDevicePaths(wallpaper);
+
+            foreach (MonitorTarget ekran in ekranlar)
+            {
+                try
+                {
+                    // Aygıt yolu bulunamazsa ortak yol yalnız tek ekranda o
+                    // ekranınkidir (yazımdaki gibi).
+                    string? id = MatchDevicePath(wallpaper, devicePaths, ekran);
+                    if (id is null && ekranlar.Count > 1)
+                    {
+                        continue;
+                    }
+
+                    string? gorunen = wallpaper.GetWallpaper(id);
+                    if (WallpaperService.ZeminDosyasiMi(gorunen) && !TakvimsizZeminMi(gorunen))
+                    {
+                        gosterenler.Add(ekran.StableId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Debug($"Ekrandaki duvar kâğıdı okunamadı ({ekran.StableId}): {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Ekrandaki duvar kâğıdı okunamadı: " + ex.Message);
+        }
+
+        return gosterenler;
+    }
+
     // --------------------------------------------------------------- dosyalar
+
+    /// <summary>Takvimsiz zeminin dosya adının sonu (uzantıdan önce).</summary>
+    internal const string TakvimsizEki = "-takvimsiz";
+
+    /// <summary>Dosya, takvim kaldırılırken yazılan takvimsiz zemin mi?</summary>
+    internal static bool TakvimsizZeminMi(string? yol)
+        => !string.IsNullOrWhiteSpace(yol)
+            && Path.GetFileNameWithoutExtension(yol).EndsWith(TakvimsizEki, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Bir monitörün yeni görüntü dosyası. Her yazışta yeni bir ad veriliyor.
@@ -338,13 +405,14 @@ internal sealed class WallpaperCanvas
     /// tazelemiyor. Önceden iki ad (a/b) arasında gidip geliniyordu ama her
     /// açılışta yine "a"dan başlandığı için bir önceki oturumun dosyasıyla
     /// çakışılabiliyordu. Eski dosyaları <see cref="CleanUnusedFiles"/> siler.
+    /// Takvimsiz zeminin adı <see cref="TakvimsizEki"/> ile biter.
     /// </summary>
-    private static string DosyaYolu(string monitorId)
+    private static string DosyaYolu(string monitorId, bool takvimsiz)
     {
         Directory.CreateDirectory(Paths.CanvasFolder);
 
         return Path.Combine(Paths.CanvasFolder,
-            $"zemin-{ShortId(monitorId)}-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.bmp");
+            $"zemin-{ShortId(monitorId)}-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}{(takvimsiz ? TakvimsizEki : string.Empty)}.bmp");
     }
 
     /// <summary>

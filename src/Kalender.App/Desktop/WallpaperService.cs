@@ -89,9 +89,14 @@ internal static class WallpaperService
         }
     }
 
-    /// <summary>İlk değişiklikten önce mevcut durumu bir kez yedekler.</summary>
+    /// <summary>
+    /// İlk değişiklikten önce mevcut durumu bir kez yedekler. Okunamayan yedek
+    /// yokmuş gibi sayılır, yerine taze yedek alınır (bkz.
+    /// <see cref="OkunamayanYedegiKenaraAl"/>).
+    /// </summary>
     internal static void EnsureBackup(IDesktopWallpaper wallpaper)
     {
+        OkunamayanYedegiKenaraAl(Paths.BackupFile);
         if (File.Exists(Paths.BackupFile))
         {
             return;
@@ -114,10 +119,7 @@ internal static class WallpaperService
             }
 
             Directory.CreateDirectory(Paths.RootFolder);
-            File.WriteAllText(
-                Paths.BackupFile,
-                JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }),
-                new UTF8Encoding(false));
+            YedegiYaz(Paths.BackupFile, backup);
             File.Delete(BekleyenYedekDosyasi);
 
             Log.Info($"Önceki duvar kâğıdı yedeklendi (resim: {backup.WallpaperEnabled}).");
@@ -129,6 +131,119 @@ internal static class WallpaperService
     }
 
     /// <summary>
+    /// Yedeği önce geçici dosyaya yazar ve diske boşaltır, sonra yerine taşır
+    /// (ayar dosyasındaki gibi). Önceden doğrudan asıl dosyaya yazılıyordu:
+    /// yazımdan hemen sonra elektrik kesilir ya da bilgisayar zorla kapanırsa
+    /// dosya boş ya da yarım kalabiliyordu.
+    /// </summary>
+    internal static void YedegiYaz(string dosya, WallpaperBackup backup)
+    {
+        string gecici = dosya + ".tmp";
+        using (var akis = new FileStream(gecici, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            akis.Write(new UTF8Encoding(false).GetBytes(
+                JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true })));
+            akis.Flush(flushToDisk: true);
+        }
+
+        File.Move(gecici, dosya, overwrite: true);
+    }
+
+    /// <summary>
+    /// Yedek dosyası okunamıyorsa (boş, yarım ya da bozuk: yazılırken elektrik
+    /// kesildi, bilgisayar zorla kapandı) "onceki-duvar-kagidi.bozuk-&lt;tarih&gt;.json"
+    /// adıyla kenara alır; bundan sonra yedek yokmuş gibi davranılır. Önceden
+    /// yerinde kalıyordu: her geri dönüş başarısız oluyor, var olduğu için de
+    /// yerine yeni yedek alınmıyordu; kurtulmanın tek yolu dosyayı elle silmekti.
+    /// Dosyaya o an hiç erişilemiyorsa (kilitli) içeriği bilinmediği için dokunulmaz.
+    /// </summary>
+    internal static void OkunamayanYedegiKenaraAl(string dosya)
+    {
+        string json;
+        try
+        {
+            if (!File.Exists(dosya))
+            {
+                return;
+            }
+
+            json = File.ReadAllText(dosya, Encoding.UTF8);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug($"Duvar kâğıdı yedeği okunamadı ({Path.GetFileName(dosya)}): {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            if (JsonSerializer.Deserialize<WallpaperBackup>(json) is not null)
+            {
+                return;
+            }
+        }
+        catch (JsonException)
+        {
+            // İçerik okunamıyor; aşağıda kenara alınır.
+        }
+        catch (Exception ex)
+        {
+            // İçerikten olmayan bir hata: dosyanın bozuk olduğu bilinmiyor.
+            Log.Debug($"Duvar kâğıdı yedeği denetlenemedi ({Path.GetFileName(dosya)}): {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            string klasor = Path.GetDirectoryName(dosya)!;
+            string ad = $"{Path.GetFileNameWithoutExtension(dosya)}.bozuk-{DateTime.Now:yyyy-MM-dd-HHmmss}";
+            string hedef = Path.Combine(klasor, ad + ".json");
+            for (int i = 2; File.Exists(hedef); i++)
+            {
+                hedef = Path.Combine(klasor, $"{ad}-{i}.json");
+            }
+
+            File.Move(dosya, hedef);
+            Log.Warn("Okunamayan duvar kâğıdı yedeği kenara alındı: " + Path.GetFileName(hedef));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Okunamayan duvar kâğıdı yedeği kenara alınamadı.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Windows'un bütün masaüstü için verdiği duvar kâğıdı yolunu okur
+    /// (SPI_GETDESKWALLPAPER); okunamazsa null. Sınama bunu değiştirir, gerçek
+    /// ayar yalnız okunur.
+    /// </summary>
+    internal static Func<string?> SistemDuvarKagidiOkuyucu { get; set; } = SistemDuvarKagidiniOku;
+
+    /// <summary>
+    /// Windows'ta resimli duvar kâğıdı kapalı mı (düz renk)? Windows düz renkte
+    /// bu yolu boş verir; resim varken (ekranlarda ayrı resimler olsa da) dolu.
+    /// Okunamazsa false: emin olunamayan yerde eski davranış sürer.
+    /// </summary>
+    internal static bool ResimKipiKapali()
+        => SistemDuvarKagidiOkuyucu() is string yol && string.IsNullOrWhiteSpace(yol);
+
+    private static string? SistemDuvarKagidiniOku()
+    {
+        try
+        {
+            var yol = new StringBuilder(1024);
+            return NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETDESKWALLPAPER, (uint)yol.Capacity, yol, 0)
+                ? yol.ToString()
+                : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Windows'un duvar kâğıdı ayarı okunamadı: " + ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Ekrandaki duvar kâğıdı durumunu okur. Kalender'in kendi zemin
     /// görüntüleri yedeğe yazılmaz: geri yüklemede kullanıcının duvar kâğıdı
     /// yerine takvimin donmuş hâli gelirdi. O ekran geri yüklenirken ortak yol
@@ -136,7 +251,8 @@ internal static class WallpaperService
     /// </summary>
     /// <returns>
     /// Yedek; ekranlarda yalnızca Kalender'in görüntüleri duruyorsa null
-    /// (kullanıcının duvar kâğıdı bilinmiyor, yedek yazılmaz).
+    /// (kullanıcının duvar kâğıdı bilinmiyor, yedek yazılmaz). O zaman da
+    /// Windows'ta resim kipi kapalıysa düz renk yedeği döner.
     /// </returns>
     internal static WallpaperBackup? YedekHazirla(IDesktopWallpaper wallpaper)
     {
@@ -193,6 +309,18 @@ internal static class WallpaperService
 
         if (bizimkiVardi && !backup.WallpaperEnabled)
         {
+            // Windows'ta resim kipi kapalıysa kullanıcı düz renk görüyor; yedek
+            // düz renk olarak yazılır. "Eski duvar kâğıdıma dön" düz renkte
+            // yalnız resim kipini kapatıyor. Windows ekranların yolunu bundan
+            // sonra da takvimin görüntüsü olarak veriyorsa (ölçülmedi) önceden
+            // yedek hiç alınmıyor, sonraki geri dönüş düz renk yerine takvimsiz
+            // zemini koyup uyarı veriyordu.
+            if (ResimKipiKapali())
+            {
+                Log.Debug("Ekranlarda takvimin görüntüleri var ama resim kipi kapalı; düz renk yedeklendi.");
+                return backup;
+            }
+
             Log.Debug("Ekranlarda yalnızca takvimin kendi görüntüleri var; duvar kâğıdı yedeklenmedi.");
             return null;
         }
@@ -212,7 +340,8 @@ internal static class WallpaperService
     /// Hiçbir ekran geri yüklenemediyse yedek silinmez, bekler (bkz.
     /// <see cref="BekleyenYedekDosyasi"/>): önceden o zaman da siliniyordu;
     /// fotoğraf takılı olmayan bir diskteyse önceki duvar kâğıdının tek kaydı
-    /// gidiyordu.
+    /// gidiyordu. Okunamayan yedek kenara alınır, yokmuş gibi davranılır (bkz.
+    /// <see cref="OkunamayanYedegiKenaraAl"/>).
     /// </summary>
     /// <param name="eksikKaldi">
     /// Ekranlarda Kalender'in görüntüsü kalmış olabilir mi? Yedek yoksa ve
@@ -231,6 +360,9 @@ internal static class WallpaperService
 
         try
         {
+            OkunamayanYedegiKenaraAl(Paths.BackupFile);
+            OkunamayanYedegiKenaraAl(BekleyenYedekDosyasi);
+
             string? yedekDosyasi = File.Exists(Paths.BackupFile) ? Paths.BackupFile
                 : File.Exists(BekleyenYedekDosyasi) ? BekleyenYedekDosyasi
                 : null;

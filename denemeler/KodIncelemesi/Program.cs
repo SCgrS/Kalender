@@ -332,6 +332,27 @@ internal static class Program
         }
     }
 
+    /// <summary>
+    /// Bölümü Windows'ta resim kipi açıkmış gibi çalıştırır. İkinci incelemenin
+    /// 32. maddesinden (2026-10-15) beri yedek alınırken resim kipine de
+    /// bakılıyor; 6. maddenin denetimleri resim kipi açıkken yazıldı, sonuçları
+    /// bu bilgisayarın ayarına bağlı kalmasın.
+    /// </summary>
+    private static void ResimKipiAcikken(Action bolum)
+    {
+        PropertyInfo okuyucu = Tip("Kalender.Desktop.WallpaperService").GetProperty("SistemDuvarKagidiOkuyucu", Hepsi)!;
+        object? gercek = okuyucu.GetValue(null);
+        okuyucu.SetValue(null, new Func<string?>(() => @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"));
+        try
+        {
+            bolum();
+        }
+        finally
+        {
+            okuyucu.SetValue(null, gercek);
+        }
+    }
+
     private static string? DosyaOku(string yol) => File.Exists(yol) ? Convert.ToHexString(File.ReadAllBytes(yol)) : null;
 
     [STAThread]
@@ -360,7 +381,7 @@ internal static class Program
             Bolum(Madde32);
             Bolum(Madde4);
             Bolum(Madde3);
-            Bolum(() => Madde6(gecici));
+            Bolum(() => ResimKipiAcikken(() => Madde6(gecici)));
             Bolum(Madde25);
             Bolum(() => Madde5(gecici));
             Bolum(Madde19);
@@ -590,11 +611,14 @@ internal static class Program
 
         // Geri yükleme: yedek geri konur; olmayan ya da geri konamayan ekrana
         // takvimsiz zemin yalnız takvim hâlâ duruyorsa yazılır; sonra bırakılır.
+        // İkinci incelemenin 7. maddesinden (2026-10-15) beri takvimin durduğu
+        // ekranlar EkrandaDuranlar'dan (bu sürecin yazdıkları) değil, ekrana
+        // bakan TakvimGosterenler'den okunuyor; denetim ona göre güncellendi.
         MethodInfo kaldir = yoneticiTipi.GetMethod("DuvarKagidiniGeriYukle", Hepsi)!;
         List<Komut> k = Komutlar(kaldir);
         int bayrak = Bul(k, x => AlanKomutu(x, OpCodes.Stfld, "_geriYukleniyor"));
         int restore = Bul(k, x => Cagri(x, servis, "Restore"));
-        int duranlar = Bul(k, x => Cagri(x, tuvalTipi, "EkrandaDuranlar"), restore);
+        int duranlar = Bul(k, x => Cagri(x, tuvalTipi, "TakvimGosterenler"), restore);
         int zeminYaz = Bul(k, x => Cagri(x, yoneticiTipi, "PaintPlainBackground"), duranlar);
         int birak = Bul(k, x => Cagri(x, tuvalTipi, "Birak"), restore);
         int bayrakKalkar = Bul(k, x => AlanKomutu(x, OpCodes.Stfld, "_geriYukleniyor"), bayrak + 1);

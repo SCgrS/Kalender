@@ -768,9 +768,12 @@ internal sealed class DesktopLayerManager : IDisposable
         {
             bool yuklendi = WallpaperService.Restore(out bool eksikKaldi);
 
-            if (eksikKaldi && _canvas.HasPainted)
+            // Ekrana bakılır, bu sürecin yazıp yazmadığına değil: açılışta
+            // önceki sürümlerin donmuş bıraktığı takvimi bu süreç yazmadı;
+            // önceki duvar kâğıdı geri konamayınca o takvim ekranda kalıyordu.
+            if (eksikKaldi)
             {
-                HashSet<string> duranlar = _canvas.EkrandaDuranlar();
+                HashSet<string> duranlar = WallpaperCanvas.TakvimGosterenler(_screens.Select(s => s.Monitor).ToList());
                 if (duranlar.Count > 0)
                 {
                     PaintPlainBackground(duranlar);
