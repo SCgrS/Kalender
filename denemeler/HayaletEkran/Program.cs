@@ -26,7 +26,8 @@ using System.Text.Json;
 //       yazımda yinelenmez; hayaletteki takvim ekranda sayılmaz.
 //   S3. 1.14'ün bıraktığı durum (son yazım hayalete): nöbet iki ardışık
 //       denetimden sonra yeniden yazdırır, aygıt yolu verilmeden; liste
-//       düzelince kendi kaydına yazılır, günlüğe bir kez "düzeldi".
+//       düzelince görüntü kendi kaydında da duruyorsa yeniden yazılmaz, yoksa
+//       kendi kaydına yazılır; günlüğe bir kez "düzeldi".
 //   S4. Temizlik: ekranda duran dosyalar (boş kimlikli kayıt, hayalet) silinmez,
 //       kullanılmayan eski dosya silinir; liste okunamazsa hiçbiri silinmez;
 //       yazımdan sonraki temizlik de ekrana bakar.
@@ -61,6 +62,9 @@ using System.Text.Json;
 //   S15. Canlı kayıt yokken nöbet aygıt yolu verilmeden okunan dosyaya bakar.
 //   S16. Geri yükleme eksik kalınca takvimin durduğu ekranlar bütün bağlı
 //        ekranlarla aranır.
+//   S17. Liste iki hâl arasında gidip gelirken yeniden yazım sınırlı: görüntü
+//        yeni yoldan da görünüyorsa ya da ekranın kaydı bulunamıyorsa yazılmaz;
+//        hiç görünmüyorsa yol değişimi yazımları da geri çekilmeye girer.
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
 // (DuvarKagidiKayitlari.Ac) ilk iş olarak açılırsa hata veren bir fabrikaya, her
@@ -498,6 +502,7 @@ internal static class Program
             Bolum(S14);
             Bolum(S15);
             Bolum(S16);
+            Bolum(S17);
         }
         finally
         {
@@ -673,20 +678,37 @@ internal static class Program
             k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit is null && k.Kayitlar[0].Dosya == k.Yazilanlar[0].Yol, Yazimlar(k));
         Denetle("yeniden yazımdan sonra nöbet 'yerinde' diyor", BizimMi(tuval) && BizimMi(tuval));
 
-        // Liste düzeldi (oturum kapatılıp açıldı): tek kayıt, ekranın aygıt yoluyla; ekranda bizim görüntümüz.
+        // Liste düzeldi (oturum kapatılıp açıldı): tek kayıt, ekranın aygıt yoluyla. Aygıt
+        // yolu verilmeden yazılan görüntü bütün kayıtlara gitti; ekranın kendi kaydında da bizimki.
         string ekrandaki = k.Kayitlar[0].Dosya;
         k.Kayitlar.Clear();
         k.Kayitlar.Add(new(Aus, SOk, Sinir(0), ekrandaki));
-        bool d1 = BizimMi(tuval);
-        bool d2 = BizimMi(tuval);
-        Denetle("liste düzelince de iki ardışık denetimden sonra yeniden yazım isteniyor", d1 && !d2, $"{d1} / {d2}");
-        Unut(tuval);
-        Uygula(tuval, false, (ekran, Color.Navy));
-        Denetle("liste düzelince ekranın kendi kaydına yazılıyor",
+        string d1 = Denetim(tuval), d2 = Denetim(tuval);
+        Denetle("liste düzelince görüntü ekranın kendi kaydında da duruyorsa yeniden yazılmıyor, yeni yol benimseniyor",
+            d1 == "Bilinmiyor" && d2 == "Yerinde" && Denetim(tuval) == "Yerinde" && k.Yazilanlar.Count == 1, $"{d1} / {d2}");
+        Uygula(tuval, false, (ekran, Color.Teal));
+        Denetle("sonraki yazım ekranın kendi kaydına",
             k.Yazilanlar.Count == 2 && k.Yazilanlar[1].Aygit == Aus && BizimMi(tuval), Yazimlar(k));
         Denetle("günlükte bozukluk için bir, düzelme için bir hata satırı",
             Hatalar.Count == hata + 2 && Hatalar[^2].Contains("tutarsız") && Hatalar[^1].Contains("düzeldi"),
             string.Join(" | ", Hatalar.Skip(hata)));
+
+        // Aygıt yolu verilmeden yazılan görüntü hayalete ulaşmadıysa (ölçülmedi): liste
+        // düzelince ekranın kendi kaydında eski gün; iki ardışık denetimden sonra yeniden yazılıyor.
+        int hata2 = Hatalar.Count;
+        SahteKabuk k2 = Kabuk(new Kayit("", SOk, Sinir(0), f15), new(Aus, EFail, Rectangle.Empty, f16));
+        object tuval2 = Tuval(1);
+        Uygula(tuval2, false, (ekran, Color.Navy));
+        k2.Kayitlar.Clear();
+        k2.Kayitlar.Add(new(Aus, SOk, Sinir(0), f16));
+        string e1 = Denetim(tuval2), e2 = Denetim(tuval2);
+        Denetle("liste düzelince kendi kaydında başka görüntü varsa iki ardışık denetimden sonra yeniden yazım isteniyor",
+            e1 == "Bilinmiyor" && e2 == "YolDegisti", $"{e1} / {e2}");
+        Unut(tuval2);
+        Uygula(tuval2, false, (ekran, Color.Navy));
+        Denetle("yeniden yazım ekranın kendi kaydına; günlüğe bir kez 'düzeldi'",
+            k2.Yazilanlar.Count == 2 && k2.Yazilanlar[0].Aygit is null && k2.Yazilanlar[1].Aygit == Aus && BizimMi(tuval2)
+            && Hatalar.Count == hata2 + 2 && Hatalar[^1].Contains("düzeldi"), Yazimlar(k2));
     }
 
     // ------------------------------------------------------------------- S4
@@ -890,11 +912,13 @@ internal static class Program
         object tuval = Tuval(1);
         Uygula(tuval, false, (ekran, Color.Navy));
         string yol = k.Kayitlar[0].Dosya;
+        string eski = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261015-114200-000.bmp");
 
+        // Bozuk hâlde ekrandaki (boş kimlikli) kayıtta eski gün: yeni yoldan bakınca görüntü yok.
         void Bozuk()
         {
             k.Kayitlar.Clear();
-            k.Kayitlar.Add(new("", SOk, Sinir(0), yol));
+            k.Kayitlar.Add(new("", SOk, Sinir(0), eski));
             k.Kayitlar.Add(new(Aus, EFail, Rectangle.Empty, yol));
         }
 
@@ -921,6 +945,133 @@ internal static class Program
         Denetle("aynı farklılık iki ardışık denetimde görülünce yeniden yazım isteniyor", b1 && !b2, $"{b1} / {b2}");
         Denetle("denetimler yazmıyor (yazımı masaüstü katmanı yapar)", k.Yazilanlar.Count == 1, Yazimlar(k));
     }
+
+    // ------------------------------------------------------------------ S17
+
+    private static void S17()
+    {
+        Console.WriteLine("S17) Liste iki hâl arasında gidip gelirken yeniden yazım sınırlı: görüntü yeni yoldan da görünüyorsa yazılmıyor");
+        // Ekran kapalıyken monitör ~8,7 sn'de bir veri yolundan düşüyor; Windows'un
+        // listesi iki hâl arasında gidip gelebilir. Her durum iki denetim sürüyor (en kötüsü:
+        // her değişim "iki ardışık denetimde aynı" şartını tutturuyor). Masaüstü katmanının
+        // yaptığı: denetim, sonucu nöbete işle, yeniden yazım isteniyorsa her şeyi unut, yeniden çiz.
+        Type nobetTipi = Tip("Kalender.Desktop.DuvarKagidiNobeti");
+        int Dongu(SahteKabuk k, object tuval, Action[] haller, Func<(object, Color)[]> ekranlar, int tur, out object nobet)
+        {
+            nobet = Activator.CreateInstance(nobetTipi, true)!;
+            int yazimOnce = k.Yazilanlar.Count;
+            DateTime an = new(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc);
+            for (int i = 0; i < tur; i++, an = an.AddSeconds(32))
+            {
+                haller[i / 2 % haller.Length]();
+                if (!(bool)Cagir(nobet, "DenetimZamani", an)!)
+                {
+                    continue;
+                }
+
+                object sonuc = Cagir(tuval, "EkraniDenetle")!;
+                Cagir(nobet, "Isle", sonuc, an);
+                if (sonuc.ToString() is "YolDegisti" or "Gorunmuyor")
+                {
+                    Unut(tuval);
+                    Uygula(tuval, false, ekranlar());
+                }
+            }
+
+            return k.Yazilanlar.Count - yazimOnce;
+        }
+
+        // Tek ekran: kaydın dikdörtgen sorusu S_OK ile S_FALSE arasında gidip geliyor.
+        // Bağlı değilken canlı kayıt yok: aygıt yolu verilmeden; Windows ortak yolu veriyor.
+        object ekran = Ekran(Aus, 0);
+        SahteKabuk k = Kabuk(new Kayit(Aus, SOk, Sinir(0), Foto));
+        k.AygitsizIlkCanliyiVerir = false;
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (ekran, Color.Navy));
+        k.Ortak = k.Kayitlar[0].Dosya;
+        Action[] tek =
+        {
+            () => k.Kayitlar[0].Hr = SFalse,
+            () => k.Kayitlar[0].Hr = SOk,
+        };
+        int yazim = Dongu(k, tuval, tek, () => new[] { (ekran, Color.Navy) }, 40, out object n1);
+        Denetle("tek ekranda bağlı/bağlı değil arasında gidip gelirken görüntü yerinde; hiç yeniden yazılmıyor",
+            yazim == 0 && (int)Oku(n1, "ArdArda")! == 0, $"{yazim} yazım; {Yazimlar(k)}");
+
+        // Tek ekran: liste sağlıklı ile tutarsız (ekrandaki kayıt aygıt yollu, yanında hayalet) arasında.
+        SahteKabuk k2 = Kabuk(new Kayit(Aus, SOk, Sinir(0), Foto));
+        object tuval2 = Tuval(1);
+        Uygula(tuval2, false, (ekran, Color.Navy));
+        string bizim = k2.Kayitlar[0].Dosya;
+        Action[] tutarsiz =
+        {
+            () =>
+            {
+                if (k2.Kayitlar.Count == 1)
+                {
+                    k2.Kayitlar.Add(new("", EFail, Rectangle.Empty, k2.Kayitlar[0].Dosya));
+                }
+            },
+            () =>
+            {
+                if (k2.Kayitlar.Count == 2)
+                {
+                    k2.Kayitlar.RemoveAt(1);
+                }
+            },
+        };
+        yazim = Dongu(k2, tuval2, tutarsiz, () => new[] { (ekran, Color.Navy) }, 40, out object n2);
+        Denetle("tek ekranda liste sağlıklı ile tutarsız arasında gidip gelirken görüntü yerinde; hiç yeniden yazılmıyor",
+            yazim == 0 && k2.Kayitlar[0].Dosya == bizim && (int)Oku(n2, "ArdArda")! == 0, $"{yazim} yazım; {Yazimlar(k2)}");
+
+        // Çok ekran: B'nin kaydı bağlı ile bağlı değil arasında (kaydı bulunamıyor ↔ kendi kaydı).
+        string aId = @"\\?\DISPLAY#AAA0001#1";
+        string bId = @"\\?\DISPLAY#BBB0002#1";
+        object a = Ekran(aId, 0, 1920, 1080);
+        object b = Ekran(bId, 1920, 1920, 1080);
+        SahteKabuk k3 = Kabuk(new Kayit(aId, SOk, Sinir(0, 1920, 1080), Foto), new(bId, SOk, Sinir(1920, 1920, 1080), Foto));
+        object tuval3 = Tuval(2);
+        Uygula(tuval3, false, (a, Color.Red), (b, Color.Blue));
+        Action[] cok =
+        {
+            () => k3.Kayitlar[1].Hr = SFalse,
+            () => k3.Kayitlar[1].Hr = SOk,
+        };
+        yazim = Dongu(k3, tuval3, cok, () => new[] { (a, Color.Red), (b, Color.Blue) }, 40, out object n3);
+        Denetle("çok ekranda bir ekranın kaydı bulunamaz olup geri gelirken görüntü yerinde; hiç yeniden yazılmıyor",
+            yazim == 0 && Denetim(tuval3) is "Yerinde" or "Bilinmiyor", $"{yazim} yazım; {Yazimlar(k3)}");
+        k3.Kayitlar[1].Hr = SOk;
+        Denetim(tuval3);
+        Denetim(tuval3);
+        Denetle("kaydı geri gelince iki ekran da yerinde sayılıyor", Duranlar(tuval3).SetEquals(new[] { aId, bId }));
+
+        // En kötüsü: yazılan görüntü yeni yoldan hiç görünmüyor (her değişimde
+        // ekrandaki kayıtta eski gün). Yeniden yazım art arda üçten sonra seyrekleşiyor.
+        string eski = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261015-114200-000.bmp");
+        SahteKabuk k4 = Kabuk(new Kayit(Aus, SOk, Sinir(0), Foto));
+        object tuval4 = Tuval(1);
+        Uygula(tuval4, false, (ekran, Color.Navy));
+        Action[] inatci =
+        {
+            () =>
+            {
+                k4.Kayitlar.Clear();
+                k4.Kayitlar.Add(new("", SOk, Sinir(0), eski));
+                k4.Kayitlar.Add(new(Aus, EFail, Rectangle.Empty, eski));
+            },
+            () =>
+            {
+                k4.Kayitlar.Clear();
+                k4.Kayitlar.Add(new(Aus, SOk, Sinir(0), eski));
+            },
+        };
+        yazim = Dongu(k4, tuval4, inatci, () => new[] { (ekran, Color.Navy) }, 60, out object n4);
+        // Sınırsız olsaydı her iki denetimde bir, 32 dakikada 30 yazım olurdu.
+        Denetle("görüntü yeni yoldan hiç görünmüyorsa yol değişimi yazımları da sayılıyor: 32 dakikada en çok 6 yeniden yazım",
+            yazim is > 0 and <= 6 && (int)Oku(n4, "ArdArda")! >= DuvarKagidiNobetiEsik(nobetTipi), $"{yazim} yazım; ArdArda {Oku(n4, "ArdArda")}");
+    }
+
+    private static int DuvarKagidiNobetiEsik(Type nobetTipi) => (int)nobetTipi.GetField("IlkEsik", Hepsi)!.GetValue(null)!;
 
     // ------------------------------------------------------------------ S10
 
@@ -1112,10 +1263,10 @@ internal static class Program
         bool Zamani(DateTime an) => (bool)Cagir(n, "DenetimZamani", an)!;
         int ArdArda() => (int)Oku(n, "ArdArda")!;
 
-        bool b1 = Isle("Gorunmuyor", t0), b2 = Isle("Gorunmuyor", t0);
-        Denetle("ilk iki uyuşmazlıkta beklenmiyor, haber yok", !b1 && !b2 && Zamani(t0) && ArdArda() == 2);
-        Denetle("yol değişimi ve bilinmeyen sonuç sayılmıyor",
-            !Isle("YolDegisti", t0) && !Isle("Bilinmiyor", t0) && ArdArda() == 2 && Zamani(t0));
+        bool b1 = Isle("Gorunmuyor", t0), b2 = Isle("YolDegisti", t0);
+        Denetle("ilk iki uyuşmazlıkta beklenmiyor, haber yok; yol değişimi de sayılıyor",
+            !b1 && !b2 && Zamani(t0) && ArdArda() == 2);
+        Denetle("bilinmeyen sonuç sayılmıyor, sayacı da bırakmıyor", !Isle("Bilinmiyor", t0) && ArdArda() == 2 && Zamani(t0));
         bool b3 = Isle("Gorunmuyor", t0);
         Denetle("üçüncü uyuşmazlıkta haber; sonraki denetim 5 dakika sonra",
             b3 && !Zamani(t0.AddMinutes(4.9)) && Zamani(t0.AddMinutes(5)));

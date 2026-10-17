@@ -623,11 +623,11 @@ internal sealed class DesktopLayerManager : IDisposable
     /// Nöbet zamanlayıcısının her turu: ekran yapılandırmasına, birkaç turda bir
     /// de ekranda gerçekten bizim görüntümüzün durup durmadığına bakar.
     ///
-    /// Yeniden yazım ekranı düzeltemiyorsa (yazılan görüntü ekrana ulaşmıyor)
-    /// denetim seyrekleşir: önceden yarım dakikada bir bütün ekranlar yeniden
-    /// yazılıyordu, sonsuza dek (bkz. <see cref="DuvarKagidiNobeti"/>). Art arda
-    /// üçüncü uyuşmazlıkta günlüğe kayıt tablosuyla bir hata yazılır, kullanıcıya
-    /// bir kez haber verilir.
+    /// Yeniden yazım ekranı düzeltemiyorsa (yazılan görüntü ekrana ulaşmıyor ya
+    /// da Windows'un listesi iki hâl arasında gidip geliyor) denetim seyrekleşir:
+    /// önceden yarım dakikada bir bütün ekranlar yeniden yazılıyordu, sonsuza dek
+    /// (bkz. <see cref="DuvarKagidiNobeti"/>). Art arda üçüncü uyuşmazlıkta
+    /// günlüğe kayıt tablosuyla bir hata yazılır, kullanıcıya bir kez haber verilir.
     /// </summary>
     private void Nobet()
     {
@@ -652,7 +652,8 @@ internal sealed class DesktopLayerManager : IDisposable
         EkranDenetimi sonuc = _canvas.EkraniDenetle();
         if (_duvarKagidiNobeti.Isle(sonuc, simdi))
         {
-            Log.Error($"Takvim yeniden yazıldığı hâlde art arda {DuvarKagidiNobeti.IlkEsik} denetimde ekrana çıkmadı; "
+            Log.Error($"Takvim yeniden yazıldığı hâlde art arda {DuvarKagidiNobeti.IlkEsik} denetimde ekranda yerine oturmadı "
+                + "(görüntü ekrana çıkmıyor ya da Windows'un ekran listesi değişip duruyor); "
                 + $"duvar kâğıdı denetimi seyrekleşiyor (en çok {DuvarKagidiNobeti.UzunBekleme.TotalMinutes:F0} dakikada bir). "
                 + "Kayıtlar: " + _canvas.SonDenetimKayitlari);
 

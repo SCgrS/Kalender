@@ -427,18 +427,21 @@ internal sealed class WallpaperCanvas
     /// Explorer'ın listesi bozulup o kayıt hiçbir ekrana karşılık gelmez
     /// olunca görüntü ekrana çıkmıyor, denetim yine "yerinde" diyordu. Listeye
     /// göre yazım yolu değiştiyse (liste bozuldu ya da düzeldi) ancak iki ardışık
-    /// denetimde aynı yeni yol görülünce yeniden yazılır: Windows'un listesi
-    /// ekran açılıp kapanırken bir anlığına farklı görünebilir. Aygıt yolu
-    /// verilmeden yazılan görüntü de denetlenir. Ayrıntı için
-    /// <see cref="EkraniDenetle"/>.
+    /// denetimde aynı yeni yol görülünce ve görüntü o yoldan bakınca ekranda
+    /// durmuyorsa yeniden yazılır: Windows'un listesi ekran açılıp kapanırken bir
+    /// anlığına farklı görünebilir. Aygıt yolu verilmeden yazılan görüntü de
+    /// denetlenir. Ayrıntı için <see cref="EkraniDenetle"/>.
     /// </summary>
     public bool EkrandakilerBizimMi() => EkraniDenetle() is EkranDenetimi.Yerinde or EkranDenetimi.Bilinmiyor;
 
     /// <summary>
     /// <see cref="EkrandakilerBizimMi"/>'nin sonucu, nedeniyle: masaüstü katmanı
-    /// geri çekilmede (bkz. <see cref="DuvarKagidiNobeti"/>) yalnız "yol aynı,
-    /// görüntü yok"u sayar. Birden çok ekranda en ağır sonuç döner (görüntü yok,
-    /// yol değişti, bilinmiyor, yerinde sırasıyla).
+    /// yeniden yazım isteyen sonuçları geri çekilmede sayar (bkz.
+    /// <see cref="DuvarKagidiNobeti"/>). Birden çok ekranda en ağır sonuç döner
+    /// (görüntü yok, yol değişti, bilinmiyor, yerinde sırasıyla).
+    ///
+    /// Yol değişince yeni yoldan bakılır: görüntü orada da duruyorsa ya da
+    /// ekranın kaydı artık bulunamıyorsa yeniden yazılmaz, yeni yol benimsenir.
     ///
     /// Bir kaydın dosyası okunamazsa o ekran bilinmiyor sayılır: "ekranda
     /// görüntü yok" sayılsaydı Explorer'ın bir anlık okuma hatası gereksiz bir
@@ -463,6 +466,7 @@ internal sealed class WallpaperCanvas
 
             SonDenetimKayitlari = DuvarKagidiKayitlari.Ozet(kayitlar);
             EkranDenetimi sonuc = EkranDenetimi.Yerinde;
+            var benimsenenler = new List<(string Anahtar, MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)>();
             foreach (KeyValuePair<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> kayit in _sonYazilanlar)
             {
                 (MonitorTarget ekran, DuvarKagidiHedefi yazilan, string dosya) = kayit.Value;
@@ -470,25 +474,54 @@ internal sealed class WallpaperCanvas
 
                 if (simdi != yazilan)
                 {
-                    if (_bekleyenDegisimler.TryGetValue(kayit.Key, out DuvarKagidiHedefi onceki) && onceki == simdi)
+                    if (!_bekleyenDegisimler.TryGetValue(kayit.Key, out DuvarKagidiHedefi onceki) || onceki != simdi)
                     {
-                        Log.Warn($"Ekranın duvar kâğıdı kaydı değişti ({YolAdi(yazilan)} -> {YolAdi(simdi)}); yeniden yazılacak: {ekran}");
-                        sonuc = AgirOlan(sonuc, EkranDenetimi.YolDegisti);
-                    }
-                    else
-                    {
-                        // İlk görüş: bir sonraki denetimde de böyleyse yazılır.
+                        // İlk görüş: bir sonraki denetimde de böyleyse değişmiş sayılır.
                         _bekleyenDegisimler[kayit.Key] = simdi;
                         sonuc = AgirOlan(sonuc, EkranDenetimi.Bilinmiyor);
+                        continue;
                     }
 
+                    // Yol değişti. Yeni yoldan bakınca ekranda yine Kalender'in
+                    // görüntüsü duruyorsa yeniden yazılmaz, yalnız yeni yol
+                    // benimsenir: tek ekranda aygıt yolu verilmeden yazılan
+                    // görüntü bütün kayıtlara gidiyor, ekranın kendi kaydından da
+                    // görünüyor. Yeni yolda kaydı bulunamayan ekran da yazılmaz;
+                    // yazım onu zaten atlardı, öbür ekranları boşuna yeniden
+                    // yazardı. Önceden her yol değişimi bütün ekranları yeniden
+                    // yazdırıyordu: ekran kapalıyken monitör veri yolundan düşüp
+                    // kalkarken Windows'un listesi iki hâl arasında gidip
+                    // gelebiliyor, her gidişte ve dönüşte ekran başına ~11 MB'lık
+                    // dosya yazılıyor, masaüstü yenileniyordu.
+                    if (simdi.Tur == HedefTuru.Yok)
+                    {
+                        Log.Debug($"Ekranın duvar kâğıdı kaydı bulunamıyor ({YolAdi(yazilan)} -> {YolAdi(simdi)}); kaydı canlı olunca bakılacak: {ekran}");
+                        _bekleyenDegisimler.Remove(kayit.Key);
+                        benimsenenler.Add((kayit.Key, ekran, simdi, dosya));
+                        sonuc = AgirOlan(sonuc, EkranDenetimi.Bilinmiyor);
+                        continue;
+                    }
+
+                    if (dosya.Length > 0
+                        && !DuvarKagidiKayitlari.GorunenBilinmiyor(kayitlar, simdi, ekran)
+                        && string.Equals(DuvarKagidiKayitlari.Gorunen(kayitlar, simdi, ekran), dosya, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log.Debug($"Ekranın duvar kâğıdı kaydı değişti ({YolAdi(yazilan)} -> {YolAdi(simdi)}); görüntü yerinde, yeniden yazılmıyor: {ekran}");
+                        _bekleyenDegisimler.Remove(kayit.Key);
+                        benimsenenler.Add((kayit.Key, ekran, simdi, dosya));
+                        continue;
+                    }
+
+                    Log.Warn($"Ekranın duvar kâğıdı kaydı değişti ({YolAdi(yazilan)} -> {YolAdi(simdi)}); yeniden yazılacak: {ekran}");
+                    sonuc = AgirOlan(sonuc, EkranDenetimi.YolDegisti);
                     continue;
                 }
 
                 _bekleyenDegisimler.Remove(kayit.Key);
 
-                // Yazım anında atlanan ekran: yalnız yol izlenir (bkz. Apply).
-                if (dosya.Length == 0)
+                // Yazım anında atlanan ekran ve kaydı bulunamayan ekran: yalnız
+                // yol izlenir (bkz. Apply).
+                if (dosya.Length == 0 || yazilan.Tur == HedefTuru.Yok)
                 {
                     continue;
                 }
@@ -507,6 +540,12 @@ internal sealed class WallpaperCanvas
                         + "); yeniden yazılacak.");
                     sonuc = EkranDenetimi.Gorunmuyor;
                 }
+            }
+
+            // Sözlük gezilirken değiştirilmez; benimsenen yollar sonra yazılır.
+            foreach ((string anahtar, MonitorTarget ekran, DuvarKagidiHedefi hedef, string dosya) in benimsenenler)
+            {
+                _sonYazilanlar[anahtar] = (ekran, hedef, dosya);
             }
 
             return sonuc;

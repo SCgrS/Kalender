@@ -14,7 +14,8 @@ internal enum EkranDenetimi
 
     /// <summary>
     /// Windows'un listesine göre bir ekranın yazım yolu değişti (liste bozuldu
-    /// ya da düzeldi); yeniden yazılmalı. Bir yazım bunu dengeye getirir.
+    /// ya da düzeldi) ve görüntü yeni yoldan bakınca ekranda durmuyor; yeniden
+    /// yazılmalı. Çoğu zaman bir yazım bunu dengeye getirir.
     /// </summary>
     YolDegisti,
 
@@ -34,10 +35,12 @@ internal enum EkranDenetimi
 /// ekranlar yeniden çizilir, ekran başına ~11 MB'lık dosya yazılır, masaüstü
 /// yenilenir; bu sonsuza dek sürerdi. Art arda <see cref="IlkEsik"/>
 /// uyuşmazlıktan sonra denetim <see cref="IlkBekleme"/>, <see cref="UzunEsik"/>
-/// uyuşmazlıktan sonra <see cref="UzunBekleme"/> aralıkla yapılır. Yalnız
-/// "yol aynı, görüntü yok" sayılır: yol değişimi bir yazımla dengeye geliyor.
-/// Ekranda Kalender'in görüntüsü görülünce, ekran yapılandırması değişince,
-/// uyanınca ve Explorer yeniden başlayınca baştan başlar.
+/// uyuşmazlıktan sonra <see cref="UzunBekleme"/> aralıkla yapılır. Yazım yolu
+/// değişimi de sayılır: çoğu zaman bir yazım onu dengeye getirir, ama Windows'un
+/// listesi iki hâl arasında gidip geliyorsa (ekran kapalıyken monitör veri
+/// yolundan düşüp kalkıyor) her gidiş ve dönüş yeniden yazım isterdi; önceden
+/// bunun bir sınırı yoktu. Ekranda Kalender'in görüntüsü görülünce, ekran
+/// yapılandırması değişince, uyanınca ve Explorer yeniden başlayınca baştan başlar.
 /// </summary>
 internal sealed class DuvarKagidiNobeti
 {
@@ -54,7 +57,10 @@ internal sealed class DuvarKagidiNobeti
     /// <summary>Bir sonraki denetimin en erken zamanı (UTC).</summary>
     private DateTime _sonraki = DateTime.MinValue;
 
-    /// <summary>Art arda kaç denetimde yazım yolu aynıyken ekranda Kalender'in görüntüsü yoktu.</summary>
+    /// <summary>
+    /// Art arda kaç denetim yeniden yazım istedi (ekranda Kalender'in görüntüsü
+    /// yoktu ya da yazım yolu değişti), arada görüntü yerinde görülmeden.
+    /// </summary>
     public int ArdArda { get; private set; }
 
     /// <summary>Duvar kâğıdı şimdi denetlenebilir mi (geri çekilme süresi doldu mu)?</summary>
@@ -74,6 +80,7 @@ internal sealed class DuvarKagidiNobeti
                 return false;
 
             case EkranDenetimi.Gorunmuyor:
+            case EkranDenetimi.YolDegisti:
                 ArdArda++;
                 _sonraki = ArdArda >= UzunEsik ? simdi + UzunBekleme
                     : ArdArda >= IlkEsik ? simdi + IlkBekleme
