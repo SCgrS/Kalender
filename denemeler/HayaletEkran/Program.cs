@@ -74,6 +74,8 @@ using System.Text.Json;
 //        hiç görünmüyorsa yol değişimi yazımları da geri çekilmeye girer.
 //   S18. Bir kaydın kimliği okunamazsa liste bilinmiyor (hayalet sayılmaz):
 //        yedek o tur alınmaz, dosya silinmez, nöbet yeniden yazdırmaz.
+//   S19. Derlenmiş koddan: duvar kâğıdı arayüzünün bildirimi (yöntem sırası,
+//        GetMonitorRECT'te PreserveSig) ve arayüzün yalnız fabrikada açılması.
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
 // (DuvarKagidiKayitlari.Ac) ilk iş olarak açılırsa hata veren bir fabrikaya, her
@@ -161,8 +163,11 @@ internal static class Program
 
     // ------------------------------------------------- derlenmiş koddaki komutlar
 
-    /// <summary>Bir IL komutu: işlem kodu, varsa çağrılan yöntem ya da alan ve yüklenen sabit dize.</summary>
-    private sealed record Komut(OpCode Kod, MemberInfo? Uye, string? Dize = null);
+    /// <summary>
+    /// Bir IL komutu: işlem kodu, varsa çağrılan yöntem ya da alan, yüklenen
+    /// sabit dize ve başvurulan tür ya da üye (ldtoken, castclass gibi).
+    /// </summary>
+    private sealed record Komut(OpCode Kod, MemberInfo? Uye, string? Dize = null, MemberInfo? Belirtec = null);
 
     private static readonly Dictionary<short, OpCode> IslemKodlari = typeof(OpCodes)
         .GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -184,6 +189,7 @@ internal static class Program
 
             MemberInfo? uye = null;
             string? dize = null;
+            MemberInfo? belirtec = null;
             try
             {
                 uye = kod.OperandType switch
@@ -195,6 +201,11 @@ internal static class Program
                 if (kod.OperandType == OperandType.InlineString)
                 {
                     dize = yontem.Module.ResolveString(BitConverter.ToInt32(il, i));
+                }
+
+                if (kod.OperandType is OperandType.InlineType or OperandType.InlineTok)
+                {
+                    belirtec = yontem.Module.ResolveMember(BitConverter.ToInt32(il, i));
                 }
             }
             catch (ArgumentException)
@@ -211,7 +222,7 @@ internal static class Program
                 OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(il, i)),
                 _ => 4,
             };
-            sonuc.Add(new Komut(kod, uye, dize));
+            sonuc.Add(new Komut(kod, uye, dize, belirtec));
         }
 
         return sonuc;
@@ -516,6 +527,7 @@ internal static class Program
             Bolum(S16);
             Bolum(S17);
             Bolum(S18);
+            Bolum(S19);
         }
         finally
         {
@@ -1852,6 +1864,101 @@ internal static class Program
         Denetle("geri yüklemede takvimi gösteren ekranlar bütün bağlı ekranlarla (_monitors) aranıyor",
             gosteren > 0 && k2.GetRange(0, gosteren).Any(x => x.Uye is FieldInfo f && f.Name == "_monitors")
             && !k2.GetRange(0, gosteren).Any(x => x.Uye is FieldInfo f && f.Name == "_screens"));
+    }
+
+    // ------------------------------------------------------------------ S19
+
+    private static void S19()
+    {
+        Console.WriteLine("S19) Duvar kâğıdı arayüzünün bildirimi ve yalnız fabrikada açılması (derlenmiş koddan)");
+
+        // Sahte kabuklar (DispatchProxy) yöntemi adıyla çağırıyor; COM yuvasına ve
+        // PreserveSig'e bakmıyor. Bildirim bozulursa (bir birleştirmede PreserveSig
+        // düşer, yöntemler yer değiştirir) bütün sınamalar geçer ama gerçek arayüzde
+        // yanlış yuva çağrılır ya da bağlı olmayan ekranın S_FALSE'u başarı sayılır.
+        Type arayuz = Tip("Kalender.Interop.IDesktopWallpaper");
+        string[] windowsSirasi =
+        {
+            "SetWallpaper", "GetWallpaper", "GetMonitorDevicePathAt", "GetMonitorDevicePathCount", "GetMonitorRECT",
+            "SetBackgroundColor", "GetBackgroundColor", "SetPosition", "GetPosition", "SetSlideshow", "GetSlideshow",
+            "SetSlideshowOptions", "GetSlideshowOptions", "AdvanceSlideshow", "GetStatus", "Enable",
+        };
+        List<MethodInfo> yontemler = arayuz.GetMethods().OrderBy(m => m.MetadataToken).ToList();
+        Denetle("yöntemler Windows'un arayüzündeki sırada (COM yuvaları bildirim sırasıyla veriliyor)",
+            yontemler.Select(m => m.Name).SequenceEqual(windowsSirasi), string.Join(", ", yontemler.Select(m => m.Name)));
+
+        MethodInfo rect = arayuz.GetMethod("GetMonitorRECT")!;
+        ParameterInfo[] p = rect.GetParameters();
+        Denetle("GetMonitorRECT sonucu dönüş değeri olarak veriyor (PreserveSig, int; kimlik LPWStr, dikdörtgen RECT'e out)",
+            (rect.MethodImplementationFlags & MethodImplAttributes.PreserveSig) != 0 && rect.ReturnType == typeof(int)
+            && p.Length == 2 && p[0].ParameterType == typeof(string)
+            && p[0].GetCustomAttribute<MarshalAsAttribute>()?.Value == UnmanagedType.LPWStr
+            && p[1].IsOut && p[1].ParameterType == Tip("Kalender.Interop.NativeMethods+RECT").MakeByRefType(),
+            $"{rect.MethodImplementationFlags} {rect.ReturnType.Name} ({string.Join(", ", p.Select(x => x.ParameterType.Name))})");
+        Denetle("öbür yöntemlerde hata istisnaya dönüyor (PreserveSig yalnız GetMonitorRECT'te)",
+            yontemler.Where(m => m.Name != "GetMonitorRECT")
+                .All(m => (m.MethodImplementationFlags & MethodImplAttributes.PreserveSig) == 0));
+        Denetle("arayüz ve sınıf Windows'un kimlikleriyle, arayüz IUnknown tabanlı",
+            arayuz.IsImport && arayuz.GUID == new Guid("B92B56A9-8B55-4E14-9A89-0199BBB6F93B")
+            && arayuz.GetCustomAttribute<InterfaceTypeAttribute>()?.Value == ComInterfaceType.InterfaceIsIUnknown
+            && Tip("Kalender.Interop.DesktopWallpaperClass").GUID == new Guid("C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD"));
+
+        // Sınamaların "gerçek duvar kâğıdına dokunulmaz" güvencesi, uygulamanın
+        // arayüzü her yerde fabrikadan (DuvarKagidiKayitlari.Ac) açmasına dayanıyor.
+        // 1.14'te üç yerde ayrı ayrı açılıyordu; biri geri gelirse sınama gerçek
+        // arayüzü sessizce açardı (ör. DesktopRefresher'ın arka plan rengi yazımı).
+        Type sinif = Tip("Kalender.Interop.DesktopWallpaperClass");
+        bool Fabrikada(Type? t)
+        {
+            for (; t is not null; t = t.DeclaringType)
+            {
+                if (t == Kayitlar)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        const BindingFlags Bildirilen = Hepsi | BindingFlags.DeclaredOnly;
+        var acanlar = new List<MethodBase>();
+        var cozulemeyenler = new List<string>();
+        int taranan = 0;
+        foreach (Type t in Uyg.GetTypes())
+        {
+            foreach (MethodBase m in t.GetMethods(Bildirilen).Cast<MethodBase>().Concat(t.GetConstructors(Bildirilen)))
+            {
+                List<Komut> komutlar;
+                try
+                {
+                    if (m.GetMethodBody() is null)
+                    {
+                        continue;
+                    }
+
+                    komutlar = Komutlar(m);
+                }
+                catch (Exception ex)
+                {
+                    cozulemeyenler.Add($"{t.FullName}.{m.Name}: {ex.GetType().Name}");
+                    continue;
+                }
+
+                taranan++;
+                if (komutlar.Any(k => (k.Kod == OpCodes.Newobj && k.Uye is ConstructorInfo c && c.DeclaringType == sinif)
+                        || (k.Belirtec is Type tur && tur == sinif)))
+                {
+                    acanlar.Add(m);
+                }
+            }
+        }
+
+        Denetle("derlemenin bütün yöntem gövdeleri tarandı",
+            taranan > 1000 && cozulemeyenler.Count == 0, $"{taranan} yöntem; çözülemeyen: {string.Join(", ", cozulemeyenler.Take(5))}");
+        Denetle("duvar kâğıdı arayüzü yalnız fabrikada açılıyor (DesktopWallpaperClass'a başka hiçbir yerde başvurulmuyor)",
+            acanlar.Count == 1 && Fabrikada(acanlar[0].DeclaringType),
+            string.Join(", ", acanlar.Select(m => $"{m.DeclaringType?.FullName}.{m.Name}")));
     }
 
     // ---------------------------------------------------------------- ölçüm
