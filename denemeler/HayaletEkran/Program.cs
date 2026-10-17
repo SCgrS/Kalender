@@ -50,7 +50,8 @@ using System.Text.Json;
 //        varken aygıt yolu verilmeden yazılmaz; hayalet ve bağlı olmayan kayıtlar
 //        kendi fotoğraflarını alır, başarı sayılmaz; eski yedeğin boş anahtarı
 //        ortak yol gibi okunur; açılıştaki "ekranda takvim kalmış mı" sorusu
-//        hayalete bakmaz.
+//        hayalete bakmaz; listede canlı kayıt yoksa hayaletin fotoğrafı
+//        yedeklenir, ekranda ne durduğu okunamıyorsa düz renk yedeği yazılmaz.
 //   S2b. 17.10 06:54'te ölçülen liste (aygıt yollu kayıt canlı, boş kimlikli
 //        kayıt hayalet; roller önceki ölçümün tersi): liste tutarsız olduğu için
 //        yine aygıt yolu verilmeden; roller yer değiştirse de yol değişmez.
@@ -1187,6 +1188,62 @@ internal static class Program
         Denetle("ekranlarda ayrı resimler varken kimliği boş ekranın fotoğrafı ortak yola, öbür ekranınki kendi kimliğiyle yazılıyor",
             y3 is not null && (string?)Oku(y3, "Wallpaper") == foto && EkranBasina(y3).Count == 1 && EkranBasina(y3)[bId] == foto2);
 
+        // Yalnız hayaletten oluşan liste: ekranda ne durduğunu canlı kayıt söylemiyor, aygıt
+        // yolu verilmeden okunan yol boş (Explorer hayaleti saymıyor). Önceden yedek düz renk
+        // çıkıyordu; geri dönüş kullanıcının fotoğrafını düz renge çeviriyordu.
+        SahteKabuk YalnizHayalet(string dosya)
+        {
+            SahteKabuk h = Kabuk(new Kayit(Aus, EFail, Rectangle.Empty, dosya));
+            h.AygitsizIlkCanliyiVerir = false;
+            return h;
+        }
+
+        object? y4 = Hazirla(YalnizHayalet(foto));
+        Denetle("canlı kayıt yokken hayaletin fotoğrafı ortak yola yedekleniyor (yedek düz renk çıkmıyor)",
+            y4 is not null && (bool)Oku(y4, "WallpaperEnabled")! && (string?)Oku(y4, "Wallpaper") == foto && EkranBasina(y4).Count == 0);
+        SahteKabuk hOkunamaz = YalnizHayalet(foto);
+        hOkunamaz.AygitsizOkumadaHata = true;
+        object? y5 = Hazirla(hOkunamaz);
+        Denetle("aygıt yolu verilmeden okunamasa da hayaletin fotoğrafı yedekleniyor",
+            y5 is not null && (bool)Oku(y5, "WallpaperEnabled")! && (string?)Oku(y5, "Wallpaper") == foto);
+        Denetle("canlı kayıt yokken hayaletteki takvim \"ekranda yalnız takvim var\" sayılıyor: yedek yazılmıyor (düz renk değil)",
+            Hazirla(YalnizHayalet(f16)) is null);
+
+        SahteKabuk hBos = YalnizHayalet(string.Empty);
+        hBos.AygitsizOkumadaHata = true;
+        bool hataVerdi = false;
+        try
+        {
+            Hazirla(hBos);
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException)
+        {
+            hataVerdi = true;
+        }
+
+        YedekleriSil();
+        Statik(Servis, "EnsureBackup", hBos);
+        Denetle("ekranda ne durduğu hiç okunamıyorsa (canlı kayıt yok, aygıt yolu verilmeden de okunamadı) düz renk yedeği yazılmıyor",
+            hataVerdi && YedekOku() is null);
+        hBos.AygitsizOkumadaHata = false;
+        object? y6 = Hazirla(hBos);
+        Denetle("aygıt yolu verilmeden okunabilir ve hiçbir kayıtta resim yoksa düz renk yedeği (önceki davranış)",
+            y6 is not null && !(bool)Oku(y6, "WallpaperEnabled")!);
+
+        // Canlı kayıt var ama dosyası okunamadı (Explorer meşgul): hayalete bakılmıyor, yedek resimsiz
+        // çıkacağı için o tur yazılmıyor; aygıt yolu verilmeden okunan yol fotoğrafı veriyorsa o yedekleniyor.
+        SahteKabuk canliOkunamaz = Bugunku(foto, foto2);
+        canliOkunamaz.OkunamayanKimlikler.Add("");
+        canliOkunamaz.AygitsizIlkCanliyiVerir = false;
+        YedekleriSil();
+        Statik(Servis, "EnsureBackup", canliOkunamaz);
+        Denetle("canlı kaydın dosyası okunamazsa hayaletin fotoğrafı yedeklenmiyor, düz renk yedeği de yazılmıyor",
+            YedekOku() is null);
+        canliOkunamaz.Ortak = foto;
+        object? y7 = Hazirla(canliOkunamaz);
+        Denetle("aygıt yolu verilmeden okunan fotoğraf yine yedekleniyor",
+            y7 is not null && (string?)Oku(y7, "Wallpaper") == foto && (bool)Oku(y7, "WallpaperEnabled")!);
+
         // ------------------------------------------ geri yükleme, tek canlı kayıt
         // 1.14'ün sağlıklı listede aldığı yedek (ekranın aygıt yoluyla), bugünkü bozuk liste.
         SahteKabuk k = Bugunku(f15, f16);
@@ -1924,6 +1981,9 @@ public class SahteKabuk : DispatchProxy
     /// <summary>Doğruysa GetWallpaper hata verir.</summary>
     public bool OkumadaHata { get; set; }
 
+    /// <summary>Doğruysa yalnız aygıt yolu verilmeden okuma (GetWallpaper(NULL)) hata verir.</summary>
+    public bool AygitsizOkumadaHata { get; set; }
+
     /// <summary>Bu kimliklerde GetWallpaper hata verir (yalnız o kayıt okunamıyor; boş kimlik de olur).</summary>
     public HashSet<string> OkunamayanKimlikler { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1992,6 +2052,11 @@ public class SahteKabuk : DispatchProxy
                     }
 
                     return Bul(kimlik)?.Dosya ?? string.Empty;
+                }
+
+                if (AygitsizOkumadaHata)
+                {
+                    throw new COMException("Aygıt yolu verilmeden okunamadı (deneme).", EFail);
                 }
 
                 return AygitsizIlkCanliyiVerir ? Kayitlar.FirstOrDefault(k => k.Canli)?.Dosya ?? string.Empty : Ortak;

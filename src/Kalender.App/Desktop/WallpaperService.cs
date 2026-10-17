@@ -280,22 +280,30 @@ internal static class WallpaperService
     /// ya da başka bir ekranınki kullanılır (bkz. <see cref="EkranlariGeriYukle"/>).
     ///
     /// Windows'un listesi bozuksa (bkz. <see cref="DuvarKagidiKayitlari"/>)
-    /// hayalet kayıtlar yedeğe hiç girmez: gösterdikleri dosya hiçbir ekranda
-    /// görünmüyor, ne kullanıcının duvar kâğıdı ne de takvim sayılır. Kimliği
+    /// hayalet kayıtlar ekran başına yazılmaz: gösterdikleri dosya hiçbir ekranda
+    /// görünmüyor, ne kullanıcının duvar kâğıdı ne de takvim sayılır (listede
+    /// canlı kayıt varsa; aşağıda). Kimliği
     /// boş kayıt da ekran başına yazılmaz: boş anahtar geri yüklemede hiçbir
     /// ekranı göstermez (1.14 onu "" anahtarıyla yazıyordu). Kimliği boş canlı
     /// kaydın resmi aygıt yolu verilmeden okunan ortak yola zaten geliyor
     /// (2026-10-17'de ölçüldü); ortak yol boşsa (ekranlarda ayrı resimler)
     /// ortak yolun yerine o yazılır: liste düzelince o ekran kendi resmine
     /// döner, öbür ekranın resmine değil. Bağlı olmayan ekranın kaydı eskisi
-    /// gibi yazılır: çıkarılmış haricî ekranın fotoğrafı korunur.
+    /// gibi yazılır: çıkarılmış haricî ekranın fotoğrafı korunur. Listede canlı
+    /// kayıt hiç yoksa hayalete bakılır: gösterdiği fotoğraf, yedek başka
+    /// türlü resimsiz çıkacaksa ortak yola yazılır; gösterdiği takvim "ekranda
+    /// yalnız takvim var" sayılır.
     /// </summary>
     /// <returns>
     /// Yedek; ekranlarda yalnızca Kalender'in görüntüleri duruyorsa null
     /// (kullanıcının duvar kâğıdı bilinmiyor, yedek yazılmaz). O zaman da
     /// Windows'ta resim kipi kapalıysa düz renk yedeği döner.
     /// </returns>
-    /// <exception cref="InvalidOperationException">Ekran listesi okunamadı.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// Ekran listesi okunamadı ya da yedek resimsiz çıkacakken ekranda ne
+    /// durduğu okunamadı (bir canlı kaydın dosyası; canlı kayıt yokken aygıt
+    /// yolu verilmeden okunan yol).
+    /// </exception>
     internal static WallpaperBackup? YedekHazirla(IDesktopWallpaper wallpaper)
     {
         var backup = new WallpaperBackup
@@ -323,12 +331,38 @@ internal static class WallpaperService
             backup.Wallpaper = ortak;
         }
 
+        // Ekranda ne durduğunu canlı kayıtlar söyler. Canlı kayıt hiç yoksa
+        // hayaletin gösterdiği dosya tek ipucu olabilir; aşağıda yalnız o zaman
+        // kullanılır.
+        bool canliVar = kayitlar.Any(x => x.Durum == KayitDurumu.Canli);
+        bool canliOkunamadi = kayitlar.Any(x => x.Durum == KayitDurumu.Canli && x.Dosya is null);
+        string? hayaletinResmi = null;
+
         var kimliksizResimler = new List<string>();
         foreach (DuvarKagidiKaydi kayit in kayitlar)
         {
             // Dosyası okunamayan kayıt önceden de atlanıyordu.
-            if (kayit.Durum == KayitDurumu.Hayalet || kayit.Dosya is null)
+            if (kayit.Dosya is null)
             {
+                continue;
+            }
+
+            if (kayit.Durum == KayitDurumu.Hayalet)
+            {
+                // Hayaletteki takvim de (1.14'teki gibi) "ekranlarda yalnız
+                // takvim var" sayılır; yoksa yedek düz renk çıkardı.
+                if (!canliVar)
+                {
+                    if (ZeminDosyasiMi(kayit.Dosya))
+                    {
+                        bizimkiVardi = true;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(kayit.Dosya))
+                    {
+                        hayaletinResmi ??= kayit.Dosya;
+                    }
+                }
+
                 continue;
             }
 
@@ -356,9 +390,36 @@ internal static class WallpaperService
             backup.Wallpaper = kimliksizResimler[0];
         }
 
-        // Hiçbir ekranda resim yoksa kullanıcı düz renk kullanıyordu.
-        backup.WallpaperEnabled = !string.IsNullOrWhiteSpace(backup.Wallpaper)
+        bool ResimVar() => !string.IsNullOrWhiteSpace(backup.Wallpaper)
             || backup.PerMonitor.Values.Any(v => !string.IsNullOrWhiteSpace(v));
+
+        // Hayalet atıldığı için yedek resimsiz çıkacaksa: listede canlı kayıt
+        // yok, aygıt yolu verilmeden okunan yol da boş ya da okunamadı (yalnız
+        // hayaletten oluşan liste; aygıt yolu verilmeden okurken Explorer
+        // hayaleti saymıyor, ölçüldü). Hayaletin gösterdiği fotoğraf ortak yola
+        // yazılır: önceden yedek düz renk çıkıyordu, "Eski duvar kâğıdıma dön"
+        // ya da kaldırma kullanıcının fotoğrafını düz renge çeviriyor, yedek de
+        // siliniyordu (1.14 bu kaydı ekran başına yazıyordu). Geri yüklemede
+        // ortak yol aygıt yolu verilmeden konur, ekrana ulaşır.
+        if (!ResimVar() && hayaletinResmi is not null)
+        {
+            Log.Debug("Listede canlı kayıt yok; hayalet kaydın fotoğrafı yedeklendi.");
+            backup.Wallpaper = hayaletinResmi;
+        }
+
+        // Hiçbir ekranda resim yoksa kullanıcı düz renk kullanıyordu.
+        backup.WallpaperEnabled = ResimVar();
+
+        // Ama bunu bilmek için ekranda ne durduğu okunabilmeli: bir canlı
+        // kaydın dosyası okunamadıysa ya da canlı kayıt yokken aygıt yolu
+        // verilmeden okunan yol da okunamadıysa düz renk yedeği yazılmaz,
+        // sonraki yazım yeniden dener. Önceden okunamayan ortak yol "ortak resim
+        // yok" sayılıyordu (EkrandakiDosyalar'da "bilinmiyor" sayılıyor); böyle
+        // bir anda düz renk yedeği yazılabiliyordu.
+        if (!backup.WallpaperEnabled && !bizimkiVardi && (canliOkunamadi || (!canliVar && ortak is null)))
+        {
+            throw new InvalidOperationException("Ekrandaki duvar kâğıdı okunamadı.");
+        }
 
         if (bizimkiVardi && !backup.WallpaperEnabled)
         {
