@@ -17,7 +17,8 @@ using System.Text.Json;
 // E_FAIL). 1.14 görüntüyü bu hayalet kayda yazıyordu; ekranda iki gün önceki
 // takvim kaldı. Senaryolar kalender.md'deki düzeltme tasarımından:
 //   0. Kayıtların sınıflanması (canlı, bağlı değil, hayalet), listenin
-//      tutarlılığı, günlük özeti; okuma hataları.
+//      tutarlılığı, günlük özeti; okuma hataları; dikdörtgen sorusu Explorer'a
+//      ulaşamazsa (istisna, RPC kodu) liste bilinmiyor, hayalet sayılmıyor.
 //   S1. Sağlıklı tek ekran: görüntü ekranın kendi kaydına yazılır, nöbet
 //       "yerinde" der; kimliği okunamamış ekranda da; çıkarılmış haricî ekranın
 //       kaydı (S_FALSE) listeyi bozuk saydırmaz.
@@ -581,6 +582,30 @@ internal static class Program
             && Oku(Tablo(k)!, "Ortak") is null);
         k.SayimdaHata = true;
         Denetle("kayıt sayısı okunamazsa liste bilinmiyor (null)", Tablo(k) is null);
+
+        // Dikdörtgen sorusu Explorer'a ulaşamazsa (istisna: aktarım hatası; RPC
+        // kodları: Explorer çağrının ortasında kapandı ya da yeniden başlıyor)
+        // kayıt hayalet sayılmıyor, liste bilinmiyor. Explorer'ın kendi E_FAIL'i hayalet.
+        SahteKabuk u = Kabuk(new Kayit(Aus, SOk, Sinir(0), Foto));
+        u.AygitsizIlkCanliyiVerir = false;
+        u.DikdortgeniSorulamayanlar.Add(Aus);
+        Denetle("dikdörtgen sorusu istisna verirse kayıt hayalet sayılmıyor, liste bilinmiyor (null)", Tablo(u) is null);
+        YedekleriSil();
+        Statik(Servis, "EnsureBackup", u);
+        Denetle("o tur yedek alınmıyor (tek kayıt hayalet sanılıp düz renk yedeği yazılmıyor)", YedekOku() is null);
+        u.DikdortgeniSorulamayanlar.Clear();
+        bool Bilinmiyor(int hr)
+        {
+            u.Kayitlar[0].Hr = hr;
+            return Tablo(u) is null;
+        }
+
+        Denetle("RPC kodları da bilinmiyor (RPC_E_DISCONNECTED, RPC_S_SERVER_UNAVAILABLE, RPC_S_CALL_FAILED, RPC_S_CALL_FAILED_DNE)",
+            Bilinmiyor(unchecked((int)0x80010108)) && Bilinmiyor(unchecked((int)0x8001010A)) && Bilinmiyor(unchecked((int)0x800706BA))
+            && Bilinmiyor(unchecked((int)0x800706BE)) && Bilinmiyor(unchecked((int)0x800706BF)));
+        Denetle("Explorer'ın kendi hatası (E_FAIL, E_INVALIDARG) hayalet",
+            !Bilinmiyor(EFail) && Oku(Satirlar(Tablo(u)!)[0], "Durum")!.ToString() == "Hayalet"
+            && !Bilinmiyor(unchecked((int)0x80070057)) && Oku(Satirlar(Tablo(u)!)[0], "Durum")!.ToString() == "Hayalet");
     }
 
     // ------------------------------------------------------------------- S1
@@ -1884,6 +1909,12 @@ public class SahteKabuk : DispatchProxy
     /// <summary>Bu sıralardaki kayıtların kimliği okunamaz (GetMonitorDevicePathAt hata verir).</summary>
     public HashSet<int> KimligiOkunamayanSiralar { get; } = new();
 
+    /// <summary>
+    /// Bu kimliklerde dikdörtgen sorusu Explorer'a ulaşamaz: çağrı istisna verir
+    /// (aktarım hatası; Explorer'ın kendi cevabı dönüş değeri olarak gelir).
+    /// </summary>
+    public HashSet<string> DikdortgeniSorulamayanlar { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>SetWallpaper çağrıları, sırasıyla.</summary>
     public List<(string? Aygit, string Yol)> Yazilanlar { get; } = new();
 
@@ -1916,7 +1947,12 @@ public class SahteKabuk : DispatchProxy
                 return Kayitlar[sira].Kimlik;
 
             case "GetMonitorRECT":
-                Kayit? kayit = Bul((string)a![0]!);
+                if (DikdortgeniSorulamayanlar.Contains((string)a![0]!))
+                {
+                    throw new InvalidComObjectException("Explorer'a ulaşılamadı (deneme).");
+                }
+
+                Kayit? kayit = Bul((string)a[0]!);
                 a[1] = Dikdortgen(yontem.GetParameters()[1].ParameterType.GetElementType()!,
                     kayit is null || kayit.Hr < 0 ? Rectangle.Empty : kayit.Sinir);
                 return kayit?.Hr ?? EInvalidArg;

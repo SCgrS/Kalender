@@ -26,6 +26,8 @@ internal enum KayitDurumu
     /// Dikdörtgen sorusu hata veriyor: Explorer'ın listesinde kalmış, hiçbir
     /// ekrana karşılık gelmeyen kayıt. Ona yazılan görüntü hatasız kabul ediliyor
     /// ama hiçbir ekrana çıkmıyor (2026-10-17, ev bilgisayarında görüldü).
+    /// Yalnız Explorer'ın kendi cevabı sayılır: soru Explorer'a ulaşamadıysa
+    /// liste bilinmiyor (bkz. <see cref="DuvarKagidiKayitlari.UlasilamadiMi"/>).
     /// </summary>
     Hayalet,
 }
@@ -115,8 +117,17 @@ internal sealed class DuvarKagidiTablosu : IReadOnlyList<DuvarKagidiKaydi>
 /// </summary>
 internal static class DuvarKagidiKayitlari
 {
-    /// <summary>E_FAIL: istisnanın kendi kodu yoksa.</summary>
-    private const int GenelHata = unchecked((int)0x80004005);
+    /// <summary>COM'un aktarım katmanının (FACILITY_RPC) hata kodları: 0x8001xxxx.</summary>
+    private const int RpcAilesi = unchecked((int)0x80010000);
+
+    /// <summary>RPC_S_SERVER_UNAVAILABLE: Explorer'a ulaşılamıyor.</summary>
+    private const int SunucuYok = unchecked((int)0x800706BA);
+
+    /// <summary>RPC_S_CALL_FAILED: çağrı yolda kesildi.</summary>
+    private const int CagriKesildi = unchecked((int)0x800706BE);
+
+    /// <summary>RPC_S_CALL_FAILED_DNE: çağrı Explorer'a hiç ulaşmadı.</summary>
+    private const int CagriUlasmadi = unchecked((int)0x800706BF);
 
     /// <summary>
     /// Windows'un duvar kâğıdı arayüzünü açar. Kalender'in bütün okuma ve
@@ -132,7 +143,8 @@ internal static class DuvarKagidiKayitlari
     /// </summary>
     /// <returns>
     /// Kayıtlar (<see cref="DuvarKagidiTablosu"/>); kayıt sayısı ya da bir
-    /// kaydın kimliği okunamazsa null (liste bilinmiyor).
+    /// kaydın kimliği okunamazsa, bir kaydın dikdörtgen sorusu Explorer'a
+    /// ulaşamazsa null (liste bilinmiyor).
     /// </returns>
     internal static IReadOnlyList<DuvarKagidiKaydi>? Oku(IDesktopWallpaper wp)
     {
@@ -156,7 +168,8 @@ internal static class DuvarKagidiKayitlari
             // anlık okuma hatası o ekransız, kalıcı bir yedek yazdırırdı. 1.14'te
             // de bu hata yedeği durduruyordu, sonraki yazım yeniden deniyordu.
             // Liste o tur bilinmiyor sayılır: yedek alınmaz, dosya silinmez,
-            // nöbet yeniden yazdırmaz.
+            // nöbet yeniden yazdırmaz. Dikdörtgen sorusu Explorer'a ulaşamazsa
+            // da öyle (bkz. KaydiOku).
             if (KaydiOku(wp, i) is not DuvarKagidiKaydi kayit)
             {
                 return null;
@@ -179,7 +192,10 @@ internal static class DuvarKagidiKayitlari
         return new DuvarKagidiTablosu(kayitlar, ortak);
     }
 
-    /// <returns>Kayıt; kimliği okunamazsa null.</returns>
+    /// <returns>
+    /// Kayıt; kimliği okunamazsa ya da dikdörtgen sorusu Explorer'a
+    /// ulaşamazsa (<see cref="UlasilamadiMi"/>) null.
+    /// </returns>
     private static DuvarKagidiKaydi? KaydiOku(IDesktopWallpaper wp, uint sira)
     {
         string kimlik;
@@ -195,6 +211,13 @@ internal static class DuvarKagidiKayitlari
 
         // Kimliği boş kayıtla da sorulur: boş dizeyle hem dikdörtgen hem dosya
         // okunabiliyor (ölçüldü).
+        // Explorer'ın cevabı dönüş değeri olarak geliyor (PreserveSig): hayalet
+        // kaydın E_FAIL'i de. İstisna ise Explorer'ın cevabı değil, çağrının ona
+        // ulaşamadığıdır; RPC kodları da öyle (Explorer çağrının ortasında
+        // kapandı ya da yeniden başlıyor). Önceden ikisi de hayalet sayılıyordu:
+        // kayıt o tur yedekten atılıyor (ilk yedekse kalıcı olarak), gösterdiği
+        // dosya temizlikte korunmuyor, liste tutarsız diye günlüğe hata
+        // yazılıyordu. Kimliği okunamayan kayıttaki gibi liste bilinmiyor sayılır.
         int hr;
         NativeMethods.RECT r = default;
         try
@@ -203,7 +226,14 @@ internal static class DuvarKagidiKayitlari
         }
         catch (Exception ex)
         {
-            hr = HataKodu(ex);
+            Log.Debug($"Duvar kâğıdı kaydının dikdörtgeni sorulamadı ({sira}): {ex.Message}");
+            return null;
+        }
+
+        if (UlasilamadiMi(hr))
+        {
+            Log.Debug($"Duvar kâğıdı kaydının dikdörtgeni sorulamadı ({sira}): Explorer'a ulaşılamadı (0x{hr:X8}).");
+            return null;
         }
 
         Rectangle sinir = hr >= 0 ? Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom) : Rectangle.Empty;
@@ -222,7 +252,15 @@ internal static class DuvarKagidiKayitlari
         return new DuvarKagidiKaydi(sira, kimlik, Siniflandir(hr, sinir), sinir, dosya, hr);
     }
 
-    private static int HataKodu(Exception ex) => ex.HResult < 0 ? ex.HResult : GenelHata;
+    /// <summary>
+    /// Sonuç kodu Explorer'ın cevabı değil de çağrının ona ulaşamadığını mı
+    /// söylüyor: COM'un aktarım hataları (FACILITY_RPC, ör. RPC_E_DISCONNECTED
+    /// 0x80010108) ve RPC_S_SERVER_UNAVAILABLE, RPC_S_CALL_FAILED,
+    /// RPC_S_CALL_FAILED_DNE. Duvar kâğıdı arayüzü Explorer'ın içinde çalışıyor;
+    /// bu kodlar kaydın hiçbir ekrana karşılık gelmediğini söylemez.
+    /// </summary>
+    internal static bool UlasilamadiMi(int hr)
+        => (hr & unchecked((int)0xFFFF0000)) == RpcAilesi || hr == SunucuYok || hr == CagriKesildi || hr == CagriUlasmadi;
 
     /// <summary>
     /// Dikdörtgen sorusunun sonucuna göre kaydın durumu: hata hayalet; S_OK ve
