@@ -256,6 +256,7 @@ internal static class Program
         AlanAta(y, "_settings", depo);
         AlanAta(y, "_renderer", Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!);
         AlanAta(y, "_canvas", Activator.CreateInstance(Tip("Kalender.Desktop.WallpaperCanvas"), true)!);
+        AlanAta(y, "_duvarKagidiNobeti", Activator.CreateInstance(Tip("Kalender.Desktop.DuvarKagidiNobeti"), true)!);
         AlanAta(y, "_screens", Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Desktop.EkrandakiTakvim")))!);
         AlanAta(y, "_rebuildTimer", new DispatcherTimer());
         AlanAta(y, "_watchdogTimer", new DispatcherTimer());

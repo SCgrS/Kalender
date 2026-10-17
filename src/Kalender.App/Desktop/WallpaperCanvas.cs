@@ -232,11 +232,17 @@ internal sealed class WallpaperCanvas
                 Log.Debug($"Duvar kâğıdı yazıldı: {screen.Monitor} -> {Path.GetFileName(file)} ({YolAdi(hedef)})");
             }
 
-            // Yazılamayan ekranın eski kaydı denetimi yanıltmasın: liste değişti
-            // diye her denetimde yeniden yazım istenir, o ekran yine yazılamazdı.
+            // Yazılamayan ekran: eski kaydı yerine şimdiki yazım yolu, dosyası
+            // boş olarak tutulur. Eski kayıt kalsaydı liste değişti diye her
+            // denetimde yeniden yazım istenirdi, o ekran yine yazılamazdı; kayıt
+            // hiç tutulmasaydı ekranın kaydı sonradan canlı olunca (dizüstüne
+            // takılan haricî ekranı Windows bir an bağlı saymıyor) nöbet bunu
+            // görmez, ekranda bir sonraki değişikliğe dek dünkü takvim kalırdı.
+            // Nöbet bu ekranın yalnız yazım yoluna bakar (bkz. EkraniDenetle).
             foreach (MonitorTarget atlanan in atlananlar)
             {
-                _sonYazilanlar.Remove(atlanan.StableId);
+                DuvarKagidiHedefi hedef = hedefler.First(h => h.Screen.Monitor.StableId == atlanan.StableId).Hedef;
+                _sonYazilanlar[atlanan.StableId] = (atlanan, hedef, string.Empty);
                 _bekleyenDegisimler.Remove(atlanan.StableId);
             }
 
@@ -417,13 +423,28 @@ internal sealed class WallpaperCanvas
     /// göre yazım yolu değiştiyse (liste bozuldu ya da düzeldi) ancak iki ardışık
     /// denetimde aynı yeni yol görülünce yeniden yazılır: Windows'un listesi
     /// ekran açılıp kapanırken bir anlığına farklı görünebilir. Aygıt yolu
-    /// verilmeden yazılan görüntü de denetlenir.
+    /// verilmeden yazılan görüntü de denetlenir. Ayrıntı için
+    /// <see cref="EkraniDenetle"/>.
     /// </summary>
-    public bool EkrandakilerBizimMi()
+    public bool EkrandakilerBizimMi() => EkraniDenetle() is EkranDenetimi.Yerinde or EkranDenetimi.Bilinmiyor;
+
+    /// <summary>
+    /// <see cref="EkrandakilerBizimMi"/>'nin sonucu, nedeniyle: masaüstü katmanı
+    /// geri çekilmede (bkz. <see cref="DuvarKagidiNobeti"/>) yalnız "yol aynı,
+    /// görüntü yok"u sayar. Birden çok ekranda en ağır sonuç döner (görüntü yok,
+    /// yol değişti, bilinmiyor, yerinde sırasıyla).
+    ///
+    /// Bir kaydın dosyası okunamazsa o ekran bilinmiyor sayılır: "ekranda
+    /// görüntü yok" sayılsaydı Explorer'ın bir anlık okuma hatası gereksiz bir
+    /// tam yazıma (masaüstü yenilenmesi, büyük dosya) yol açardı; 1.14'te de
+    /// okuma hatası "yerinde" sayılıyordu. Yazım anında kaydı bulunamayan, bu yüzden atlanan ekranın
+    /// (dosyası boş) yalnız yazım yolu izlenir: kaydı canlı olunca yeniden yazılır.
+    /// </summary>
+    internal EkranDenetimi EkraniDenetle()
     {
         if (_sonYazilanlar.Count == 0)
         {
-            return true;
+            return EkranDenetimi.Yerinde;
         }
 
         try
@@ -431,10 +452,11 @@ internal sealed class WallpaperCanvas
             IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(DuvarKagidiKayitlari.Ac());
             if (kayitlar is null)
             {
-                return true;
+                return EkranDenetimi.Bilinmiyor;
             }
 
-            bool bizim = true;
+            SonDenetimKayitlari = DuvarKagidiKayitlari.Ozet(kayitlar);
+            EkranDenetimi sonuc = EkranDenetimi.Yerinde;
             foreach (KeyValuePair<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> kayit in _sonYazilanlar)
             {
                 (MonitorTarget ekran, DuvarKagidiHedefi yazilan, string dosya) = kayit.Value;
@@ -445,12 +467,13 @@ internal sealed class WallpaperCanvas
                     if (_bekleyenDegisimler.TryGetValue(kayit.Key, out DuvarKagidiHedefi onceki) && onceki == simdi)
                     {
                         Log.Warn($"Ekranın duvar kâğıdı kaydı değişti ({YolAdi(yazilan)} -> {YolAdi(simdi)}); yeniden yazılacak: {ekran}");
-                        bizim = false;
+                        sonuc = AgirOlan(sonuc, EkranDenetimi.YolDegisti);
                     }
                     else
                     {
                         // İlk görüş: bir sonraki denetimde de böyleyse yazılır.
                         _bekleyenDegisimler[kayit.Key] = simdi;
+                        sonuc = AgirOlan(sonuc, EkranDenetimi.Bilinmiyor);
                     }
 
                     continue;
@@ -458,24 +481,42 @@ internal sealed class WallpaperCanvas
 
                 _bekleyenDegisimler.Remove(kayit.Key);
 
+                // Yazım anında atlanan ekran: yalnız yol izlenir (bkz. Apply).
+                if (dosya.Length == 0)
+                {
+                    continue;
+                }
+
+                if (DuvarKagidiKayitlari.GorunenBilinmiyor(kayitlar, simdi, ekran))
+                {
+                    sonuc = AgirOlan(sonuc, EkranDenetimi.Bilinmiyor);
+                    continue;
+                }
+
                 string gorunen = DuvarKagidiKayitlari.Gorunen(kayitlar, simdi, ekran) ?? string.Empty;
                 if (!string.Equals(gorunen, dosya, StringComparison.OrdinalIgnoreCase))
                 {
                     Log.Warn("Ekranda Kalender'in görüntüsü yok ("
                         + (gorunen.Length == 0 ? "boş" : Path.GetFileName(gorunen))
                         + "); yeniden yazılacak.");
-                    bizim = false;
+                    sonuc = EkranDenetimi.Gorunmuyor;
                 }
             }
 
-            return bizim;
+            return sonuc;
         }
         catch (Exception ex)
         {
             Log.Debug("Ekrandaki duvar kâğıdı okunamadı: " + ex.Message);
-            return true;
+            return EkranDenetimi.Bilinmiyor;
         }
     }
+
+    /// <summary>Son denetimde okunan kayıtların günlük özeti (bkz. <see cref="DuvarKagidiKayitlari.Ozet"/>).</summary>
+    public string SonDenetimKayitlari { get; private set; } = string.Empty;
+
+    /// <summary>İki denetim sonucundan ağır olanı (enum sırası ağırlık sırasıdır).</summary>
+    private static EkranDenetimi AgirOlan(EkranDenetimi a, EkranDenetimi b) => a > b ? a : b;
 
     /// <summary>
     /// Bu sürecin en son yazdığı görüntü hâlâ hangi ekranlarda duruyor?
@@ -503,7 +544,9 @@ internal sealed class WallpaperCanvas
                 return duranlar;
             }
 
-            foreach (KeyValuePair<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> kayit in _sonYazilanlar)
+            // Dosyası boş olan, yazım anında atlanan ekrandır: ona bu süreç yazmadı.
+            foreach (KeyValuePair<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> kayit in
+                     _sonYazilanlar.Where(k => k.Value.Dosya.Length > 0))
             {
                 MonitorTarget ekran = kayit.Value.Ekran;
                 DuvarKagidiHedefi hedef = DuvarKagidiKayitlari.Coz(kayitlar, ekran, _yazimdakiEkranSayisi);

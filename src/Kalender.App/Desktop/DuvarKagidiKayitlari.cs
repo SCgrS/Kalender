@@ -325,15 +325,49 @@ internal static class DuvarKagidiKayitlari
                     : null;
 
             case HedefTuru.Kimliksiz:
-                List<DuvarKagidiKaydi> bos = k
-                    .Where(x => x.Durum == KayitDurumu.Canli && string.IsNullOrWhiteSpace(x.Kimlik) && x.Sinir == ekran.Bounds)
-                    .ToList();
+                List<DuvarKagidiKaydi> bos = KimliksizCanlilar(k, ekran);
                 return bos.Count == 1 ? bos[0].Dosya : null;
 
             default:
                 return null;
         }
     }
+
+    /// <summary>
+    /// Verilen yoldan yazılan ekranda ne durduğu okunamadı mı? Öyleyse
+    /// <see cref="Gorunen"/>'in null'u "ekranda başka bir şey var" değil
+    /// "bilinmiyor" demektir: ilgili canlı kaydın dosyası okunamadı (Explorer
+    /// meşgul ya da yeniden başlıyor), aygıt yolu verilmeden yazılan ekranda
+    /// canlı kayıtlardan birinin dosyası, canlı kayıt yoksa aygıt yolu
+    /// verilmeden okunan dosya okunamadı. Nöbet böyle bir ekran için yeniden
+    /// yazım istemez (emin olamadığı yere yazmaz; 1.14'te okuma hatası da
+    /// "yerinde" sayılıyordu).
+    /// </summary>
+    internal static bool GorunenBilinmiyor(IReadOnlyList<DuvarKagidiKaydi> k, DuvarKagidiHedefi h, MonitorTarget ekran)
+    {
+        switch (h.Tur)
+        {
+            case HedefTuru.Kimlik:
+                return k.Any(x => x.Durum == KayitDurumu.Canli && KimlikEsit(x.Kimlik, h.Kimlik) && x.Dosya is null);
+
+            case HedefTuru.Hepsi:
+                return k.Any(x => x.Durum == KayitDurumu.Canli)
+                    ? k.Any(x => x.Durum == KayitDurumu.Canli && x.Dosya is null)
+                    : (k as DuvarKagidiTablosu)?.Ortak is null;
+
+            case HedefTuru.Kimliksiz:
+                List<DuvarKagidiKaydi> bos = KimliksizCanlilar(k, ekran);
+                return bos.Count == 1 && bos[0].Dosya is null;
+
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Ekranın dikdörtgenindeki, kimliği boş canlı kayıtlar.</summary>
+    private static List<DuvarKagidiKaydi> KimliksizCanlilar(IReadOnlyList<DuvarKagidiKaydi> k, MonitorTarget ekran)
+        => k.Where(x => x.Durum == KayitDurumu.Canli && string.IsNullOrWhiteSpace(x.Kimlik) && x.Sinir == ekran.Bounds)
+            .ToList();
 
     /// <summary>Kayıtların günlük için tek satırlık özeti (dosyaların yalnız adı).</summary>
     internal static string Ozet(IReadOnlyList<DuvarKagidiKaydi> k)

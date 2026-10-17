@@ -47,6 +47,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
 
     private static readonly TimeSpan UyanmaTazelemeGecikmesi = TimeSpan.FromSeconds(20);
 
+    /// <summary>Explorer yeniden başladıktan sonra görüntünün güvence için bir kez daha yazılma süresi.</summary>
+    private static readonly TimeSpan KabukTazelemeGecikmesi = TimeSpan.FromSeconds(5);
+
     private readonly SettingsStore _settings = new();
     private AppMessageWindow? _messages;
     private TrayIcon? _tray;
@@ -248,6 +251,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         _tray.Show("Kalender");
 
         _layer.LayerUnavailable += OnLayerUnavailable;
+        _layer.DuvarKagidiGuncellenemiyor += OnDuvarKagidiGuncellenemiyor;
         _layer.MonitorsChanged += () => MonitorsChanged?.Invoke();
 
         _messages.CloseRequested += () => ExitRequested?.Invoke();
@@ -1131,12 +1135,19 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Explorer yeniden başlarken duvar kağıdını kendi önbelleğinden
         // okuyor; bizim son yazdığımızı geri koymak için yeniden çiziyoruz.
         _layer?.RequestRebuild("Explorer yeniden başladı", TimeSpan.FromSeconds(2));
+
+        // Yeniden kurmada görüntü aynıysa yazılmıyor. Explorer'ın duvar kâğıdı
+        // listesi bozuk kalmışsa yeniden başlayınca düzelir; takvim nöbetin
+        // geri çekilmesini (en çok 15 dakika) beklemeden doğru kayda gelsin.
+        _layer?.NobetiSifirla();
+        _layer?.TazelemeIste(KabukTazelemeGecikmesi);
     }
 
     private void OnResumed()
     {
         _dayWatcher?.Recheck();
         _layer?.EnsureAlive();
+        _layer?.NobetiSifirla();
         _layer?.TazelemeIste(UyanmaTazelemeGecikmesi);
 
         // Uykuda geçen sürede ay dönmüş ve liste eskimiş olabilir.
@@ -1165,6 +1176,21 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
     {
         // Uykuda ağa çıkmanın anlamı yok; zamanlayıcıyı durduruyoruz.
         _poller?.Stop();
+    }
+
+    /// <summary>
+    /// Takvim yeniden yazıldığı hâlde ekrana çıkmıyor: Explorer'ın duvar kâğıdı
+    /// listesi bozuk (2026-10-17'de görüldü). Kalender bunu kendisi
+    /// düzeltemiyor; oturumu kapatıp açmak düzeltiyor. Önceden kullanıcı ancak
+    /// takvimde eski günü görünce anlıyordu.
+    /// </summary>
+    private void OnDuvarKagidiGuncellenemiyor()
+    {
+        _tray?.ShowBalloon(
+            "Kalender",
+            "Windows masaüstü resmini yenilemiyor; takvim eski görünebilir. Oturumu kapatıp açmak ya da "
+                + "bilgisayarı yeniden başlatmak düzeltir.",
+            warning: true);
     }
 
     private void OnLayerUnavailable()

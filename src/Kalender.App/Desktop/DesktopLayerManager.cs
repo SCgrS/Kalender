@@ -93,6 +93,12 @@ internal sealed class DesktopLayerManager : IDisposable
 
     private int _nobetSayaci;
 
+    /// <summary>Duvar kâğıdı denetiminin geri çekilmesi (bkz. <see cref="DuvarKagidiNobeti"/>).</summary>
+    private readonly DuvarKagidiNobeti _duvarKagidiNobeti = new();
+
+    /// <summary>Kullanıcıya "Windows masaüstü resmini yenilemiyor" diye haber verildi mi? Süreç başına bir kez.</summary>
+    private bool _guncellenemiyorBildirildi;
+
     /// <summary>Takvim duvar kâğıdından kaldırılıyor; bu sırada gelen çizim yeniden kaldırmaya kalkmasın.</summary>
     private bool _geriYukleniyor;
 
@@ -138,6 +144,13 @@ internal sealed class DesktopLayerManager : IDisposable
 
     /// <summary>Ekran listesi değişti (çözünürlük, ölçek, monitör tak/çıkar).</summary>
     public event Action? MonitorsChanged;
+
+    /// <summary>
+    /// Takvim yeniden yazıldığı hâlde art arda birkaç denetimde ekrana çıkmadı:
+    /// Windows masaüstü resmini yenilemiyor. Süreç başına bir kez tetiklenir;
+    /// uygulama kullanıcıya haber verir.
+    /// </summary>
+    public event Action? DuvarKagidiGuncellenemiyor;
 
     /// <summary>
     /// Çizime başlamadan sorulur; uygulama burada fare kancasını söker (bkz.
@@ -279,6 +292,9 @@ internal sealed class DesktopLayerManager : IDisposable
             // görüntüyle aynı çıkıyor ve yazma atlanıyordu; ekranda arada
             // yazılmış, takvimi yanlış yerde gösteren görüntü kalıyordu.
             _canvas.Forget();
+
+            // Yeni düzende duvar kâğıdı yeniden denetlenir, geri çekilme beklenmez.
+            NobetiSifirla();
         }
 
         Refresh();
@@ -606,6 +622,12 @@ internal sealed class DesktopLayerManager : IDisposable
     /// <summary>
     /// Nöbet zamanlayıcısının her turu: ekran yapılandırmasına, birkaç turda bir
     /// de ekranda gerçekten bizim görüntümüzün durup durmadığına bakar.
+    ///
+    /// Yeniden yazım ekranı düzeltemiyorsa (yazılan görüntü ekrana ulaşmıyor)
+    /// denetim seyrekleşir: önceden yarım dakikada bir bütün ekranlar yeniden
+    /// yazılıyordu, sonsuza dek (bkz. <see cref="DuvarKagidiNobeti"/>). Art arda
+    /// üçüncü uyuşmazlıkta günlüğe kayıt tablosuyla bir hata yazılır, kullanıcıya
+    /// bir kez haber verilir.
     /// </summary>
     private void Nobet()
     {
@@ -618,15 +640,42 @@ internal sealed class DesktopLayerManager : IDisposable
 
         // Kimlik beklenirken monitör geçiş hâlinde; o arada okunan duvar kağıdı
         // yanıltıcı olabilir.
-        if (_screens.Count > 0
-            && !Beklemede
-            && _settings.Current.SyncSystemWallpaper
-            && !_canvas.EkrandakilerBizimMi())
+        DateTime simdi = DateTime.UtcNow;
+        if (_screens.Count == 0
+            || Beklemede
+            || !_settings.Current.SyncSystemWallpaper
+            || !_duvarKagidiNobeti.DenetimZamani(simdi))
+        {
+            return;
+        }
+
+        EkranDenetimi sonuc = _canvas.EkraniDenetle();
+        if (_duvarKagidiNobeti.Isle(sonuc, simdi))
+        {
+            Log.Error($"Takvim yeniden yazıldığı hâlde art arda {DuvarKagidiNobeti.IlkEsik} denetimde ekrana çıkmadı; "
+                + $"duvar kâğıdı denetimi seyrekleşiyor (en çok {DuvarKagidiNobeti.UzunBekleme.TotalMinutes:F0} dakikada bir). "
+                + "Kayıtlar: " + _canvas.SonDenetimKayitlari);
+
+            if (!_guncellenemiyorBildirildi)
+            {
+                _guncellenemiyorBildirildi = true;
+                DuvarKagidiGuncellenemiyor?.Invoke();
+            }
+        }
+
+        if (sonuc is EkranDenetimi.YolDegisti or EkranDenetimi.Gorunmuyor)
         {
             _canvas.Forget();
             Refresh();
         }
     }
+
+    /// <summary>
+    /// Duvar kâğıdı denetiminin geri çekilmesini bırakır: bir sonraki nöbet
+    /// turunda ekrana yeniden bakılır. Uyanınca ve Explorer yeniden başlayınca
+    /// çağrılır; Windows'un listesi o sırada düzelmiş olabilir.
+    /// </summary>
+    public void NobetiSifirla() => _duvarKagidiNobeti.Sifirla();
 
     /// <summary>
     /// Monitörleri okur. Kimliği o an okunamayan ekrana, aynı aygıt adıyla bu

@@ -2556,6 +2556,7 @@ internal static class Program
         object katman = Katman();
         AlanAta(katman, "_rebuildTimer", new DispatcherTimer());
         AlanAta(katman, "_canvas", Activator.CreateInstance(Tip("Kalender.Desktop.WallpaperCanvas"), nonPublic: true)!);
+        AlanAta(katman, "_duvarKagidiNobeti", Activator.CreateInstance(Tip("Kalender.Desktop.DuvarKagidiNobeti"), nonPublic: true)!);
         AlanAta(katman, "_screens", Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Desktop.EkrandakiTakvim")))!);
         int EkranSayisi() => ((IEnumerable)AlanOku(katman, "_monitors")).Cast<object>().Count();
 

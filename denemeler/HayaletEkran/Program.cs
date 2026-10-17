@@ -40,6 +40,13 @@ using System.Text;
 //   S2b. 17.10 06:54'te ölçülen liste (aygıt yollu kayıt canlı, boş kimlikli
 //        kayıt hayalet; roller önceki ölçümün tersi): liste tutarsız olduğu için
 //        yine aygıt yolu verilmeden; roller yer değiştirse de yol değişmez.
+//   S11. Nöbetin geri çekilmesi: yazılan görüntü ekrana ulaşmazsa art arda üç
+//        uyuşmazlıktan sonra 5, beşten sonra 15 dakika; kullanıcıya bir kez
+//        haber; uyanma, Explorer'ın yeniden başlaması ve yapılandırma
+//        değişimi sıfırlar.
+//   S12. Kaydın dosyası okunamazsa ekran "bilinmiyor": yeniden yazım istenmez.
+//   S13. Çok ekranda yazım anında bağlı olmayan ekran atlanır, kaydı canlı olunca
+//        nöbet yeniden yazdırır; atlanan ekran döngüye sokmaz.
 // (S5 ve S10 duvar kâğıdı yedeğiyle ilgili; WallpaperService değişikliğiyle gelir.)
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
@@ -407,6 +414,9 @@ internal static class Program
             Bolum(S8);
             Bolum(S9);
             Bolum(S2b);
+            Bolum(S11);
+            Bolum(S12);
+            Bolum(S13);
         }
         finally
         {
@@ -828,6 +838,234 @@ internal static class Program
                 == "Kimlik:" + Aus);
     }
 
+    // ------------------------------------------------------------------ S11
+
+    /// <summary>
+    /// Kurucusu çalıştırılmamış masaüstü katmanı: verilen tuvalle, yazma açık,
+    /// takvim bir ekranda. Ekran yapılandırması gerçek ekranlardan yalnız
+    /// okunarak alınır ki nöbet yeniden kurmaya kalkmasın; katmanın ekran
+    /// listesi boş, yeniden çizim hiçbir şey çizmez.
+    /// </summary>
+    private static object Katman(object tuval, object ekran)
+    {
+        Type t = Tip("Kalender.Desktop.DesktopLayerManager");
+        object y = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(t);
+        object depo = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(Tip("Kalender.Settings.SettingsStore"));
+        AlanAta(depo, "_gate", new object());
+        object ayarlar = Activator.CreateInstance(Tip("Kalender.Settings.AppSettings"), true)!;
+        Yaz(ayarlar, "SyncSystemWallpaper", true);
+        Yaz(depo, "Current", ayarlar);
+
+        var takvimler = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Desktop.EkrandakiTakvim")))!;
+        takvimler.Add(Activator.CreateInstance(Tip("Kalender.Desktop.EkrandakiTakvim"), ekran, null));
+
+        AlanAta(y, "_settings", depo);
+        AlanAta(y, "_canvas", tuval);
+        AlanAta(y, "_duvarKagidiNobeti", Activator.CreateInstance(Tip("Kalender.Desktop.DuvarKagidiNobeti"), true)!);
+        AlanAta(y, "_screens", takvimler);
+        AlanAta(y, "_monitors", Array.CreateInstance(Tip("Kalender.Interop.MonitorTarget"), 0));
+        AlanAta(y, "_bilinenKimlikler", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        AlanAta(y, "_rebuildTimer", new System.Windows.Threading.DispatcherTimer());
+        AlanAta(y, "_tazelemeTimer", new System.Windows.Threading.DispatcherTimer());
+        AlanAta(y, "_configSignature", Statik(t, "BuildConfigSignature", Cagir(y, "EkranlariOku")));
+        return y;
+    }
+
+    /// <summary>Katmanın bir duvar kâğıdı denetim turu (Nobet); takvimi yeniden yazdırdıysa (Forget) true.</summary>
+    private static bool NobetTuru(object katman)
+    {
+        object tuval = AlanOku(katman, "_canvas");
+        AlanAta(katman, "_nobetSayaci", 3);
+        ((IDictionary)AlanOku(tuval, "_hashes"))["iz"] = "iz";
+        Cagir(katman, "Nobet");
+        return ((IDictionary)AlanOku(tuval, "_hashes")).Count == 0;
+    }
+
+    private static string Denetim(object tuval) => Cagir(tuval, "EkraniDenetle")!.ToString()!;
+
+    private static void S11()
+    {
+        Console.WriteLine("S11) Nöbetin geri çekilmesi: yazılan görüntü ekrana ulaşmazsa denetim seyrekleşiyor, kullanıcıya bir kez haber");
+        Type nobetTipi = Tip("Kalender.Desktop.DuvarKagidiNobeti");
+        Type sonucTipi = Tip("Kalender.Desktop.EkranDenetimi");
+        object n = Activator.CreateInstance(nobetTipi, true)!;
+        DateTime t0 = new(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc);
+        bool Isle(string sonuc, DateTime an) => (bool)Cagir(n, "Isle", Enum.Parse(sonucTipi, sonuc), an)!;
+        bool Zamani(DateTime an) => (bool)Cagir(n, "DenetimZamani", an)!;
+        int ArdArda() => (int)Oku(n, "ArdArda")!;
+
+        bool b1 = Isle("Gorunmuyor", t0), b2 = Isle("Gorunmuyor", t0);
+        Denetle("ilk iki uyuşmazlıkta beklenmiyor, haber yok", !b1 && !b2 && Zamani(t0) && ArdArda() == 2);
+        Denetle("yol değişimi ve bilinmeyen sonuç sayılmıyor",
+            !Isle("YolDegisti", t0) && !Isle("Bilinmiyor", t0) && ArdArda() == 2 && Zamani(t0));
+        bool b3 = Isle("Gorunmuyor", t0);
+        Denetle("üçüncü uyuşmazlıkta haber; sonraki denetim 5 dakika sonra",
+            b3 && !Zamani(t0.AddMinutes(4.9)) && Zamani(t0.AddMinutes(5)));
+        DateTime t1 = t0.AddMinutes(5);
+        bool b4 = Isle("Gorunmuyor", t1);
+        DateTime t2 = t1.AddMinutes(5);
+        bool b5 = Isle("Gorunmuyor", t2);
+        Denetle("beşinci uyuşmazlıktan sonra 15 dakika; haber bir kez",
+            !b4 && !b5 && ArdArda() == 5 && !Zamani(t2.AddMinutes(14.9)) && Zamani(t2.AddMinutes(15)));
+        Denetle("en çok 15 dakika", !Isle("Gorunmuyor", t2.AddMinutes(15)) && Zamani(t2.AddMinutes(30)));
+        Isle("Yerinde", t2.AddMinutes(30));
+        Denetle("ekranda Kalender'in görüntüsü görülünce baştan başlıyor", ArdArda() == 0 && Zamani(t2.AddMinutes(30)));
+        Isle("Gorunmuyor", t0);
+        Isle("Gorunmuyor", t0);
+        Denetle("yeni bozukluk döneminde üçüncü uyuşmazlık yine bildiriliyor", Isle("Gorunmuyor", t0));
+        Cagir(n, "Sifirla");
+        Denetle("sıfırlanınca hemen denetleniyor", ArdArda() == 0 && Zamani(t0));
+
+        // Tuvalin denetimi sonucu nedeniyle veriyor.
+        int hata = Hatalar.Count;
+        string f15 = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261015-114200-000.bmp");
+        SahteKabuk k = Kabuk(new Kayit("", SOk, Sinir(0), f15), new(Aus, EFail, Rectangle.Empty, f15));
+        k.AygitsizBosKaydaUlasmaz = true;
+        object ekran = Ekran(Aus, 0);
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (ekran, Color.Navy));
+        Denetle("yazım ekrana ulaşmadı: denetim 'görüntü yok' diyor (yol aynı)", Denetim(tuval) == "Gorunmuyor", Denetim(tuval));
+
+        // Masaüstü katmanının nöbeti (gerçek ekranlar yalnız okunur, duvar kâğıdına yalnız sahte kabukla).
+        object katman = Katman(tuval, ekran);
+        int haber = 0;
+        katman.GetType().GetEvent("DuvarKagidiGuncellenemiyor")!.AddEventHandler(katman, new Action(() => haber++));
+        object nobeti = AlanOku(katman, "_duvarKagidiNobeti");
+        int hataOnce = Hatalar.Count;
+        var turlar = new List<bool> { NobetTuru(katman), NobetTuru(katman), NobetTuru(katman) };
+        Denetle("nöbet ilk üç turda yeniden yazdırıyor, üçüncüde bir kez haber ve kayıt tablosuyla bir hata",
+            turlar.All(x => x) && haber == 1 && Hatalar.Count == hataOnce + 1 && Hatalar[^1].Contains("art arda 3")
+            && Hatalar[^1].Contains("Hayalet"), $"{string.Join(", ", turlar)}; haber {haber}; "
+            + (Hatalar.Count > hataOnce ? Hatalar[^1] : "hata yok"));
+        Denetle("üçüncü uyuşmazlıktan sonraki tur denetlemiyor, yazdırmıyor (5 dakika bekleniyor)", !NobetTuru(katman));
+
+        AlanAta(nobeti, "_sonraki", DateTime.MinValue);
+        Denetle("süre dolunca yine denetleniyor; ikinci kez haber yok, yeni hata yok",
+            NobetTuru(katman) && haber == 1 && Hatalar.Count == hataOnce + 1 && (int)Oku(nobeti, "ArdArda")! == 4);
+
+        Cagir(katman, "NobetiSifirla");
+        Denetle("katman sıfırlayınca (uyanma, Explorer'ın yeniden başlaması) hemen denetleniyor",
+            (int)Oku(nobeti, "ArdArda")! == 0 && NobetTuru(katman));
+
+        // Kabuk düzeldi: aygıt yolu verilmeden yazılan görüntü ekrandaki kayda ulaşıyor.
+        k.AygitsizBosKaydaUlasmaz = false;
+        k.Kayitlar[0].Dosya = k.Yazilanlar[^1].Yol;
+        Denetle("ekranda Kalender'in görüntüsü görülünce yazdırmıyor, sayaç sıfır",
+            !NobetTuru(katman) && (int)Oku(nobeti, "ArdArda")! == 0 && haber == 1);
+
+        // Derlenmiş koddan: ekran yapılandırması değişince, uyanınca ve Explorer
+        // yeniden başlayınca sıfırlanıyor; haber tepsi balonuyla veriliyor.
+        Type katmanTipi = Tip("Kalender.Desktop.DesktopLayerManager");
+        Type host = Tip("Kalender.Core.AppHost");
+        bool Cagiriyor(Type tip, string yontem, Type hedef, string ad)
+            => Komutlar(tip.GetMethod(yontem, Hepsi)!).Any(x => Cagri(x, hedef, ad));
+        List<Komut> nobet = Komutlar(katmanTipi.GetMethod("Nobet", Hepsi)!);
+        int zamani = Bul(nobet, x => Cagri(x, nobetTipi, "DenetimZamani"));
+        int denetle = Bul(nobet, x => Cagri(x, Tip("Kalender.Desktop.WallpaperCanvas"), "EkraniDenetle"));
+        Denetle("nöbet denetimden önce geri çekilme süresine bakıyor, sonucu işliyor",
+            zamani >= 0 && denetle > zamani && Bul(nobet, x => Cagri(x, nobetTipi, "Isle"), denetle) > denetle);
+        Denetle("ekran yapılandırması değişince, uyanınca ve Explorer yeniden başlayınca geri çekilme bırakılıyor",
+            Cagiriyor(katmanTipi, "Rebuild", katmanTipi, "NobetiSifirla")
+            && Cagiriyor(host, "OnResumed", katmanTipi, "NobetiSifirla")
+            && Cagiriyor(host, "OnShellRestarted", katmanTipi, "NobetiSifirla"));
+        Denetle("uygulama haberi tepsi balonuyla veriyor",
+            Cagiriyor(host, "Start", katmanTipi, "add_DuvarKagidiGuncellenemiyor")
+            && Cagiriyor(host, "OnDuvarKagidiGuncellenemiyor", Tip("Kalender.Tray.TrayIcon"), "ShowBalloon"));
+
+        // Explorer yeniden başlayınca: geri çekilme bırakılıyor, görüntü 5 saniye sonra bir kez yeniden yazılıyor.
+        object uygulama = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(host);
+        AlanAta(uygulama, "_layer", katman);
+        Cagir(nobeti, "Isle", Enum.Parse(sonucTipi, "Gorunmuyor"), DateTime.UtcNow);
+        Cagir(uygulama, "OnShellRestarted");
+        var tazeleme = (System.Windows.Threading.DispatcherTimer)AlanOku(katman, "_tazelemeTimer");
+        var kurma = (System.Windows.Threading.DispatcherTimer)AlanOku(katman, "_rebuildTimer");
+        Denetle("Explorer yeniden başlayınca geri çekilme bırakılıyor, görüntü 5 saniye sonra bir kez yeniden yazılacak",
+            (int)Oku(nobeti, "ArdArda")! == 0 && tazeleme.IsEnabled && tazeleme.Interval == TimeSpan.FromSeconds(5) && kurma.IsEnabled,
+            $"{Oku(nobeti, "ArdArda")} / {tazeleme.IsEnabled} {tazeleme.Interval} / {kurma.IsEnabled}");
+        tazeleme.Stop();
+        kurma.Stop();
+        Denetle("günlükte bozuk liste için bir, art arda uyuşmazlık için bir hata satırı",
+            Hatalar.Count == hata + 2, string.Join(" | ", Hatalar.Skip(hata)));
+    }
+
+    // ------------------------------------------------------------------ S12
+
+    private static void S12()
+    {
+        Console.WriteLine("S12) Kaydın dosyası okunamazsa ekran 'bilinmiyor': nöbet yeniden yazdırmıyor");
+        SahteKabuk k = Kabuk(new Kayit(Aus, SOk, Sinir(0), Foto));
+        object ekran = Ekran(Aus, 0);
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (ekran, Color.Navy));
+        Denetle("okunabilirken yerinde", Denetim(tuval) == "Yerinde");
+
+        k.OkunamayanKimlikler.Add(Aus);
+        Denetle("sağlıklı tek ekranda kaydın dosyası okunamayınca bilinmiyor, yeniden yazım istenmiyor",
+            Denetim(tuval) == "Bilinmiyor" && BizimMi(tuval), Denetim(tuval));
+        Denetle("kapanışta ekranda duruyor sayılmıyor (emin olunamayan yere yazılmaz)", Duranlar(tuval).Count == 0);
+        k.OkunamayanKimlikler.Clear();
+        k.OkumadaHata = true;
+        Denetle("hiçbir dosya okunamayınca da bilinmiyor", Denetim(tuval) == "Bilinmiyor");
+        k.OkumadaHata = false;
+        Denetle("okuma düzelince yerinde", Denetim(tuval) == "Yerinde");
+
+        // Aygıt yolu verilmeden yazılan ekran (bozuk liste): canlı kaydın dosyası okunamıyor.
+        SahteKabuk bozuk = Kabuk(new Kayit("", SOk, Sinir(0), Foto), new(Aus, EFail, Rectangle.Empty, Foto));
+        object tuval2 = Tuval(1);
+        Uygula(tuval2, false, (ekran, Color.Navy));
+        bozuk.OkunamayanKimlikler.Add("");
+        Denetle("aygıt yolu verilmeden yazılan ekranda canlı kaydın dosyası okunamayınca bilinmiyor",
+            Denetim(tuval2) == "Bilinmiyor", Denetim(tuval2));
+        bozuk.OkunamayanKimlikler.Clear();
+        bozuk.OkunamayanKimlikler.Add(Aus);
+        Denetle("yalnız hayaletin dosyası okunamıyorsa yine yerinde (hayalete bakılmıyor)", Denetim(tuval2) == "Yerinde");
+    }
+
+    // ------------------------------------------------------------------ S13
+
+    private static void S13()
+    {
+        Console.WriteLine("S13) Çok ekranda yazım anında bağlı olmayan ekran: atlanıyor, kaydı canlı olunca nöbet yeniden yazdırıyor");
+        int hata = Hatalar.Count;
+        string aId = @"\\?\DISPLAY#AAA0001#1";
+        string bId = @"\\?\DISPLAY#BBB0002#1";
+        object a = Ekran(aId, 0, 1920, 1080);
+        object b = Ekran(bId, 1920, 1920, 1080);
+        string dunku = Path.Combine(ZeminKlasoru, "zemin-bbbbbbbb-20261016-090000-000.bmp");
+
+        // Dizüstüne takılan haricî ekran: Windows onun kaydını bir an bağlı saymıyor (S_FALSE).
+        SahteKabuk k = Kabuk(new Kayit(aId, SOk, Sinir(0, 1920, 1080), Foto), new(bId, SFalse, Rectangle.Empty, dunku));
+        object tuval = Tuval(2);
+        Uygula(tuval, false, (a, Color.Red), (b, Color.Blue));
+        Denetle("yalnız bağlı ekran yazılıyor; bağlı olmayan ekran atlanıyor",
+            k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit == aId && k.Kayitlar[1].Dosya == dunku, Yazimlar(k));
+        Denetle("ekran bağlı olmadıkça nöbet yeniden yazım istemiyor (döngü yok)",
+            BizimMi(tuval) && BizimMi(tuval) && BizimMi(tuval));
+        Denetle("kapanışta atlanan ekran duruyor sayılmıyor", Duranlar(tuval).SetEquals(new[] { aId }));
+
+        k.Kayitlar[1].Hr = SOk;
+        k.Kayitlar[1].Sinir = Sinir(1920, 1920, 1080);
+        string d1 = Denetim(tuval), d2 = Denetim(tuval);
+        Denetle("kaydı canlı olunca iki ardışık denetimden sonra yeniden yazım isteniyor (yol değişti)",
+            d1 == "Bilinmiyor" && d2 == "YolDegisti", $"{d1} / {d2}");
+        Unut(tuval);
+        Uygula(tuval, false, (a, Color.Red), (b, Color.Blue));
+        Denetle("yeniden yazımda haricî ekran kendi kaydına; dünkü takvim kalmıyor",
+            k.Yazilanlar.Count == 3 && k.Yazilanlar[2].Aygit == bId && k.Kayitlar[1].Dosya == k.Yazilanlar[2].Yol && BizimMi(tuval),
+            Yazimlar(k));
+
+        // İki kimliksiz ekran (aygıt yolu verilmeden yazılamıyor): atlanıyorlar, nöbet döngüye girmiyor.
+        SahteKabuk iki = Kabuk(
+            new("", SOk, Sinir(0, 1920, 1080), Foto), new("", SOk, Sinir(1920, 1920, 1080), Foto),
+            new(aId, EFail, Rectangle.Empty, Foto), new(bId, EFail, Rectangle.Empty, Foto));
+        object tuval2 = Tuval(2);
+        Uygula(tuval2, false, (a, Color.Red), (b, Color.Blue));
+        Denetle("iki kimliksiz ekran atlanınca nöbet her denetimde yeniden yazım istemiyor",
+            iki.Yazilanlar.Count == 0 && BizimMi(tuval2) && BizimMi(tuval2) && BizimMi(tuval2) && Duranlar(tuval2).Count == 0);
+        Denetle("sağlıklı listede atlanan ekran için günlüğe hata yazılmadı (bozuk liste için bir)", Hatalar.Count == hata + 1,
+            string.Join(" | ", Hatalar.Skip(hata)));
+    }
+
     // ---------------------------------------------------------------- ölçüm
 
     [DllImport("user32.dll")]
@@ -945,6 +1183,9 @@ public class SahteKabuk : DispatchProxy
     /// <summary>Doğruysa GetWallpaper hata verir.</summary>
     public bool OkumadaHata { get; set; }
 
+    /// <summary>Bu kimliklerde GetWallpaper hata verir (yalnız o kayıt okunamıyor; boş kimlik de olur).</summary>
+    public HashSet<string> OkunamayanKimlikler { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>SetWallpaper çağrıları, sırasıyla.</summary>
     public List<(string? Aygit, string Yol)> Yazilanlar { get; } = new();
 
@@ -984,6 +1225,11 @@ public class SahteKabuk : DispatchProxy
 
                 if (a![0] is string kimlik)
                 {
+                    if (OkunamayanKimlikler.Contains(kimlik))
+                    {
+                        throw new COMException("Kaydın duvar kâğıdı okunamadı (deneme).", EFail);
+                    }
+
                     return Bul(kimlik)?.Dosya ?? string.Empty;
                 }
 
