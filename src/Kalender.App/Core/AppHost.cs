@@ -1139,6 +1139,7 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         // Yeniden kurmada görüntü aynıysa yazılmıyor. Explorer'ın duvar kâğıdı
         // listesi bozuk kalmışsa yeniden başlayınca düzelir; takvim nöbetin
         // geri çekilmesini (en çok 15 dakika) beklemeden doğru kayda gelsin.
+        // Daha geç kurulu bir güvence yazımı (açılış, uyanma) öne çekilmez.
         _layer?.NobetiSifirla();
         _layer?.TazelemeIste(KabukTazelemeGecikmesi);
     }

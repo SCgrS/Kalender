@@ -78,6 +78,10 @@ internal sealed class DesktopLayerManager : IDisposable
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Now);
     private DateOnly _viewMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
     private DateTime _rebuildDeadline = DateTime.MinValue;
+
+    /// <summary>Bekleyen güvence yazımının zamanı (UTC; bkz. <see cref="TazelemeIste"/>).</summary>
+    private DateTime _tazelemeZamani = DateTime.MinValue;
+
     private string _configSignature = string.Empty;
     private bool _unavailableReported;
     private bool _disposed;
@@ -568,6 +572,12 @@ internal sealed class DesktopLayerManager : IDisposable
     /// oturumdan kalan görüntüyü göstermeye devam ediyor ve takvim eski yerinde
     /// ya da eski hâliyle kalıyor. Windows'un kaydı bizim dosyamızı gösterdiği
     /// için yarım dakikalık denetim bunu her zaman yakalayamıyor.
+    ///
+    /// Daha ileri bir zamana kurulu bekleyen istek öne çekilmez (yeniden kurma
+    /// isteğindeki gibi): açılıştaki ve uyanmadaki gecikme Explorer oturmadan
+    /// yazılan görüntünün ekrana gelmemesine karşı. Önceden son istek
+    /// kazanıyordu; uyandıktan hemen sonra Explorer yeniden başlayınca 20
+    /// saniyelik güvence yazımı 5 saniyeye iniyor, Explorer oturmadan yapılıyordu.
     /// </summary>
     public void TazelemeIste(TimeSpan gecikme)
     {
@@ -576,6 +586,14 @@ internal sealed class DesktopLayerManager : IDisposable
             return;
         }
 
+        DateTime zaman = DateTime.UtcNow + gecikme;
+        if (_tazelemeTimer.IsEnabled && _tazelemeZamani > zaman)
+        {
+            Log.Debug($"Güvence yazımı isteği birleştirildi ({gecikme.TotalSeconds:F0} sn).");
+            return;
+        }
+
+        _tazelemeZamani = zaman;
         _tazelemeTimer.Stop();
         _tazelemeTimer.Interval = gecikme;
         _tazelemeTimer.Start();

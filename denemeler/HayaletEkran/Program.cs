@@ -1523,6 +1523,17 @@ internal static class Program
             $"{Oku(nobeti, "ArdArda")} / {tazeleme.IsEnabled} {tazeleme.Interval} / {kurma.IsEnabled}");
         tazeleme.Stop();
         kurma.Stop();
+
+        // Uyanmada kurulan 20 saniyelik güvence yazımı Explorer hemen ardından yeniden başlayınca öne çekilmiyor.
+        Cagir(katman, "TazelemeIste", TimeSpan.FromSeconds(20));
+        Cagir(uygulama, "OnShellRestarted");
+        Denetle("bekleyen daha geç güvence yazımı (uyanma, açılış) Explorer yeniden başlayınca kısalmıyor",
+            tazeleme.IsEnabled && tazeleme.Interval == TimeSpan.FromSeconds(20), $"{tazeleme.IsEnabled} {tazeleme.Interval}");
+        Cagir(katman, "TazelemeIste", TimeSpan.FromSeconds(60));
+        Denetle("daha geç bir istek bekleyeni uzatıyor (son istek yine geçerli)",
+            tazeleme.IsEnabled && tazeleme.Interval == TimeSpan.FromSeconds(60), $"{tazeleme.IsEnabled} {tazeleme.Interval}");
+        tazeleme.Stop();
+        kurma.Stop();
         Denetle("günlükte bozuk liste için bir, art arda uyuşmazlık için bir hata satırı",
             Hatalar.Count == hata + 2, string.Join(" | ", Hatalar.Skip(hata)));
 
