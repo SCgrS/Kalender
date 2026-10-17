@@ -17,7 +17,7 @@ internal enum KayitDurumu
 
     /// <summary>
     /// Windows kaydı tanıyor ama ekran bağlı değil (S_FALSE ya da boş
-    /// dikdörtgen). Dizüstünden çıkarılmış harici ekran gibi olağan bir durum;
+    /// dikdörtgen). Dizüstünden çıkarılmış haricî ekran gibi olağan bir durum;
     /// liste bozuk sayılmaz.
     /// </summary>
     BagliDegil,

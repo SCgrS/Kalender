@@ -38,7 +38,7 @@ internal interface IDesktopWallpaper
     /// <summary>
     /// Kaydın ekrandaki dikdörtgeni. Sonuç HRESULT olarak döner, hata istisnaya
     /// çevrilmez: Windows bağlı olmayan ekranın kaydında S_FALSE (1) döndürüyor
-    /// (dizüstünden çıkarılmış harici ekran gibi olağan durum); önceden bu
+    /// (dizüstünden çıkarılmış haricî ekran gibi olağan durum); önceden bu
     /// başarı sayılıyor, sıfır dikdörtgen hatasız geliyordu. Explorer'ın
     /// listesinde kalmış, hiçbir ekrana karşılık gelmeyen kayıtta hata (ör.
     /// E_FAIL) döner (bkz. <see cref="Kalender.Desktop.DuvarKagidiKayitlari"/>).

@@ -18,7 +18,7 @@ using System.Text;
 //   0. Kayıtların sınıflanması (canlı, bağlı değil, hayalet), listenin
 //      tutarlılığı, günlük özeti; okuma hataları.
 //   S1. Sağlıklı tek ekran: görüntü ekranın kendi kaydına yazılır, nöbet
-//       "yerinde" der; kimliği okunamamış ekranda da; çıkarılmış harici ekranın
+//       "yerinde" der; kimliği okunamamış ekranda da; çıkarılmış haricî ekranın
 //       kaydı (S_FALSE) listeyi bozuk saydırmaz.
 //   S2. Bugünkü durum (boş kimlikli canlı kayıt + hayalet): yalnız aygıt yolu
 //       verilmeden yazılır, görüntü ekranda; günlüğe bir kez hata, sonraki
@@ -442,7 +442,7 @@ internal static class Program
 
         bool Tutarli(params Kayit[] kayitlar) => Saglikli(Tablo(Kabuk(kayitlar))!);
         Denetle("sağlıklı iki ekran tutarlı", Tutarli(new("A", SOk, Sinir(0), Foto), new("B", SOk, Sinir(2560), Foto)));
-        Denetle("çıkarılmış harici ekranın kaydı (S_FALSE) listeyi bozuk saydırmıyor",
+        Denetle("çıkarılmış haricî ekranın kaydı (S_FALSE) listeyi bozuk saydırmıyor",
             Tutarli(new("A", SOk, Sinir(0), Foto), new("B", SFalse, Rectangle.Empty, Foto)));
         Denetle("hayalet kayıt, kimliği boş canlı kayıt ve iki kayıtta geçen kimlik tutarsız",
             !Tutarli(new("A", SOk, Sinir(0), Foto), new("B", EFail, Rectangle.Empty, Foto))
@@ -500,12 +500,12 @@ internal static class Program
         Denetle("kimliği okunamamış tek ekranda da görüntü canlı kaydın aygıt yoluna yazılıyor",
             k2.Yazilanlar.Count == 1 && k2.Yazilanlar[0].Aygit == Aus && BizimMi(tuval2), Yazimlar(k2));
 
-        // Dizüstü + çıkarılmış harici ekran: harici ekranın kaydı S_FALSE veriyor.
+        // Dizüstü + çıkarılmış haricî ekran: haricî ekranın kaydı S_FALSE veriyor.
         string harici = @"\\?\DISPLAY#DEL4321#1";
         SahteKabuk k3 = Kabuk(new Kayit(Aus, SOk, Sinir(0), Foto), new(harici, SFalse, Rectangle.Empty, Foto));
         object tuval3 = Tuval(1);
         Uygula(tuval3, false, (Ekran(Aus, 0), Color.Navy));
-        Denetle("çıkarılmış harici ekran varken görüntü ekranın kendi kaydına; aygıt yolu verilmeden yazılmıyor, harici ekranın fotoğrafı yerinde",
+        Denetle("çıkarılmış haricî ekran varken görüntü ekranın kendi kaydına; aygıt yolu verilmeden yazılmıyor, haricî ekranın fotoğrafı yerinde",
             k3.Yazilanlar.Count == 1 && k3.Yazilanlar[0].Aygit == Aus && k3.Kayitlar[1].Dosya == Foto, Yazimlar(k3));
         Denetle("günlüğe hata yazılmadı (bağlı olmayan ekran olağan durum)", Hatalar.Count == hata);
     }
