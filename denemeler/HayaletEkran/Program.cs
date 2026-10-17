@@ -37,6 +37,9 @@ using System.Text;
 //   S8. Klon kipi (aynı dikdörtgende iki canlı kayıt, tek ekran): aygıt yolu
 //       verilmeden yazılır, günlüğe hata yazılmaz.
 //   S9. Dalgalanma: tek seferlik farklı okuma yeniden yazım istemez.
+//   S2b. 17.10 06:54'te ölçülen liste (aygıt yollu kayıt canlı, boş kimlikli
+//        kayıt hayalet; roller önceki ölçümün tersi): liste tutarsız olduğu için
+//        yine aygıt yolu verilmeden; roller yer değiştirse de yol değişmez.
 // (S5 ve S10 duvar kâğıdı yedeğiyle ilgili; WallpaperService değişikliğiyle gelir.)
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
@@ -403,6 +406,7 @@ internal static class Program
             Bolum(S7);
             Bolum(S8);
             Bolum(S9);
+            Bolum(S2b);
         }
         finally
         {
@@ -778,6 +782,50 @@ internal static class Program
         bool b2 = BizimMi(tuval);
         Denetle("aynı farklılık iki ardışık denetimde görülünce yeniden yazım isteniyor", b1 && !b2, $"{b1} / {b2}");
         Denetle("denetimler yazmıyor (yazımı masaüstü katmanı yapar)", k.Yazilanlar.Count == 1, Yazimlar(k));
+    }
+
+    // ------------------------------------------------------------------ S2b
+
+    private static void S2b()
+    {
+        Console.WriteLine("S2b) 17.10 06:54'te ölçülen liste: aygıt yollu kayıt canlı, boş kimlikli kayıt hayalet; yine aygıt yolu verilmeden");
+        int hata = Hatalar.Count;
+        string f = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261016-210002-000.bmp");
+        SahteKabuk k = Kabuk(new Kayit(Aus, SOk, Sinir(0), f), new("", EFail, Rectangle.Empty, f));
+        object ekran = Ekran(Aus, 0);
+
+        // Düzeltmenin ilk hâli (ve 1.14) burada kimlikli tek canlı kaydı seçiyordu:
+        // ekranda boş kimlikli kayıt duruyorsa takvim yine ekrana çıkmazdı.
+        object tablo = Tablo(k)!;
+        Denetle("liste tutarsız; kimlikli tek canlı kayıt olsa da tek ekranda yazım yolu aygıt yolu verilmeden",
+            !Saglikli(tablo) && Coz(tablo, ekran, 1) == "Hepsi", Coz(tablo, ekran, 1));
+
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (ekran, Color.Navy));
+        string yazilan = k.Yazilanlar.Count == 1 ? k.Yazilanlar[0].Yol : "?";
+        Denetle("tek yazım, aygıt yolu verilmeden; görüntü iki kayda da ulaşıyor (hangisi ekrandaysa)",
+            k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit is null && k.Kayitlar.All(x => x.Dosya == yazilan), Yazimlar(k));
+        Denetle("nöbet: ekranda Kalender'in görüntüsü var", BizimMi(tuval) && BizimMi(tuval));
+        Denetle("günlüğe bir kez hata yazıldı, kayıt tablosuyla",
+            Hatalar.Count == hata + 1 && Hatalar[^1].Contains("tutarsız") && Hatalar[^1].Contains("(boş kimlik) Hayalet")
+            && Hatalar[^1].Contains("Canli"), Hatalar.Count > hata ? Hatalar[^1] : "hata yok");
+
+        // Canlı ve hayalet yer değiştiriyor (05:06 ile 06:54 arasında böyle oldu):
+        // yazım yolu aynı kalıyor, nöbet yeniden yazım istemiyor.
+        var sonuclar = new List<bool>();
+        for (int i = 0; i < 4; i++)
+        {
+            (k.Kayitlar[0].Hr, k.Kayitlar[1].Hr) = (k.Kayitlar[1].Hr, k.Kayitlar[0].Hr);
+            (k.Kayitlar[0].Sinir, k.Kayitlar[1].Sinir) = (k.Kayitlar[1].Sinir, k.Kayitlar[0].Sinir);
+            sonuclar.Add(BizimMi(tuval));
+        }
+
+        Denetle("canlı ve hayalet kayıt yer değiştirse de yazım yolu değişmiyor, yeniden yazım istenmiyor",
+            sonuclar.All(x => x) && Coz(Tablo(k)!, ekran, 1) == "Hepsi", string.Join(", ", sonuclar));
+        Denetle("sağlıklı tek ekranda yine ekranın kendi kaydı (tutarlılık şartı yalnız bozuk listede devreye giriyor)",
+            Coz(Tablo(Kabuk(new Kayit(Aus, SOk, Sinir(0), f)))!, ekran, 1) == "Kimlik:" + Aus
+            && Coz(Tablo(Kabuk(new Kayit(Aus, SOk, Sinir(0), f), new(@"\\?\DISPLAY#DEL4321#1", SFalse, Rectangle.Empty, Foto)))!, ekran, 1)
+                == "Kimlik:" + Aus);
     }
 
     // ---------------------------------------------------------------- ölçüm

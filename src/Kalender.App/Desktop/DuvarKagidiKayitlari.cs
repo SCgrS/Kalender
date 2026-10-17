@@ -233,12 +233,18 @@ internal static class DuvarKagidiKayitlari
     /// Ekranın görüntüsü hangi yoldan yazılmalı? Hayalet ya da bağlı olmayan
     /// kayıt hiçbir zaman seçilmez.
     ///
-    /// Tek ekranda: tam bir canlı kayıt varsa, kimliği doluysa ve o kimlik
-    /// başka kayıtta geçmiyorsa o kayıt. Ekranın kimliğiyle tutması aranmaz:
-    /// kimliği okunamamış (\\.\DISPLAY1 adını taşıyan) ekranın kaydı da odur;
-    /// önceki sürümlerdeki dikdörtgen eşleşmesinin karşılığı. Öbür bütün
-    /// durumlarda (canlı kayıt yok, birden çok canlı, kimliği boş, kimlik iki
-    /// kayıtta) aygıt yolu verilmeden: tek ekranda bütün ekranlar o ekrandır.
+    /// Tek ekranda: liste tutarlıysa ve tam bir canlı kayıt varsa o kayıt.
+    /// Ekranın kimliğiyle tutması aranmaz: kimliği okunamamış (\\.\DISPLAY1
+    /// adını taşıyan) ekranın kaydı da odur; önceki sürümlerdeki dikdörtgen
+    /// eşleşmesinin karşılığı. Öbür bütün durumlarda (liste tutarsız, canlı
+    /// kayıt yok, birden çok canlı) aygıt yolu verilmeden: tek ekranda bütün
+    /// ekranlar o ekrandır. Liste tutarsızken kimliği dolu tek canlı kayıt da
+    /// seçilmez: 2026-10-17'de aynı bozuk listede canlı ve hayalet kayıt birkaç
+    /// saat içinde yer değiştirdi (önce boş kimlikli kayıt canlıydı, sonra
+    /// aygıt yollu kayıt); dikdörtgen sorusu hangi kaydın ekranda göründüğünü
+    /// kanıtlamıyor. Aygıt yolu verilmeden yazılan görüntü bütün kayıtlara
+    /// gider, hangisi ekrandaysa ona da ulaşır (bozuk listede ölçüldü); liste
+    /// iki hâl arasında gidip gelse de yazım yolu değişmez.
     ///
     /// Çok ekranda sırayla: kimliği ekranınkine eşit tekil canlı kayıt; yoksa
     /// kimliği dolu, tekil ve dikdörtgeni ekranınkiyle bire bir aynı tek canlı
@@ -254,7 +260,8 @@ internal static class DuvarKagidiKayitlari
 
         if (bagliEkranSayisi <= 1)
         {
-            return canlilar.Count == 1 && !string.IsNullOrWhiteSpace(canlilar[0].Kimlik) && Tekil(canlilar[0].Kimlik)
+            // Tutarlı listede canlı kaydın kimliği dolu ve tekildir (bkz. Saglikli).
+            return canlilar.Count == 1 && Saglikli(k)
                 ? DuvarKagidiHedefi.KimlikIle(canlilar[0].Kimlik)
                 : DuvarKagidiHedefi.Hepsi;
         }
