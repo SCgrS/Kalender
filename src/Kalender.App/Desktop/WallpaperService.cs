@@ -426,10 +426,15 @@ internal static class WallpaperService
             if (yedekDosyasi is null)
             {
                 // Yedek yoksa bile bizim ürettiğimiz görüntüler ortada kalmasın.
-                // Ekranda takvimin görüntüsü yoksa önceki duvar kâğıdı zaten yerinde.
+                // Ekranda takvimin görüntüsü yoksa önceki duvar kâğıdı zaten
+                // yerinde. Ekranda görünene bakılır (bkz. EkrandaZeminVar):
+                // önceden hayaletin gösterdiği takvim de sayılıyordu; Windows'un
+                // listesi bozukken ekranda fotoğraf dururken "geri yüklenemedi"
+                // uyarısı çıkıyordu, yazılacak ekran da bulunmuyordu.
                 HashSet<string>? ekrandakiler = ClearCanvasFiles(null);
-                eksikKaldi = ekrandakiler is null
-                    || (ekrandakiler.Any(ZeminDosyasiMi) && !DuzRenkSuruyor(ekrandakiler, DuzRenkDosyasi));
+                bool? zeminGorunuyor = ekrandakiler is null ? null : EkrandaZeminVar();
+                eksikKaldi = zeminGorunuyor is null
+                    || (zeminGorunuyor == true && !DuzRenkSuruyor(ekrandakiler, DuzRenkDosyasi));
                 return !eksikKaldi;
             }
 
@@ -905,7 +910,7 @@ internal static class WallpaperService
     /// kaldırmada zemin klasörü bu yüzden korunur. Canlı kayıt yoksa ya da bir
     /// canlı kaydın dosyası okunamadıysa aygıt yolu verilmeden okunan dosyaya
     /// da bakılır. Silmeden korumada bütün kayıtlara bakmayı
-    /// <see cref="EkrandakiDosyalar"/> sürdürür.
+    /// <see cref="EkrandakiDosyalar"/> ve <see cref="ZeminKlasoruKorunmali"/> sürdürür.
     /// </summary>
     /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
     /// <returns>Ekrandakiler okunamazsa null.</returns>
@@ -962,6 +967,33 @@ internal static class WallpaperService
         {
             Log.Debug("Ekrandaki duvar kâğıtları okunamadı: " + ex.Message);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Kaldırmada zemin klasörü silinmeden kalmalı mı: Windows'un listesindeki
+    /// herhangi bir kayıt (hayalet ve bağlı olmayan dâhil; bkz.
+    /// <see cref="EkrandakiDosyalar"/>) takvimin zeminini gösteriyorsa ya da
+    /// ekrandakiler okunamıyorsa. <see cref="EkrandaZeminVar"/> yalnız ekranda
+    /// görüneni sorar, hayaleti saymaz; kaldırmada o kullanılıyordu. Windows'un
+    /// listesi bozukken hayalet takvimin zeminini göstermeyi sürdürürse liste
+    /// düzelince (oturum yeniden açılınca hayaletin aygıt yolu ekranın gerçek
+    /// kaydı oluyor) ekran silinmiş dosyayı göstermeye çalışırdı; Kalender
+    /// kaldırıldığı için bunu düzelten de kalmazdı. Okunamayan durumda da klasör
+    /// kalır: temizlikte de emin olunamayan yerde dosya silinmiyor.
+    /// </summary>
+    /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
+    internal static bool ZeminKlasoruKorunmali(IDesktopWallpaper? wallpaper = null)
+    {
+        try
+        {
+            wallpaper ??= DuvarKagidiKayitlari.Ac();
+            return EkrandakiDosyalar(wallpaper)?.Any(ZeminDosyasiMi) ?? true;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Ekrandaki duvar kâğıtları okunamadı: " + ex.Message);
+            return true;
         }
     }
 

@@ -965,8 +965,11 @@ internal static class Program
         int bekleyenOku = Bul(k, x => Cagri(x, servis, "get_BekleyenYedekDosyasi"));
         int okuma = Bul(k, x => Cagri(x, typeof(File), "ReadAllText"));
         Denetle("yedek yoksa bekleyen yedekle geri yükleniyor", bekleyenOku >= 0 && okuma > bekleyenOku);
+        // 2026-10-17'den beri soru EkrandaZeminVar'a soruluyor (ekranda görünen,
+        // hayalet sayılmıyor); önceden temizliğin döndürdüğü dosyalarda
+        // ZeminDosyasiMi aranıyordu. Denetim yeni yapıya göre güncellendi.
         Denetle("yedek yokken ekranda takvimin zemini duruyor mu diye bakılıyor",
-            Bul(k, x => x.Kod == OpCodes.Ldftn && x.Uye?.Name == "ZeminDosyasiMi") is int zeminSor
+            Bul(k, x => Cagri(x, servis, "EkrandaZeminVar")) is int zeminSor
             && zeminSor > Bul(k, x => Cagri(x, servis, "ClearCanvasFiles")) && zeminSor < okuma);
         Denetle("zemin temizliği ekrandakileri okuyarak yapılıyor",
             Komutlar(servis.GetMethod("ClearCanvasFiles", Hepsi)!).Any(x => Cagri(x, servis, "EkrandakiDosyalar")));
@@ -1017,8 +1020,11 @@ internal static class Program
             kok.SetValue(null, asilKok);
         }
 
+        // 2026-10-17'den beri kaldırma Windows'un listesindeki bütün kayıtlara
+        // (hayalet dâhil) bakan ZeminKlasoruKorunmali'yi soruyor; EkrandaZeminVar
+        // artık yalnız ekranda görüneni soruyor. Denetim yeni yapıya göre güncellendi.
         List<Komut> silme = Komutlar(kurucu.GetMethod("ScheduleFileRemoval", Hepsi)!);
-        int bakis = Bul(silme, x => Cagri(x, servis, "EkrandaZeminVar"));
+        int bakis = Bul(silme, x => Cagri(x, servis, "ZeminKlasoruKorunmali"));
         Denetle("kaldırmada \"ayarlarımı da sil\" ekrandaki zemine bakıyor",
             bakis >= 0 && Bul(silme, x => Cagri(x, kurucu, "VeriSilmeHedefleri"), bakis) > bakis);
     }

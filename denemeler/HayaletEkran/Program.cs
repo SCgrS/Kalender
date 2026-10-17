@@ -1299,6 +1299,31 @@ internal static class Program
         Denetle("canlı kayıt yokken aygıt yolu verilmeden okunan dosyaya bakılıyor", ZeminVar(yalnizHayalet) == true);
         var korunan = (HashSet<string>?)Statik(Servis, "EkrandakiDosyalar", Bugunku(foto, f16));
         Denetle("silmeden korumada hayaletin dosyası yine sayılıyor", korunan is not null && korunan.Contains(f16));
+
+        // Kaldırmada "ayarlarımı da sil": zemin klasörü bütün kayıtlara bakılarak korunuyor.
+        bool Korunmali(SahteKabuk t) => (bool)Statik(Servis, "ZeminKlasoruKorunmali", t)!;
+        Denetle("kaldırmada hayalet takvimin zeminini gösteriyorsa zemin klasörü korunuyor (ekranda görünmese de)",
+            ZeminVar(Bugunku(foto, f16)) == false && Korunmali(Bugunku(foto, f16)));
+        Denetle("hiçbir kayıtta takvimin zemini yoksa korunmuyor", !Korunmali(Bugunku(foto, foto2)));
+        SahteKabuk okunamaz = Bugunku(foto, f16);
+        okunamaz.SayimdaHata = true;
+        Denetle("ekrandakiler okunamazsa zemin klasörü korunuyor", Korunmali(okunamaz));
+        Denetle("kaldırma bunu soruyor (derlenmiş koddan)",
+            Komutlar(Tip("Kalender.Core.Installer").GetMethod("ScheduleFileRemoval", Hepsi)!)
+                .Any(x => Cagri(x, Servis, "ZeminKlasoruKorunmali")));
+
+        // Yedek yokken geri yükleme ekranda görünene bakıyor: ekranda fotoğraf, hayalette takvim; uyarı yok.
+        YedekleriSil();
+        SahteKabuk yedeksiz = Bugunku(foto, f16);
+        FabrikayiBagla(() => yedeksiz);
+        object?[] cikti = { true };
+        bool yuklendi = (bool)Servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!.Invoke(null, cikti)!;
+        Denetle("yedek yokken ekranda fotoğraf duruyorsa (takvim yalnız hayalette) geri yükleme başarılı, uyarı yok",
+            yuklendi && !(bool)cikti[0]! && yedeksiz.Yazilanlar.Count == 0, $"{yuklendi} / eksik {cikti[0]}");
+        yedeksiz.Kayitlar[0].Dosya = f15;
+        cikti[0] = false;
+        yuklendi = (bool)Servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!.Invoke(null, cikti)!;
+        Denetle("ekranda takvim duruyorsa eksik (katman oraya takvimsiz zemin yazar)", !yuklendi && (bool)cikti[0]!);
     }
 
     // ------------------------------------------------------------------ S2b

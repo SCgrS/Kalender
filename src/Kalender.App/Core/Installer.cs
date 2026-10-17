@@ -374,8 +374,10 @@ internal static class Installer
     {
         try
         {
+            // Zemin klasörü Windows'un listesindeki bütün kayıtlara bakılarak
+            // korunur (hayalet dâhil; bkz. ZeminKlasoruKorunmali).
             List<string> targets = removeData
-                ? VeriSilmeHedefleri(WallpaperService.EkrandaZeminVar() == true)
+                ? VeriSilmeHedefleri(WallpaperService.ZeminKlasoruKorunmali())
                 : new List<string> { AppFolder };
 
             // Kullanılmayan açılım klasörleri (eski kurucular, güncelleme indirmeleri)
@@ -439,7 +441,10 @@ internal static class Installer
     /// başlaması) ekran siyaha dönebilirdi. O zaman kökteki dosyalar (ayarlar ve
     /// öbürleri) hemen silinir, zemin dışındaki klasörler kapanışta.
     /// </summary>
-    /// <param name="zeminEkranda">Ekranlardan birinde takvimin zemini duruyor mu?</param>
+    /// <param name="zeminEkranda">
+    /// Windows'un listesindeki bir kayıt takvimin zeminini gösteriyor mu (ya da
+    /// ekrandakiler okunamadı mı)? Bkz. <see cref="WallpaperService.ZeminKlasoruKorunmali"/>.
+    /// </param>
     internal static List<string> VeriSilmeHedefleri(bool zeminEkranda)
     {
         if (!zeminEkranda || !Directory.Exists(Paths.RootFolder))
