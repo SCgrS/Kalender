@@ -8,6 +8,7 @@ using System.Reflection.Emit;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 
 // Explorer'ın duvar kâğıdı listesi bozulunca Kalender'in hangi kayda yazdığının
 // sınaması (yansımayla). 2026-10-17'de ev bilgisayarında tek ekranın listesinde
@@ -29,6 +30,9 @@ using System.Text;
 //   S4. Temizlik: ekranda duran dosyalar (boş kimlikli kayıt, hayalet) silinmez,
 //       kullanılmayan eski dosya silinir; liste okunamazsa hiçbiri silinmez;
 //       yazımdan sonraki temizlik de ekrana bakar.
+//   S5. Dizüstü + çıkarılmış haricî ekran (S_FALSE): aygıt yolu verilmeden hiç
+//       yazılmaz, günlüğe hata yazılmaz, yedekte haricî ekranın fotoğrafı durur
+//       ve geri yüklemede kendi kaydına döner.
 //   S6. İki ekrandan yalnız biri yazılırken (takvim kaldırılırken) aygıt yolu
 //       verilmeden yazılmaz; katman bağlı ekran sayısını her yazımdan önce verir.
 //   S7. Çok ekranda tek kimliksiz kayıt: önce o ekran aygıt yolu verilmeden,
@@ -37,13 +41,18 @@ using System.Text;
 //   S8. Klon kipi (aynı dikdörtgende iki canlı kayıt, tek ekran): aygıt yolu
 //       verilmeden yazılır, günlüğe hata yazılmaz.
 //   S9. Dalgalanma: tek seferlik farklı okuma yeniden yazım istemez.
+//   S10. Bozuk listede yedek ve geri yükleme: yedekte boş anahtar ve hayaletin
+//        kimliği yok; geri yükleme tek canlı kayıtta aygıt yolu verilmeden,
+//        çok ekranda yalnız kimliği dolu canlı kayıtlara; hayalete yazılmaz,
+//        başarı sayılmaz; eski yedeğin boş anahtarı ortak yol gibi okunur;
+//        açılıştaki "ekranda takvim kalmış mı" sorusu hayalete bakmaz.
 //   S2b. 17.10 06:54'te ölçülen liste (aygıt yollu kayıt canlı, boş kimlikli
 //        kayıt hayalet; roller önceki ölçümün tersi): liste tutarsız olduğu için
 //        yine aygıt yolu verilmeden; roller yer değiştirse de yol değişmez.
 //   S11. Nöbetin geri çekilmesi: yazılan görüntü ekrana ulaşmazsa art arda üç
 //        uyuşmazlıktan sonra 5, beşten sonra 15 dakika; kullanıcıya bir kez
-//        haber; uyanma, Explorer'ın yeniden başlaması ve yapılandırma
-//        değişimi sıfırlar.
+//        haber (sonraki bozukluk döneminde de yeniden haber yok); uyanma,
+//        Explorer'ın yeniden başlaması ve yapılandırma değişimi sıfırlar.
 //   S12. Kaydın dosyası okunamazsa ekran "bilinmiyor": yeniden yazım istenmez.
 //   S13. Çok ekranda yazım anında bağlı olmayan ekran atlanır, kaydı canlı olunca
 //        nöbet yeniden yazdırır; atlanan ekran döngüye sokmaz.
@@ -52,7 +61,6 @@ using System.Text;
 //   S15. Canlı kayıt yokken nöbet aygıt yolu verilmeden okunan dosyaya bakar.
 //   S16. Geri yükleme eksik kalınca takvimin durduğu ekranlar bütün bağlı
 //        ekranlarla aranır.
-// (S5 ve S10 duvar kâğıdı yedeğiyle ilgili; WallpaperService değişikliğiyle gelir.)
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
 // (DuvarKagidiKayitlari.Ac) ilk iş olarak açılırsa hata veren bir fabrikaya, her
@@ -140,8 +148,8 @@ internal static class Program
 
     // ------------------------------------------------- derlenmiş koddaki komutlar
 
-    /// <summary>Bir IL komutu: işlem kodu ve varsa çağrılan yöntem ya da alan.</summary>
-    private sealed record Komut(OpCode Kod, MemberInfo? Uye);
+    /// <summary>Bir IL komutu: işlem kodu, varsa çağrılan yöntem ya da alan ve yüklenen sabit dize.</summary>
+    private sealed record Komut(OpCode Kod, MemberInfo? Uye, string? Dize = null);
 
     private static readonly Dictionary<short, OpCode> IslemKodlari = typeof(OpCodes)
         .GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -162,6 +170,7 @@ internal static class Program
             i += kod.Size;
 
             MemberInfo? uye = null;
+            string? dize = null;
             try
             {
                 uye = kod.OperandType switch
@@ -170,6 +179,10 @@ internal static class Program
                     OperandType.InlineField => yontem.Module.ResolveField(BitConverter.ToInt32(il, i)),
                     _ => null,
                 };
+                if (kod.OperandType == OperandType.InlineString)
+                {
+                    dize = yontem.Module.ResolveString(BitConverter.ToInt32(il, i));
+                }
             }
             catch (ArgumentException)
             {
@@ -185,7 +198,7 @@ internal static class Program
                 OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(il, i)),
                 _ => 4,
             };
-            sonuc.Add(new Komut(kod, uye));
+            sonuc.Add(new Komut(kod, uye, dize));
         }
 
         return sonuc;
@@ -361,6 +374,64 @@ internal static class Program
         return yol;
     }
 
+    private static Type Servis => Tip("Kalender.Desktop.WallpaperService");
+
+    private static string YedekDosyasi => (string)Tip("Kalender.Core.Paths").GetProperty("BackupFile")!.GetValue(null)!;
+
+    /// <summary>
+    /// Deneme klasöründe bir fotoğraf dosyası: geri yükleme dosyası olmayan
+    /// yolu denemiyor.
+    /// </summary>
+    private static string Fotograf(string ad)
+    {
+        string klasor = Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("RootFolder")!.GetValue(null)!, "fotoğraflar");
+        Directory.CreateDirectory(klasor);
+        string yol = Path.Combine(klasor, ad);
+        File.WriteAllText(yol, "deneme");
+        return yol;
+    }
+
+    /// <summary>Asıl ve bekleyen yedeği siler: bir sonraki yazım yeni yedek alsın.</summary>
+    private static void YedekleriSil()
+    {
+        File.Delete(YedekDosyasi);
+        File.Delete((string)Servis.GetProperty("BekleyenYedekDosyasi", Hepsi)!.GetValue(null)!);
+    }
+
+    /// <summary>Yazımdan önce alınan yedek (deneme klasöründe); yoksa null.</summary>
+    private static object? YedekOku()
+        => File.Exists(YedekDosyasi)
+            ? JsonSerializer.Deserialize(File.ReadAllText(YedekDosyasi), Tip("Kalender.Desktop.WallpaperBackup"))
+            : null;
+
+    /// <summary>Yedek: ortak yol ve ekran başına yollar.</summary>
+    private static object Yedek(string? ortak, params (string Aygit, string Yol)[] ekranlar)
+    {
+        object b = Activator.CreateInstance(Tip("Kalender.Desktop.WallpaperBackup"), true)!;
+        Yaz(b, "Wallpaper", ortak);
+        Yaz(b, "Position", 4);
+        foreach ((string aygit, string yol) in ekranlar)
+        {
+            EkranBasina(b)[aygit] = yol;
+        }
+
+        return b;
+    }
+
+    private static IDictionary<string, string> EkranBasina(object yedek) => (IDictionary<string, string>)Oku(yedek, "PerMonitor")!;
+
+    /// <summary>Yedeği ekranlara geri koyar (EkranlariGeriYukle); her ekran geri yüklendiyse true.</summary>
+    private static bool GeriKoy(SahteKabuk k, object yedek, out int konan)
+    {
+        object?[] a = { k, yedek, 0 };
+        bool hepsi = (bool)Servis.GetMethod("EkranlariGeriYukle", Hepsi)!.Invoke(null, a)!;
+        konan = (int)a[2]!;
+        return hepsi;
+    }
+
+    /// <summary>Açılıştaki ve kaldırmadaki soru: ekranda takvimin zemini var mı (EkrandaZeminVar)?</summary>
+    private static bool? ZeminVar(SahteKabuk k) => (bool?)Statik(Servis, "EkrandaZeminVar", k);
+
     /// <summary>Günlüğe yazılan hata satırlarını toplar (Log, Trace'e de yazıyor).</summary>
     private sealed class GunlukDinleyici : TraceListener
     {
@@ -414,10 +485,12 @@ internal static class Program
             Bolum(S2);
             Bolum(S3);
             Bolum(S4);
+            Bolum(S5);
             Bolum(S6);
             Bolum(S7);
             Bolum(S8);
             Bolum(S9);
+            Bolum(S10);
             Bolum(S2b);
             Bolum(S11);
             Bolum(S12);
@@ -657,6 +730,53 @@ internal static class Program
         Denetle("görüntü ekrana çıkmadı; nöbet bunu görüyor", !BizimMi(tuval));
     }
 
+    // ------------------------------------------------------------------- S5
+
+    private static void S5()
+    {
+        Console.WriteLine("S5) Dizüstü + çıkarılmış haricî ekran: aygıt yolu verilmeden yazılmıyor, yedekte haricî ekranın fotoğrafı duruyor");
+        int hata = Hatalar.Count;
+        string harici = @"\\?\DISPLAY#DEL4321#1";
+        string dizustuFoto = Fotograf("dizüstü.jpg");
+        string hariciFoto = Fotograf("haricî.jpg");
+        SahteKabuk k = Kabuk(new Kayit(Aus, SOk, Sinir(0), dizustuFoto), new(harici, SFalse, Rectangle.Empty, hariciFoto));
+        object ekran = Ekran(Aus, 0);
+
+        // Yazma ilk kez açılıyor: yazımdan önce yedek alınır.
+        YedekleriSil();
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (ekran, Color.Navy));
+        Denetle("tek yazım, ekranın kendi kaydına; aygıt yolu verilmeden hiç yazılmıyor, haricî ekranın fotoğrafı yerinde",
+            k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit == Aus && k.Kayitlar[1].Dosya == hariciFoto, Yazimlar(k));
+
+        object? yedek = YedekOku();
+        Denetle("yedekte iki ekranın fotoğrafı da var (bağlı olmayan haricî ekranınki dâhil)",
+            yedek is not null && EkranBasina(yedek).Count == 2 && EkranBasina(yedek)[Aus] == dizustuFoto
+            && EkranBasina(yedek)[harici] == hariciFoto && (bool)Oku(yedek, "WallpaperEnabled")!,
+            yedek is null ? "yedek yok" : string.Join(", ", EkranBasina(yedek).Select(p => $"{p.Key} = {Path.GetFileName(p.Value)}")));
+        Denetle("nöbet 'yerinde'; günlüğe hata yazılmadı", Denetim(tuval) == "Yerinde" && Hatalar.Count == hata);
+
+        // Ekranda takvimin zemini var mı (açılışta ve kaldırmada sorulan): bağlı
+        // olmayan ekranın kaydındaki takvim de sayılır; o ekran takılınca gösterecek.
+        string takvim = k.Kayitlar[0].Dosya;
+        Denetle("dizüstündeki takvim sayılıyor", ZeminVar(k) == true);
+        k.Kayitlar[0].Dosya = dizustuFoto;
+        k.Kayitlar[1].Dosya = takvim;
+        Denetle("bağlı olmayan haricî ekranın kaydındaki takvim de sayılıyor (kaldırmada zemin klasörü korunur)", ZeminVar(k) == true);
+        k.Kayitlar[1].Dosya = hariciFoto;
+        Denetle("ikisinde de fotoğraf varken takvim yok", ZeminVar(k) == false);
+
+        // Geri yükleme: iki ekran kendi kaydına, aygıt yoluyla.
+        k.Kayitlar[0].Dosya = takvim;
+        k.Yazilanlar.Clear();
+        bool tam = GeriKoy(k, yedek!, out int konan);
+        Denetle("geri yüklemede iki ekran kendi fotoğrafına, aygıt yoluyla; aygıt yolu verilmeden yazılmıyor",
+            tam && konan == 2 && k.Yazilanlar.Count == 2 && k.Yazilanlar.All(y => y.Aygit is not null)
+            && k.Kayitlar[0].Dosya == dizustuFoto && k.Kayitlar[1].Dosya == hariciFoto, Yazimlar(k));
+        Denetle("günlüğe hata yazılmadı (bağlı olmayan ekran olağan durum)", Hatalar.Count == hata);
+        YedekleriSil();
+    }
+
     // ------------------------------------------------------------------- S6
 
     private static void S6()
@@ -800,6 +920,96 @@ internal static class Program
         bool b2 = BizimMi(tuval);
         Denetle("aynı farklılık iki ardışık denetimde görülünce yeniden yazım isteniyor", b1 && !b2, $"{b1} / {b2}");
         Denetle("denetimler yazmıyor (yazımı masaüstü katmanı yapar)", k.Yazilanlar.Count == 1, Yazimlar(k));
+    }
+
+    // ------------------------------------------------------------------ S10
+
+    private static void S10()
+    {
+        Console.WriteLine("S10) Bozuk listede yedek ve geri yükleme: hayalete ve boş anahtara dokunulmuyor");
+        string aId = @"\\?\DISPLAY#AAA0001#1";
+        string bId = @"\\?\DISPLAY#BBB0002#1";
+        string foto = Fotograf("deniz.jpg");
+        string foto2 = Fotograf("dağ.jpg");
+        string silinmis = Path.Combine(Path.GetDirectoryName(foto)!, "silinmiş.jpg");
+        string f15 = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261015-114200-000.bmp");
+        string f16 = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261017-000002-000.bmp");
+        object? Hazirla(SahteKabuk k) => Statik(Servis, "YedekHazirla", k);
+        SahteKabuk Bugunku(string ekrandaki, string hayaletteki)
+            => Kabuk(new Kayit("", SOk, Sinir(0), ekrandaki), new(Aus, EFail, Rectangle.Empty, hayaletteki));
+
+        // ------------------------------------------ yedek
+        object? y1 = Hazirla(Bugunku(foto, f16));
+        Denetle("yedekte boş anahtar ve hayaletin kimliği yok; ekrandaki fotoğraf aygıt yolu verilmeden okunan yolda",
+            y1 is not null && EkranBasina(y1).Count == 0 && (string?)Oku(y1, "Wallpaper") == foto && (bool)Oku(y1, "WallpaperEnabled")!,
+            y1 is null ? "yedek yok" : string.Join(", ", EkranBasina(y1).Keys.Select(x => x.Length == 0 ? "\"\"" : x)));
+
+        Denetle("hayaletteki fotoğraf yedeklenmiyor; ekranda yalnız takvim varken yedek yazılmıyor", Hazirla(Bugunku(f15, foto2)) is null);
+
+        // Çok ekranda kimliği boş canlı kayıt; ekranlarda ayrı resimler, aygıt yolu verilmeden okunan yol boş.
+        SahteKabuk cok = Kabuk(
+            new("", SOk, Sinir(0, 1920, 1080), foto), new(bId, SOk, Sinir(1920, 1920, 1080), foto2), new(aId, EFail, Rectangle.Empty, f16));
+        cok.AygitsizIlkCanliyiVerir = false;
+        object? y3 = Hazirla(cok);
+        Denetle("ekranlarda ayrı resimler varken kimliği boş ekranın fotoğrafı ortak yola, öbür ekranınki kendi kimliğiyle yazılıyor",
+            y3 is not null && (string?)Oku(y3, "Wallpaper") == foto && EkranBasina(y3).Count == 1 && EkranBasina(y3)[bId] == foto2);
+
+        // ------------------------------------------ geri yükleme, tek canlı kayıt
+        // 1.14'ün sağlıklı listede aldığı yedek (ekranın aygıt yoluyla), bugünkü bozuk liste.
+        SahteKabuk k = Bugunku(f15, f16);
+        bool tam = GeriKoy(k, Yedek(null, (Aus, foto)), out int konan);
+        Denetle("yalnız aygıt yolu verilmeden geri konuyor, hayalete yazılmıyor; fotoğraf ekranda",
+            tam && konan == 1 && k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit is null && k.Yazilanlar[0].Yol == foto
+            && k.Kayitlar[0].Dosya == foto, Yazimlar(k));
+
+        // 06:54'teki liste (aygıt yollu kayıt canlı): o kaydın kimliğiyle yedeklenen fotoğraf önce.
+        SahteKabuk k2 = Kabuk(new Kayit(Aus, SOk, Sinir(0), f16), new("", EFail, Rectangle.Empty, f16));
+        tam = GeriKoy(k2, Yedek(foto2, (@"\\?\DISPLAY#DEL4321#1", foto2), (Aus, foto)), out konan);
+        Denetle("canlı kaydın kimliğiyle yedeklenen fotoğraf önce, yine aygıt yolu verilmeden",
+            tam && konan == 1 && k2.Yazilanlar.Count == 1 && k2.Yazilanlar[0].Aygit is null && k2.Yazilanlar[0].Yol == foto, Yazimlar(k2));
+
+        SahteKabuk k3 = Bugunku(f15, f16);
+        tam = GeriKoy(k3, Yedek(foto2, (Aus, silinmis)), out konan);
+        Denetle("ekranın fotoğrafı silinmişse ortak yol; dosyası olmayan yol denenmiyor",
+            tam && konan == 1 && k3.Yazilanlar.Count == 1 && k3.Yazilanlar[0].Aygit is null && k3.Yazilanlar[0].Yol == foto2, Yazimlar(k3));
+
+        SahteKabuk k4 = Bugunku(f15, f16);
+        tam = GeriKoy(k4, Yedek(null, (Aus, silinmis)), out konan);
+        Denetle("hiçbir fotoğrafın dosyası yoksa geri konmuyor, sayı sıfır, ekran olduğu gibi",
+            !tam && konan == 0 && k4.Yazilanlar.Count == 0 && k4.Kayitlar[0].Dosya == f15, Yazimlar(k4));
+
+        // ------------------------------------------ geri yükleme, çok ekran
+        SahteKabuk cok2 = Kabuk(
+            new("", SOk, Sinir(0, 1920, 1080), f15), new(bId, SOk, Sinir(1920, 1920, 1080), f15), new(aId, EFail, Rectangle.Empty, f16));
+        tam = GeriKoy(cok2, Yedek(null, (aId, foto), (bId, foto2)), out konan);
+        Denetle("yalnız kimliği dolu canlı kayda kendi fotoğrafı; hayalete ve aygıt yolu verilmeden hiç yazılmıyor, hayalet sayılmıyor",
+            cok2.Yazilanlar.Count == 1 && cok2.Yazilanlar[0].Aygit == bId && cok2.Yazilanlar[0].Yol == foto2 && konan == 1, Yazimlar(cok2));
+        Denetle("kimliği boş ekran geri konamadığı için sonuç eksik (katman oraya takvimsiz zemin yazar)", !tam);
+
+        // ------------------------------------------ eski yedekteki boş anahtar
+        SahteKabuk k5 = Kabuk(new Kayit(Aus, SOk, Sinir(0), f15));
+        tam = GeriKoy(k5, Yedek(null, ("", foto)), out konan);
+        Denetle("eski yedeğin boş anahtarı ortak yol gibi okunuyor: aygıt yolu verilmeden",
+            tam && konan == 1 && k5.Yazilanlar.Count == 1 && k5.Yazilanlar[0].Aygit is null && k5.Yazilanlar[0].Yol == foto, Yazimlar(k5));
+        SahteKabuk k6 = Kabuk(new Kayit(Aus, SOk, Sinir(0), f15));
+        tam = GeriKoy(k6, Yedek(null, ("", foto), (Aus, foto2)), out konan);
+        Denetle("boş anahtara hiç yazılmıyor; ekran kendi kaydına",
+            tam && konan == 1 && k6.Yazilanlar.Count == 1 && k6.Yazilanlar[0].Aygit == Aus && k6.Yazilanlar[0].Yol == foto2, Yazimlar(k6));
+
+        // ------------------------------------------ ekranda takvim kalmış mı
+        Denetle("hayaletteki takvim sayılmıyor (açılışta gereksiz geri yükleme yok)", ZeminVar(Bugunku(foto, f16)) == false);
+        Denetle("ekrandaki (boş kimlikli) kayıttaki takvim sayılıyor", ZeminVar(Bugunku(f15, foto)) == true);
+        SahteKabuk okunamayan = Bugunku(f15, foto);
+        okunamayan.OkunamayanKimlikler.Add("");
+        Denetle("canlı kaydın dosyası okunamazsa aygıt yolu verilmeden okunan dosyaya bakılıyor", ZeminVar(okunamayan) == true);
+        okunamayan.Kayitlar[0].Dosya = foto;
+        Denetle("o da takvim değilse bilinmiyor", ZeminVar(okunamayan) is null);
+        SahteKabuk yalnizHayalet = Kabuk(new Kayit(Aus, EFail, Rectangle.Empty, foto));
+        yalnizHayalet.AygitsizIlkCanliyiVerir = false;
+        yalnizHayalet.Ortak = f15;
+        Denetle("canlı kayıt yokken aygıt yolu verilmeden okunan dosyaya bakılıyor", ZeminVar(yalnizHayalet) == true);
+        var korunan = (HashSet<string>?)Statik(Servis, "EkrandakiDosyalar", Bugunku(foto, f16));
+        Denetle("silmeden korumada hayaletin dosyası yine sayılıyor", korunan is not null && korunan.Contains(f16));
     }
 
     // ------------------------------------------------------------------ S2b
@@ -979,6 +1189,13 @@ internal static class Program
         Denetle("uygulama haberi tepsi balonuyla veriyor",
             Cagiriyor(host, "Start", katmanTipi, "add_DuvarKagidiGuncellenemiyor")
             && Cagiriyor(host, "OnDuvarKagidiGuncellenemiyor", Tip("Kalender.Tray.TrayIcon"), "ShowBalloon"));
+        List<Komut> balon = Komutlar(host.GetMethod("OnDuvarKagidiGuncellenemiyor", Hepsi)!);
+        int goster = Bul(balon, x => Cagri(x, Tip("Kalender.Tray.TrayIcon"), "ShowBalloon"));
+        string metin = string.Concat(balon.Select(x => x.Dize));
+        Denetle("balon uyarı olarak, sade dille: Windows masaüstü resmini yenilemiyor, oturumu kapatıp açmak düzeltir",
+            goster > 0 && balon[goster - 1].Kod == OpCodes.Ldc_I4_1
+            && metin.Contains("Windows masaüstü resmini yenilemiyor; takvim eski görünebilir.", StringComparison.Ordinal)
+            && metin.Contains("Oturumu kapatıp açmak ya da bilgisayarı yeniden başlatmak düzeltir.", StringComparison.Ordinal), metin);
 
         // Explorer yeniden başlayınca: geri çekilme bırakılıyor, görüntü 5 saniye sonra bir kez yeniden yazılıyor.
         object uygulama = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(host);
@@ -994,6 +1211,17 @@ internal static class Program
         kurma.Stop();
         Denetle("günlükte bozuk liste için bir, art arda uyuşmazlık için bir hata satırı",
             Hatalar.Count == hata + 2, string.Join(" | ", Hatalar.Skip(hata)));
+
+        // Yeni bozukluk dönemi (ekranda yine eski gün): günlüğe yine bir hata,
+        // kullanıcıya ikinci kez haber yok; balon süreç başına bir kez.
+        k.AygitsizBosKaydaUlasmaz = true;
+        k.Kayitlar[0].Dosya = f15;
+        int hataYeni = Hatalar.Count;
+        var yeniTurlar = new List<bool> { NobetTuru(katman), NobetTuru(katman), NobetTuru(katman) };
+        Denetle("yeni bozukluk döneminde üçüncü uyuşmazlıkta günlüğe yine bir hata; kullanıcıya ikinci kez haber verilmiyor",
+            yeniTurlar.All(x => x) && haber == 1 && Hatalar.Count == hataYeni + 1 && Hatalar[^1].Contains("art arda 3"),
+            $"{string.Join(", ", yeniTurlar)}; haber {haber}; " + string.Join(" | ", Hatalar.Skip(hataYeni)));
+        Denetle("geri çekilme yine 5 dakika", !NobetTuru(katman) && (int)Oku(nobeti, "ArdArda")! == 3);
     }
 
     // ------------------------------------------------------------------ S12
