@@ -396,7 +396,7 @@ internal static class WallpaperService
                 return false;
             }
 
-            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+            var wallpaper = DuvarKagidiKayitlari.Ac();
             wallpaper.SetBackgroundColor(backup.BackgroundColor);
 
             // Bayrağa körü körüne güvenmiyoruz: eski yedek dosyalarında bu alan
@@ -667,7 +667,7 @@ internal static class WallpaperService
     {
         try
         {
-            wallpaper ??= (IDesktopWallpaper)new DesktopWallpaperClass();
+            wallpaper ??= DuvarKagidiKayitlari.Ac();
             HashSet<string>? ekrandakiler = EkrandakiDosyalar(wallpaper);
             ZeminDosyalariniSil(Paths.CanvasFolder, ekrandakiler);
             return ekrandakiler;
@@ -690,7 +690,7 @@ internal static class WallpaperService
     {
         try
         {
-            wallpaper ??= (IDesktopWallpaper)new DesktopWallpaperClass();
+            wallpaper ??= DuvarKagidiKayitlari.Ac();
             return EkrandakiDosyalar(wallpaper)?.Any(ZeminDosyasiMi);
         }
         catch (Exception ex)

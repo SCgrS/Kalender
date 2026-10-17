@@ -150,7 +150,7 @@ internal sealed class WallpaperCanvas
             // değişikliği, ekran değişimi, duvar kağıdının elden gitmesi) tam yol.
             bool tamYol = _hashes.Count == 0;
 
-            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+            var wallpaper = DuvarKagidiKayitlari.Ac();
             if (!kaldirirken)
             {
                 WallpaperService.EnsureBackup(wallpaper);
@@ -255,7 +255,7 @@ internal sealed class WallpaperCanvas
 
         try
         {
-            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+            var wallpaper = DuvarKagidiKayitlari.Ac();
 
             foreach ((string? aygit, string dosya) in _sonYazilanlar.Values)
             {
@@ -304,7 +304,7 @@ internal sealed class WallpaperCanvas
 
         try
         {
-            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+            var wallpaper = DuvarKagidiKayitlari.Ac();
 
             foreach (KeyValuePair<string, (string? Aygit, string Dosya)> kayit in _sonYazilanlar)
             {
@@ -354,7 +354,7 @@ internal sealed class WallpaperCanvas
 
         try
         {
-            wallpaper ??= (IDesktopWallpaper)new DesktopWallpaperClass();
+            wallpaper ??= DuvarKagidiKayitlari.Ac();
             IReadOnlyList<string> devicePaths = ReadDevicePaths(wallpaper);
 
             foreach (MonitorTarget ekran in ekranlar)
@@ -639,8 +639,9 @@ internal sealed class WallpaperCanvas
         {
             try
             {
-                NativeMethods.RECT rect = wallpaper.GetMonitorRECT(id);
-                if (rect.Left == monitor.Bounds.Left && rect.Top == monitor.Bounds.Top
+                int hr = wallpaper.GetMonitorRECT(id, out NativeMethods.RECT rect);
+                if (hr == 0
+                    && rect.Left == monitor.Bounds.Left && rect.Top == monitor.Bounds.Top
                     && rect.Right == monitor.Bounds.Right && rect.Bottom == monitor.Bounds.Bottom)
                 {
                     return id;

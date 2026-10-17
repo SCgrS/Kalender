@@ -99,8 +99,9 @@ using DRectangleF = System.Drawing.RectangleF;
 // Kayıt defterinde yalnızca HKCU altında bu sınamanın açtığı geçici bir anahtara
 // yazılır ve sonunda silinir; gerçek açılış kaydına ve Windows'un başlangıç
 // listesine dokunulmaz (sonda denetlenir). Kurucu ve kurulu uygulama hiç
-// başlatılmaz. Gerçek duvar kâğıdına yazılmaz: Windows'un duvar kâğıdı arayüzü yerine bu
-// programdaki sahtesi kullanılır; gerçeği yalnızca okunur. Uygulamanın klasörü
+// başlatılmaz. Gerçek duvar kâğıdına yazılmaz, gerçeği okunmaz da: uygulamanın
+// duvar kâğıdı fabrikası (DuvarKagidiKayitlari.Ac) en başta bu programdaki
+// sahteye bağlanır. Uygulamanın klasörü
 // (Paths.RootFolder) %TEMP% altında geçici bir klasöre çevrilir: kurulu
 // Kalender'in ayarlarına ve duvar kâğıdı yedeğine dokunulmaz (sonda
 // denetlenir). Geçici klasör sonunda silinir. Çıkış kodu 0 = hepsi geçti.
@@ -310,6 +311,39 @@ internal static class Program
         return s;
     }
 
+    /// <summary>Sınama boyunca uygulamanın kullandığı sahte: tek ekranda kullanıcının fotoğrafı.</summary>
+    private static SahteDuvarKagidi? _ortakSahte;
+
+    /// <summary>
+    /// Uygulamanın duvar kâğıdı fabrikasını (DuvarKagidiKayitlari.Ac) verilen
+    /// sahteye bağlar: uygulama arayüzü hangi yoldan açarsa açsın bu sahteyi alır.
+    /// </summary>
+    private static void FabrikayiBagla(SahteDuvarKagidi sahte)
+    {
+        Type arayuz = Tip("Kalender.Interop.IDesktopWallpaper");
+        Func<object> kaynak = () => sahte;
+        Tip("Kalender.Desktop.DuvarKagidiKayitlari").GetProperty("Ac", Hepsi)!.SetValue(
+            null,
+            Delegate.CreateDelegate(typeof(Func<>).MakeGenericType(arayuz), kaynak,
+                typeof(Program).GetMethod(nameof(Uret), Hepsi)!.MakeGenericMethod(arayuz)));
+    }
+
+    private static T Uret<T>(Func<object> kaynak) => (T)kaynak();
+
+    /// <summary>İşi verilen sahteyle çalıştırır, sonra ortak sahteye döner.</summary>
+    private static void SahteyleCalistir(SahteDuvarKagidi sahte, Action islem)
+    {
+        FabrikayiBagla(sahte);
+        try
+        {
+            islem();
+        }
+        finally
+        {
+            FabrikayiBagla(_ortakSahte!);
+        }
+    }
+
     /// <summary>Dağıtıcıda bekleyen işleri çalıştırır.</summary>
     private static void Bosalt()
     {
@@ -359,6 +393,15 @@ internal static class Program
     private static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+
+        // İlk iş: Windows'un duvar kâğıdı arayüzü yerine her yerde sahtesi.
+        // Uygulama arayüzü hangi yoldan açarsa açsın gerçek duvar kâğıdına
+        // dokunulmaz, gerçeği okunmaz da. Tek ekranda kullanıcının fotoğrafı duruyor.
+        _ortakSahte = Sahte(@"\\?\DISPLAY#SAHTE0001#1");
+        _ortakSahte.Ekranda[_ortakSahte.Aygitlar[0]] = @"C:\Users\deneme\Pictures\deniz.jpg";
+        _ortakSahte.Ortak = @"C:\Users\deneme\Pictures\deniz.jpg";
+        FabrikayiBagla(_ortakSahte);
+
         if (args.Length == 2 && args[0] == "--gun-kutusu")
         {
             return GunKutusuKopyasi(args[1]);
@@ -543,8 +586,8 @@ internal static class Program
         Type ayarTipi = Tip("Kalender.Settings.AppSettings");
         Type depoTipi = Tip("Kalender.Settings.SettingsStore");
 
-        // Davranış: geçici klasörde yedek yok; geri yükleme gerçek duvar kâğıdına
-        // dokunmadan biter, yalnız zemin klasörünü temizler. Bu süreç önceden
+        // Davranış: geçici klasörde yedek yok; geri yükleme sahte duvar kâğıdında
+        // (kullanıcının fotoğrafı) yazmadan biter, yalnız zemin klasörünü temizler. Bu süreç önceden
         // yazmış gibi gösteriliyor: ekranda olmayan bir dosya, takvimdeki
         // ekranlarla eşleşmeyen bir kimlikle; takvimsiz zemin hiçbir ekrana yazılamaz.
         string zemin = (string)Tip("Kalender.Core.Paths").GetProperty("CanvasFolder")!.GetValue(null)!;
@@ -581,14 +624,13 @@ internal static class Program
         AlanAta(y, "_geriYukleniyor", false);
         yazdi.SetValue(tuval, false);
 
-        // Açılış: hiç yazmamış süreç, yazma kapalı. Gerçek ekran yalnız okunuyor;
-        // uygulamanın klasörü geçici olduğu için oradaki görüntü takvimin zemini
-        // sayılmaz, geri yükleme yapılmamalı.
+        // Açılış: hiç yazmamış süreç, yazma kapalı. Sahte ekranda kullanıcının
+        // fotoğrafı duruyor, takvimin zemini değil; geri yükleme yapılmamalı.
         object acilis = Yonetici();
         AlanAta(acilis, "_monitors", Liste(Ekran(@"\\.\DISPLAY1", 0, 2560, 1440)));
         string artik3 = Artik("zemin-deneme-3.bmp");
         Cagir(acilis, "RefreshOnce");
-        Denetle("açılışta ekranda takvimin zemini yoksa geri yükleme yapılmıyor (gerçek ekran yalnız okunuyor)",
+        Denetle("açılışta ekranda takvimin zemini yoksa geri yükleme yapılmıyor (sahte ekranda fotoğraf)",
             File.Exists(artik3) && (bool)AlanOku(acilis, "_acilistaBakildi"));
 
         // Çizimdeki koşul (derlenmiş koddan): yazma kapalı, geri yükleme sürmüyor;
@@ -647,19 +689,24 @@ internal static class Program
             birak2 >= 0 && yazdiMi > birak2 && ekrandakiler > yazdiMi && kapanisZemin > ekrandakiler,
             $"{birak2} / {yazdiMi} / {ekrandakiler} / {kapanisZemin}");
 
-        // Ekranda hâlâ duran görüntü: Windows'tan yalnız okunur.
+        // Ekranda hâlâ duran görüntü: sahte duvar kâğıdından okunur. Önceden
+        // gerçek arayüzün ilk kaydı okunuyordu; Explorer'ın listesi bozulunca o
+        // kayıt boş kimlikli olabiliyor (2026-10-17), sonuç bilgisayara bağlıydı.
         object okuyucu = Activator.CreateInstance(tuvalTipi, true)!;
         var okuyucuSon = (IDictionary)AlanOku(okuyucu, "_sonYazilanlar");
         Denetle("hiç yazılmadıysa ekranda bu sürecin görüntüsü yok",
             ((HashSet<string>)Cagir(okuyucu, "EkrandaDuranlar")!).Count == 0);
 
-        Type arayuz = Tip("Kalender.Interop.IDesktopWallpaper");
-        object gercek = Activator.CreateInstance(Tip("Kalender.Interop.DesktopWallpaperClass"), true)!;
-        string aygit = (string)arayuz.GetMethod("GetMonitorDevicePathAt")!.Invoke(gercek, new object[] { 0u })!;
-        string gorunen = (string?)arayuz.GetMethod("GetWallpaper")!.Invoke(gercek, new object?[] { aygit }) ?? string.Empty;
-        okuyucuSon["MON-A"] = ValueTuple.Create((string?)aygit, gorunen);
-        okuyucuSon["MON-B"] = ValueTuple.Create((string?)aygit, @"C:\yok\zemin-deneme.bmp");
-        var duranEkranlar = (HashSet<string>)Cagir(okuyucu, "EkrandaDuranlar")!;
+        SahteDuvarKagidi ekranli = Sahte("A");
+        string gorunen = Path.Combine(zemin, "zemin-aaaaaaaa-20261017-101010-123.bmp");
+        ekranli.Ekranda["A"] = gorunen;
+        HashSet<string> duranEkranlar = new();
+        SahteyleCalistir(ekranli, () =>
+        {
+            okuyucuSon["MON-A"] = ValueTuple.Create((string?)"A", gorunen);
+            okuyucuSon["MON-B"] = ValueTuple.Create((string?)"A", @"C:\yok\zemin-deneme.bmp");
+            duranEkranlar = (HashSet<string>)Cagir(okuyucu, "EkrandaDuranlar")!;
+        });
         Denetle("ekranda duran görüntü bulunuyor, başkası (geri yüklenen) sayılmıyor",
             duranEkranlar.Contains("MON-A") && !duranEkranlar.Contains("MON-B"));
 
@@ -908,9 +955,9 @@ internal static class Program
         Denetle("zemin temizliği ekrandakileri okuyarak yapılıyor",
             Komutlar(servis.GetMethod("ClearCanvasFiles", Hepsi)!).Any(x => Cagri(x, servis, "EkrandakiDosyalar")));
 
-        // Geçici klasörde yedek yok: gerçek duvar kâğıdı yalnız okunur. Gerçek
-        // ekrandaki görüntü bu klasörde olmadığı için takvimin zemini sayılmaz.
-        Denetle("yedek dosyaları yok (gerçek duvar kâğıdına yazılamaz)", !File.Exists(yedekDosyasi) && !File.Exists(bekleyen));
+        // Geçici klasörde yedek yok: sahte duvar kâğıdı yalnız okunur. Sahte
+        // ekrandaki fotoğraf takvimin zemini sayılmaz.
+        Denetle("yedek dosyaları yok (geri yükleme yazmadan biter)", !File.Exists(yedekDosyasi) && !File.Exists(bekleyen));
         if (!File.Exists(yedekDosyasi) && !File.Exists(bekleyen))
         {
             object?[] cikti = { true };
@@ -3065,6 +3112,13 @@ public class SahteDuvarKagidi : DispatchProxy
     /// <summary>SetWallpaper çağrıları, sırasıyla.</summary>
     public List<(string? Aygit, string Yol)> Yazilanlar { get; } = new();
 
+    /// <summary>
+    /// Aygıt yolu -> dikdörtgen sorusunun (GetMonitorRECT) sonucu ve dikdörtgeni.
+    /// Verilmeyen ekran S_OK ile yan yana dizilmiş 1920 × 1080 bir ekrandır
+    /// (sırasına göre); listede olmayan aygıt yolu E_INVALIDARG verir.
+    /// </summary>
+    public Dictionary<string, (int Hr, DRectangle Sinir)> Sinirlar { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public int Konum { get; set; } = 4;
 
     public uint Renk { get; set; }
@@ -3078,6 +3132,15 @@ public class SahteDuvarKagidi : DispatchProxy
 
             case "GetMonitorDevicePathAt":
                 return Aygitlar[(int)(uint)a![0]!];
+
+            case "GetMonitorRECT":
+                string kimlik = (string)a![0]!;
+                int sira = Aygitlar.FindIndex(x => string.Equals(x, kimlik, StringComparison.OrdinalIgnoreCase));
+                (int hr, DRectangle sinir) = Sinirlar.TryGetValue(kimlik, out var verilen) ? verilen
+                    : sira >= 0 ? (0, new DRectangle(sira * 1920, 0, 1920, 1080))
+                    : (unchecked((int)0x80070057), DRectangle.Empty);
+                a[1] = Dikdortgen(yontem.GetParameters()[1].ParameterType.GetElementType()!, sinir);
+                return hr;
 
             case "GetWallpaper":
                 if (OkumadaHata)
@@ -3130,6 +3193,17 @@ public class SahteDuvarKagidi : DispatchProxy
             default:
                 throw new NotSupportedException(yontem.Name);
         }
+    }
+
+    /// <summary>Uygulamanın RECT yapısı (NativeMethods.RECT), kutulu.</summary>
+    private static object Dikdortgen(Type tip, DRectangle r)
+    {
+        object kutu = Activator.CreateInstance(tip)!;
+        tip.GetField("Left")!.SetValue(kutu, r.Left);
+        tip.GetField("Top")!.SetValue(kutu, r.Top);
+        tip.GetField("Right")!.SetValue(kutu, r.Right);
+        tip.GetField("Bottom")!.SetValue(kutu, r.Bottom);
+        return kutu;
     }
 }
 

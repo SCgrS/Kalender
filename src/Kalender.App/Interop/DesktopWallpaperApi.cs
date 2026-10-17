@@ -35,7 +35,16 @@ internal interface IDesktopWallpaper
 
     uint GetMonitorDevicePathCount();
 
-    NativeMethods.RECT GetMonitorRECT([MarshalAs(UnmanagedType.LPWStr)] string monitorID);
+    /// <summary>
+    /// Kaydın ekrandaki dikdörtgeni. Sonuç HRESULT olarak döner, hata istisnaya
+    /// çevrilmez: Windows bağlı olmayan ekranın kaydında S_FALSE (1) döndürüyor
+    /// (dizüstünden çıkarılmış harici ekran gibi olağan durum); önceden bu
+    /// başarı sayılıyor, sıfır dikdörtgen hatasız geliyordu. Explorer'ın
+    /// listesinde kalmış, hiçbir ekrana karşılık gelmeyen kayıtta hata (ör.
+    /// E_FAIL) döner (bkz. <see cref="Kalender.Desktop.DuvarKagidiKayitlari"/>).
+    /// </summary>
+    [PreserveSig]
+    int GetMonitorRECT([MarshalAs(UnmanagedType.LPWStr)] string monitorID, out NativeMethods.RECT displayRect);
 
     void SetBackgroundColor(uint color);
 

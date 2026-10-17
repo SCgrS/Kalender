@@ -62,7 +62,7 @@ internal static class DesktopRefresher
     {
         try
         {
-            var wallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
+            var wallpaper = DuvarKagidiKayitlari.Ac();
             wallpaper.SetBackgroundColor(wallpaper.GetBackgroundColor());
         }
         catch (Exception ex)

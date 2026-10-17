@@ -359,8 +359,29 @@ internal static class Program
 
     // ------------------------------------------------------------ ana akış
 
+    /// <summary>
+    /// Uygulamanın duvar kâğıdı fabrikasını (DuvarKagidiKayitlari.Ac) hata veren
+    /// bir fabrikayla değiştirir: bu sınama Windows'un duvar kâğıdı arayüzünü hiç
+    /// kullanmıyor; bir yol kazara açmaya kalkarsa gerçek duvar kâğıdına dokunulmaz.
+    /// </summary>
+    private static void DuvarKagidiniKapat()
+    {
+        const BindingFlags Her = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+        Type arayuz = Uyg.GetType("Kalender.Interop.IDesktopWallpaper", throwOnError: true)!;
+        Func<object> hata = () => throw new InvalidOperationException("gerçek arayüz");
+        Uyg.GetType("Kalender.Desktop.DuvarKagidiKayitlari", throwOnError: true)!.GetProperty("Ac", Her)!.SetValue(
+            null,
+            Delegate.CreateDelegate(typeof(Func<>).MakeGenericType(arayuz), hata,
+                typeof(Program).GetMethod(nameof(Uret), Her)!.MakeGenericMethod(arayuz)));
+    }
+
+    private static T Uret<T>(Func<object> kaynak) => (T)kaynak();
+
     private static async Task<int> Main()
     {
+        // Duvar kâğıdı arayüzü bu sınamada kullanılmıyor; açılmaya kalkılırsa hata verir.
+        DuvarKagidiniKapat();
+
         string gecici = Path.Combine(Path.GetTempPath(), "kalender-sinama-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(gecici);
 

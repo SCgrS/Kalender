@@ -204,12 +204,13 @@ using Ifade = System.Linq.Expressions.Expression;
 // gerçek Temp'teki .net ve indirme klasörlerine dokunulmaz (denetlenir). Gün
 // kutusu ve kurulum pencereleri kurulur ama gösterilmez. Kurucu ve kurulu
 // uygulama başlatılmaz; kurulum ve kaldırma çağrılmaz (çalışan Kalender'i
-// kapatırdı), sırası derlenmiş koddan okunur. 7, 29 ve 32. maddelerde
-// Windows'un duvar kâğıdı arayüzü yerine KodIncelemesi'ndeki gibi sahtesi
-// kullanılır; Windows'un duvar kâğıdı ayarı (SPI_GETDESKWALLPAPER) bir kez
-// yalnız okunur, öbür denetimlerde bu program verir. Duvar kâğıdına yazan
-// geri yükleme çağrılmaz; yalnız yedeksiz dalı çağrılır, orada gerçek ekran
-// yalnız okunur. 7. maddenin onarımında zemin temizliği uygulamanın geçici
+// kapatırdı), sırası derlenmiş koddan okunur. Windows'un duvar kâğıdı arayüzü
+// hiç açılmaz: uygulamanın duvar kâğıdı fabrikası (DuvarKagidiKayitlari.Ac) en
+// başta KodIncelemesi'ndeki gibi sahtesine bağlanır (tek ekranda kullanıcının
+// fotoğrafı); 7, 29 ve 32. maddelerde ayrıca kendi sahteleri verilir. Windows'un
+// duvar kâğıdı ayarı (SPI_GETDESKWALLPAPER) bir kez yalnız okunur, öbür
+// denetimlerde bu program verir. Duvar kâğıdına yazan geri yükleme çağrılmaz;
+// yalnız yedeksiz dalı çağrılır, orada sahte ekran yalnız okunur. 7. maddenin onarımında zemin temizliği uygulamanın geçici
 // klasöründeki deneme dosyalarıyla yapılır. Geçici klasörler sonunda silinir.
 // Çıkış kodu 0 = hepsi geçti.
 // Kullanım: dotnet run -c Release
@@ -270,6 +271,14 @@ internal static class Program
     private static int Main()
     {
         Console.OutputEncoding = Encoding.UTF8;
+
+        // İlk iş: Windows'un duvar kâğıdı arayüzü yerine her yerde sahtesi.
+        // Uygulama arayüzü hangi yoldan açarsa açsın gerçek duvar kâğıdına
+        // dokunulmaz, gerçeği okunmaz da. Tek ekranda kullanıcının fotoğrafı duruyor.
+        _ortakSahte = Sahte(@"\\?\DISPLAY#SAHTE0001#1");
+        _ortakSahte.Ekranda[_ortakSahte.Aygitlar[0]] = @"C:\Users\deneme\Pictures\deniz.jpg";
+        _ortakSahte.Ortak = @"C:\Users\deneme\Pictures\deniz.jpg";
+        FabrikayiBagla(_ortakSahte);
 
         PropertyInfo kok = Tip("Kalender.Core.Paths").GetProperty("RootFolder", Hepsi)!;
         string gercekKok = (string)kok.GetValue(null)!;
@@ -1679,6 +1688,25 @@ internal static class Program
         return s;
     }
 
+    /// <summary>Sınama boyunca uygulamanın kullandığı sahte: tek ekranda kullanıcının fotoğrafı.</summary>
+    private static SahteDuvarKagidi? _ortakSahte;
+
+    /// <summary>
+    /// Uygulamanın duvar kâğıdı fabrikasını (DuvarKagidiKayitlari.Ac) verilen
+    /// sahteye bağlar: uygulama arayüzü hangi yoldan açarsa açsın bu sahteyi alır.
+    /// </summary>
+    private static void FabrikayiBagla(SahteDuvarKagidi sahte)
+    {
+        Type arayuz = Tip("Kalender.Interop.IDesktopWallpaper");
+        Func<object> kaynak = () => sahte;
+        Tip("Kalender.Desktop.DuvarKagidiKayitlari").GetProperty("Ac", Hepsi)!.SetValue(
+            null,
+            Delegate.CreateDelegate(typeof(Func<>).MakeGenericType(arayuz), kaynak,
+                typeof(Program).GetMethod(nameof(Uret), Hepsi)!.MakeGenericMethod(arayuz)));
+    }
+
+    private static T Uret<T>(Func<object> kaynak) => (T)kaynak();
+
     /// <summary>Yan yana hayali ekranlar; kimlikleri aygıt yollarıyla aynı.</summary>
     private static IList Ekranlar(params string[] aygitlar)
     {
@@ -1779,7 +1807,10 @@ internal static class Program
         s.OkumadaHata = true;
         Denetle("ekrandakiler okunamazsa hiçbir ekran sayılmıyor", Gosterenler(bes, s, ResimAcik).Count == 0);
 
+        // X kaydı hiçbir ekrana karşılık gelmiyor (dikdörtgen sorusu hata veriyor):
+        // ne kimliği ne dikdörtgeni ekranla eşleşir.
         SahteDuvarKagidi tek = Sahte("X");
+        tek.Sinirlar["X"] = (unchecked((int)0x80004005), System.Drawing.Rectangle.Empty);
         tek.Ortak = takvimli;
         Denetle("tek ekranda aygıt yolu eşleşmezse ortak yola bakılıyor (yazımdaki gibi)",
             Gosterenler(Ekranlar("M"), tek, ResimAcik).SetEquals(new[] { "M" }));
@@ -2165,8 +2196,8 @@ internal static class Program
             && Bozuklar().Length == 1);
 
         // Asıl yedek de bekleyen de okunamıyor: ikisi de kenara alınır, yedek
-        // yokmuş gibi davranılır. Yedek kalmadığı için gerçek duvar kâğıdı
-        // yalnız okunur (ekranda bu geçici klasörün görüntüsü yok).
+        // yokmuş gibi davranılır. Yedek kalmadığı için sahte duvar kâğıdı
+        // yalnız okunur (ekranda kullanıcının fotoğrafı, takvimin görüntüsü yok).
         YedekleriSil();
         File.WriteAllText(yedekDosyasi, string.Empty);
         File.WriteAllText(bekleyen, "{\"Wallpaper\":");
@@ -5476,6 +5507,14 @@ public class SahteDuvarKagidi : DispatchProxy
     /// <summary>SetWallpaper çağrıları, sırasıyla.</summary>
     public List<(string? Aygit, string Yol)> Yazilanlar { get; } = new();
 
+    /// <summary>
+    /// Aygıt yolu -> dikdörtgen sorusunun (GetMonitorRECT) sonucu ve dikdörtgeni.
+    /// Verilmeyen ekran S_OK ile yan yana dizilmiş 1920 × 1080 bir ekrandır
+    /// (sırasına göre; Ekranlar() yardımcısıyla aynı); listede olmayan aygıt yolu
+    /// E_INVALIDARG verir.
+    /// </summary>
+    public Dictionary<string, (int Hr, System.Drawing.Rectangle Sinir)> Sinirlar { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public int Konum { get; set; } = 4;
 
     public uint Renk { get; set; }
@@ -5489,6 +5528,15 @@ public class SahteDuvarKagidi : DispatchProxy
 
             case "GetMonitorDevicePathAt":
                 return Aygitlar[(int)(uint)a![0]!];
+
+            case "GetMonitorRECT":
+                string kimlik = (string)a![0]!;
+                int sira = Aygitlar.FindIndex(x => string.Equals(x, kimlik, StringComparison.OrdinalIgnoreCase));
+                (int hr, System.Drawing.Rectangle sinir) = Sinirlar.TryGetValue(kimlik, out var verilen) ? verilen
+                    : sira >= 0 ? (0, new System.Drawing.Rectangle(sira * 1920, 0, 1920, 1080))
+                    : (unchecked((int)0x80070057), System.Drawing.Rectangle.Empty);
+                a[1] = Dikdortgen(yontem.GetParameters()[1].ParameterType.GetElementType()!, sinir);
+                return hr;
 
             case "GetWallpaper":
                 if (OkumadaHata)
@@ -5541,5 +5589,16 @@ public class SahteDuvarKagidi : DispatchProxy
             default:
                 throw new NotSupportedException(yontem.Name);
         }
+    }
+
+    /// <summary>Uygulamanın RECT yapısı (NativeMethods.RECT), kutulu.</summary>
+    private static object Dikdortgen(Type tip, System.Drawing.Rectangle r)
+    {
+        object kutu = Activator.CreateInstance(tip)!;
+        tip.GetField("Left")!.SetValue(kutu, r.Left);
+        tip.GetField("Top")!.SetValue(kutu, r.Top);
+        tip.GetField("Right")!.SetValue(kutu, r.Right);
+        tip.GetField("Bottom")!.SetValue(kutu, r.Bottom);
+        return kutu;
     }
 }
