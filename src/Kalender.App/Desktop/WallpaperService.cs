@@ -257,12 +257,24 @@ internal static class WallpaperService
     /// görüntüleri yedeğe yazılmaz: geri yüklemede kullanıcının duvar kâğıdı
     /// yerine takvimin donmuş hâli gelirdi. O ekran geri yüklenirken ortak yol
     /// ya da başka bir ekranınki kullanılır (bkz. <see cref="EkranlariGeriYukle"/>).
+    ///
+    /// Windows'un listesi bozuksa (bkz. <see cref="DuvarKagidiKayitlari"/>)
+    /// hayalet kayıtlar yedeğe hiç girmez: gösterdikleri dosya hiçbir ekranda
+    /// görünmüyor, ne kullanıcının duvar kâğıdı ne de takvim sayılır. Kimliği
+    /// boş kayıt da ekran başına yazılmaz: boş anahtar geri yüklemede hiçbir
+    /// ekranı göstermez (1.14 onu "" anahtarıyla yazıyordu). Kimliği boş canlı
+    /// kaydın resmi aygıt yolu verilmeden okunan ortak yola zaten geliyor
+    /// (2026-10-17'de ölçüldü); ortak yol boşsa (ekranlarda ayrı resimler)
+    /// ortak yolun yerine o yazılır: liste düzelince o ekran kendi resmine
+    /// döner, öbür ekranın resmine değil. Bağlı olmayan ekranın kaydı eskisi
+    /// gibi yazılır: çıkarılmış haricî ekranın fotoğrafı korunur.
     /// </summary>
     /// <returns>
     /// Yedek; ekranlarda yalnızca Kalender'in görüntüleri duruyorsa null
     /// (kullanıcının duvar kâğıdı bilinmiyor, yedek yazılmaz). O zaman da
     /// Windows'ta resim kipi kapalıysa düz renk yedeği döner.
     /// </returns>
+    /// <exception cref="InvalidOperationException">Ekran listesi okunamadı.</exception>
     internal static WallpaperBackup? YedekHazirla(IDesktopWallpaper wallpaper)
     {
         var backup = new WallpaperBackup
@@ -272,44 +284,55 @@ internal static class WallpaperService
             JpegImportQuality = ReadImportQuality(),
         };
 
+        // Liste okunamazsa yedek yazılmaz (önceden de kayıt sayısının hatası
+        // yedeği durduruyordu); yalnız ortak yolla yazılan yedek ekranların
+        // kendi resimlerini kaybederdi.
+        IReadOnlyList<DuvarKagidiKaydi> kayitlar = DuvarKagidiKayitlari.Oku(wallpaper)
+            ?? throw new InvalidOperationException("Duvar kâğıdı ekran listesi okunamadı.");
+
         bool bizimkiVardi = false;
 
-        try
+        string? ortak = (kayitlar as DuvarKagidiTablosu)?.Ortak;
+        if (ZeminDosyasiMi(ortak))
         {
-            string? ortak = wallpaper.GetWallpaper(null);
-            if (ZeminDosyasiMi(ortak))
+            bizimkiVardi = true;
+        }
+        else
+        {
+            backup.Wallpaper = ortak;
+        }
+
+        var kimliksizResimler = new List<string>();
+        foreach (DuvarKagidiKaydi kayit in kayitlar)
+        {
+            // Dosyası okunamayan kayıt önceden de atlanıyordu.
+            if (kayit.Durum == KayitDurumu.Hayalet || kayit.Dosya is null)
+            {
+                continue;
+            }
+
+            if (ZeminDosyasiMi(kayit.Dosya))
             {
                 bizimkiVardi = true;
+                continue;
             }
-            else
-            {
-                backup.Wallpaper = ortak;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Ortak duvar kâğıdı okunamadı: " + ex.Message);
-        }
 
-        uint count = wallpaper.GetMonitorDevicePathCount();
-        for (uint i = 0; i < count; i++)
-        {
-            string id = wallpaper.GetMonitorDevicePathAt(i);
-            try
+            if (string.IsNullOrWhiteSpace(kayit.Kimlik))
             {
-                string yol = wallpaper.GetWallpaper(id) ?? string.Empty;
-                if (ZeminDosyasiMi(yol))
+                if (kayit.Durum == KayitDurumu.Canli && !string.IsNullOrWhiteSpace(kayit.Dosya))
                 {
-                    bizimkiVardi = true;
-                    continue;
+                    kimliksizResimler.Add(kayit.Dosya);
                 }
 
-                backup.PerMonitor[id] = yol;
+                continue;
             }
-            catch (Exception ex)
-            {
-                Log.Debug($"Monitör duvar kâğıdı okunamadı ({id}): {ex.Message}");
-            }
+
+            backup.PerMonitor[kayit.Kimlik] = kayit.Dosya;
+        }
+
+        if (string.IsNullOrWhiteSpace(backup.Wallpaper) && kimliksizResimler.Count == 1)
+        {
+            backup.Wallpaper = kimliksizResimler[0];
         }
 
         // Hiçbir ekranda resim yoksa kullanıcı düz renk kullanıyordu.
@@ -547,6 +570,16 @@ internal static class WallpaperService
     /// dönebilirdi. Dosyası olmayan yol yerine geçmez.
     /// Her ekran ayrı denenir: bir ekrandaki hata (fotoğraf silinmiş, yedekteki
     /// ekran artık bağlı değil) önceden bütün geri yüklemeyi yarıda bırakıyordu.
+    ///
+    /// Windows'un listesi bozuksa (bkz. <see cref="DuvarKagidiKayitlari"/>)
+    /// hayalet kayda hiç yazılmaz: yazım hatasız kabul ediliyor ama ekrana
+    /// çıkmıyor, geri yükleme başarılı sanılırdı. Tek canlı kayıt varsa (ya da
+    /// hiç yoksa) önceki duvar kâğıdı aygıt yolu verilmeden konur (bozuk listede
+    /// de ekrana ulaştığı ölçüldü; takvim de öyle yazılıyor). Birden çok canlı
+    /// kayıt varsa yalnız kimliği dolu canlı kayıtlara kimlikleriyle konur;
+    /// kimliği boş canlı kayıt varsa sonuç eksiktir: o ekrana ancak aygıt yolu
+    /// verilmeden ulaşılabiliyor, bu da öbür ekranları boyardı. Eski yedeklerde
+    /// kimliği boş kaydın "" anahtarı ortak yol gibi okunur.
     /// </summary>
     /// <param name="konan">Duvar kâğıdı geri konan ekran sayısı.</param>
     /// <returns>Her ekran geri yüklendiyse true.</returns>
@@ -555,48 +588,55 @@ internal static class WallpaperService
         konan = 0;
         wallpaper.SetPosition((DesktopWallpaperPosition)backup.Position);
 
-        string? ortak = string.IsNullOrWhiteSpace(backup.Wallpaper) ? null : backup.Wallpaper;
-        if (backup.PerMonitor.Count == 0)
+        // Yalnız aygıt yolu olan ekranlar; 1.14'ün yazdığı "" anahtarı hiçbir
+        // ekranı göstermez (ona SetWallpaper("") yapılmaz), ortak yol yoksa onun yerine geçer.
+        var ekranBasina = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string? bosAnahtar = null;
+        foreach ((string id, string yol) in backup.PerMonitor)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                ekranBasina[id] = yol;
+            }
+            else if (!string.IsNullOrWhiteSpace(yol))
+            {
+                bosAnahtar ??= yol;
+            }
+        }
+
+        string? ortak = string.IsNullOrWhiteSpace(backup.Wallpaper) ? bosAnahtar : backup.Wallpaper;
+        if (ekranBasina.Count == 0)
         {
             bool kondu = ortak is not null && EkranaKoy(wallpaper, null, ortak);
             konan = kondu ? 1 : 0;
             return kondu;
         }
 
-        string? yerine = new[] { ortak }.Concat(backup.PerMonitor.Values)
-            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v) && File.Exists(Environment.ExpandEnvironmentVariables(v)));
+        string? yerine = new[] { ortak }.Concat(backup.PerMonitor.Values).FirstOrDefault(DosyasiVar);
 
-        // Yedekteki ekranlar ve yedekte olmayan, şu an bağlı ekranlar.
-        var ekranlar = new List<string>(backup.PerMonitor.Keys);
-        try
+        IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(wallpaper);
+        if (kayitlar is not null && !DuvarKagidiKayitlari.Saglikli(kayitlar))
         {
-            uint count = wallpaper.GetMonitorDevicePathCount();
-            for (uint i = 0; i < count; i++)
-            {
-                string id = wallpaper.GetMonitorDevicePathAt(i);
-                if (!string.IsNullOrWhiteSpace(id) && !backup.PerMonitor.ContainsKey(id))
-                {
-                    ekranlar.Add(id);
-                }
-            }
+            return BozukListeyeGeriYukle(wallpaper, kayitlar, ekranBasina, ortak, yerine, out konan);
         }
-        catch (Exception ex)
+
+        // Yedekteki ekranlar ve yedekte olmayan, şu an bağlı ekranlar. Liste
+        // sağlıklı: hayalet kayıt yok, kimlikler dolu ve tekil (bkz. Saglikli).
+        var ekranlar = new List<string>(ekranBasina.Keys);
+        if (kayitlar is null)
         {
-            Log.Debug("Monitör aygıt yolları okunamadı: " + ex.Message);
+            Log.Debug("Monitör aygıt yolları okunamadı.");
+        }
+        else
+        {
+            ekranlar.AddRange(kayitlar.Select(x => x.Kimlik)
+                .Where(id => !string.IsNullOrWhiteSpace(id) && !ekranBasina.ContainsKey(id)));
         }
 
         bool hepsi = true;
         foreach (string id in ekranlar)
         {
-            string? kendi = backup.PerMonitor.TryGetValue(id, out string? k) && !string.IsNullOrWhiteSpace(k) ? k : null;
-
-            // Önce ekranın kendi yolu, konamazsa yerine geçecek yol.
-            bool kondu = (kendi is not null && EkranaKoy(wallpaper, id, kendi))
-                || (yerine is not null
-                    && !string.Equals(yerine, kendi, StringComparison.OrdinalIgnoreCase)
-                    && EkranaKoy(wallpaper, id, yerine));
-
-            if (kondu)
+            if (EkraniGeriKoy(wallpaper, id, ekranBasina, yerine))
             {
                 konan++;
             }
@@ -608,6 +648,84 @@ internal static class WallpaperService
 
         return hepsi;
     }
+
+    /// <summary>
+    /// Windows'un listesi bozukken yedeği geri koyar (bkz. <see cref="EkranlariGeriYukle"/>).
+    /// </summary>
+    private static bool BozukListeyeGeriYukle(
+        IDesktopWallpaper wallpaper,
+        IReadOnlyList<DuvarKagidiKaydi> kayitlar,
+        Dictionary<string, string> ekranBasina,
+        string? ortak,
+        string? yerine,
+        out int konan)
+    {
+        konan = 0;
+        List<DuvarKagidiKaydi> canlilar = kayitlar.Where(x => x.Durum == KayitDurumu.Canli).ToList();
+        Log.Debug("Duvar kâğıdı ekran listesi tutarsız; önceki duvar kâğıdı "
+            + (canlilar.Count <= 1 ? "aygıt yolu verilmeden" : "yalnız canlı kayıtlara")
+            + " geri konuyor. Kayıtlar: " + DuvarKagidiKayitlari.Ozet(kayitlar));
+
+        if (canlilar.Count <= 1)
+        {
+            // Sıra: ekrandaki kaydın kimliğiyle yedeklenen yol, dosyası olan ilk
+            // ekranın yolu, ortak yol. Dosyası olmayan yol denenmez; hiçbiri
+            // yoksa ilki uyarıyla denenir (günlükte görünsün).
+            string? kendi = canlilar.Count == 1 && ekranBasina.TryGetValue(canlilar[0].Kimlik, out string? k) ? k : null;
+            List<string> adaylar = new[] { kendi }.Concat(ekranBasina.Values).Append(ortak)
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Select(v => v!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            List<string> dosyasiOlanlar = adaylar.Where(DosyasiVar).ToList();
+            foreach (string aday in dosyasiOlanlar.Count > 0 ? dosyasiOlanlar : adaylar.Take(1))
+            {
+                if (EkranaKoy(wallpaper, null, aday))
+                {
+                    konan = 1;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool hepsi = !canlilar.Any(x => string.IsNullOrWhiteSpace(x.Kimlik));
+        foreach (string id in canlilar.Select(x => x.Kimlik)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (EkraniGeriKoy(wallpaper, id, ekranBasina, yerine))
+            {
+                konan++;
+            }
+            else
+            {
+                hepsi = false;
+            }
+        }
+
+        return hepsi;
+    }
+
+    /// <summary>
+    /// Bir ekrana önce yedekteki kendi yolunu, konamazsa yerine geçecek yolu
+    /// koyar (bkz. <see cref="EkranlariGeriYukle"/>).
+    /// </summary>
+    /// <returns>Ekrana bir yol kondu mu?</returns>
+    private static bool EkraniGeriKoy(
+        IDesktopWallpaper wallpaper, string id, Dictionary<string, string> ekranBasina, string? yerine)
+    {
+        string? kendi = ekranBasina.TryGetValue(id, out string? k) && !string.IsNullOrWhiteSpace(k) ? k : null;
+        return (kendi is not null && EkranaKoy(wallpaper, id, kendi))
+            || (yerine is not null
+                && !string.Equals(yerine, kendi, StringComparison.OrdinalIgnoreCase)
+                && EkranaKoy(wallpaper, id, yerine));
+    }
+
+    private static bool DosyasiVar(string? yol)
+        => !string.IsNullOrWhiteSpace(yol) && File.Exists(Environment.ExpandEnvironmentVariables(yol));
 
     /// <summary>Bir ekranın duvar kâğıdını koyar; hata olursa günlüğe yazar, başarısını döndürür.</summary>
     private static bool EkranaKoy(IDesktopWallpaper wallpaper, string? id, string yol)
@@ -683,6 +801,15 @@ internal static class WallpaperService
     /// Ekranlardan birinde takvimin zemin görüntüsü duruyor mu? Önceki duvar
     /// kâğıdı bir ekrana hiçbir yoldan geri konamadıysa ya da yazma önceki bir
     /// sürümde kapatıldıysa (takvim donmuş kalıyordu) böyle olur.
+    ///
+    /// Windows'un listesindeki hayalet kayıtlara bakılmaz: gösterdikleri dosya
+    /// hiçbir ekranda görünmüyor. Bozuk listede hayaletteki takvim (1.14 oraya
+    /// yazıyordu) açılışta gereksiz bir geri yükleme başlatırdı. Bağlı olmayan
+    /// ekranın kaydı sayılır: o ekran takılınca bu dosyayı gösterecek;
+    /// kaldırmada zemin klasörü bu yüzden korunur. Canlı kayıt yoksa ya da bir
+    /// canlı kaydın dosyası okunamadıysa aygıt yolu verilmeden okunan dosyaya
+    /// da bakılır. Silmeden korumada bütün kayıtlara bakmayı
+    /// <see cref="EkrandakiDosyalar"/> sürdürür.
     /// </summary>
     /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
     /// <returns>Ekrandakiler okunamazsa null.</returns>
@@ -691,7 +818,49 @@ internal static class WallpaperService
         try
         {
             wallpaper ??= DuvarKagidiKayitlari.Ac();
-            return EkrandakiDosyalar(wallpaper)?.Any(ZeminDosyasiMi);
+            IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(wallpaper);
+            if (kayitlar is null)
+            {
+                return null;
+            }
+
+            bool bilinmiyor = false;
+            bool canliVar = false;
+            bool canliOkunamadi = false;
+            foreach (DuvarKagidiKaydi kayit in kayitlar)
+            {
+                if (kayit.Durum == KayitDurumu.Hayalet)
+                {
+                    continue;
+                }
+
+                bool canli = kayit.Durum == KayitDurumu.Canli;
+                canliVar |= canli;
+                if (kayit.Dosya is null)
+                {
+                    canliOkunamadi |= canli;
+                    bilinmiyor = true;
+                    continue;
+                }
+
+                if (ZeminDosyasiMi(kayit.Dosya))
+                {
+                    return true;
+                }
+            }
+
+            if (!canliVar || canliOkunamadi)
+            {
+                string? ortak = (kayitlar as DuvarKagidiTablosu)?.Ortak;
+                if (ZeminDosyasiMi(ortak))
+                {
+                    return true;
+                }
+
+                bilinmiyor |= ortak is null;
+            }
+
+            return bilinmiyor ? null : false;
         }
         catch (Exception ex)
         {
