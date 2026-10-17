@@ -47,6 +47,8 @@ using System.Text;
 //   S12. Kaydın dosyası okunamazsa ekran "bilinmiyor": yeniden yazım istenmez.
 //   S13. Çok ekranda yazım anında bağlı olmayan ekran atlanır, kaydı canlı olunca
 //        nöbet yeniden yazdırır; atlanan ekran döngüye sokmaz.
+//   S14. Temizlik: yalnız hayaletin dosyası okunamıyorsa eski dosyalar yine
+//        silinir; canlı kayıt okunamazsa hiçbiri, günlüğe bir kez hata.
 // (S5 ve S10 duvar kâğıdı yedeğiyle ilgili; WallpaperService değişikliğiyle gelir.)
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
@@ -417,6 +419,7 @@ internal static class Program
             Bolum(S11);
             Bolum(S12);
             Bolum(S13);
+            Bolum(S14);
         }
         finally
         {
@@ -1064,6 +1067,48 @@ internal static class Program
             iki.Yazilanlar.Count == 0 && BizimMi(tuval2) && BizimMi(tuval2) && BizimMi(tuval2) && Duranlar(tuval2).Count == 0);
         Denetle("sağlıklı listede atlanan ekran için günlüğe hata yazılmadı (bozuk liste için bir)", Hatalar.Count == hata + 1,
             string.Join(" | ", Hatalar.Skip(hata)));
+    }
+
+    // ------------------------------------------------------------------ S14
+
+    private static void S14()
+    {
+        Console.WriteLine("S14) Temizlik: yalnız hayaletin dosyası okunamıyorsa kullanılmayan dosyalar yine siliniyor");
+        Type servis = Tip("Kalender.Desktop.WallpaperService");
+        string f15 = ZeminDosyasi("zemin-dddddddd-20261015-114200-000.bmp");
+        string f16 = ZeminDosyasi("zemin-dddddddd-20261017-000002-000.bmp");
+        string f0 = ZeminDosyasi("zemin-dddddddd-20261014-090000-000.bmp");
+        SahteKabuk k = Kabuk(new Kayit("", SOk, Sinir(0), f15), new(Aus, EFail, Rectangle.Empty, f16));
+        k.OkunamayanKimlikler.Add(Aus);
+        var dosyalar = (HashSet<string>?)Statik(servis, "EkrandakiDosyalar", k);
+        Denetle("ekrandaki dosyalar: hayaletin okunamayan dosyası atlanıyor, canlı kaydınki var",
+            dosyalar is not null && dosyalar.Contains(f15) && !dosyalar.Contains(f16));
+
+        object tuval = Tuval(1);
+        int hata = Hatalar.Count;
+        Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
+        Denetle("canlı kaydın dosyası kalıyor, kullanılmayan eski dosya siliniyor; günlüğe hata yok",
+            File.Exists(f15) && !File.Exists(f0) && Hatalar.Count == hata);
+
+        f0 = ZeminDosyasi("zemin-dddddddd-20261014-090000-000.bmp");
+        k.OkunamayanKimlikler.Clear();
+        k.OkunamayanKimlikler.Add("");
+        Denetle("canlı kaydın dosyası okunamazsa ekrandakiler bilinmiyor", Statik(servis, "EkrandakiDosyalar", k) is null);
+        Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
+        Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
+        Denetle("o zaman hiçbir dosya silinmiyor; günlüğe bir kez hata",
+            File.Exists(f15) && File.Exists(f0) && Hatalar.Count == hata + 1 && Hatalar[^1].Contains("silinemiyor"),
+            string.Join(" | ", Hatalar.Skip(hata)));
+
+        SahteKabuk bagliDegil = Kabuk(new Kayit(Aus, SOk, Sinir(0), f15), new(@"\\?\DISPLAY#DEL4321#1", SFalse, Rectangle.Empty, f16));
+        bagliDegil.OkunamayanKimlikler.Add(@"\\?\DISPLAY#DEL4321#1");
+        Denetle("bağlı olmayan ekranın dosyası okunamazsa da bilinmiyor (o ekran takılınca dosyasını gösterecek)",
+            Statik(servis, "EkrandakiDosyalar", bagliDegil) is null);
+
+        FabrikayiBagla(() => k);
+        k.OkunamayanKimlikler.Clear();
+        Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
+        Denetle("okunabilince yine siliniyor, hata bayrağı iniyor", !File.Exists(f0) && !(bool)AlanOku(tuval, "_temizlikOkunamadiYazildi"));
     }
 
     // ---------------------------------------------------------------- ölçüm

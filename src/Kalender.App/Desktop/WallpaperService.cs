@@ -700,24 +700,51 @@ internal static class WallpaperService
         }
     }
 
-    /// <summary>Ekranlarda şu an duran duvar kâğıdı dosyaları; okunamazsa null.</summary>
+    /// <summary>
+    /// Ekranlarda şu an duran duvar kâğıdı dosyaları: Windows'un listesindeki
+    /// bütün kayıtların (hayalet, bağlı olmayan, kimliği boş olanlar dâhil)
+    /// gösterdiği dosyalar ve aygıt yolu verilmeden okunan dosya; okunamazsa
+    /// null. Dosyası okunamayan hayalet kayıt atlanır: hiçbir ekranda
+    /// görünmüyor. Önceden tek bir kaydın okuma hatası bütün sonucu bilinmez
+    /// yapıyordu; takvim yazıldıkça her yazım büyük bir dosya bırakıyor, hiçbiri
+    /// silinmiyordu (temizlik ekranı okuyamayınca hiçbir dosyaya dokunmuyor).
+    /// Canlı ya da bağlı olmayan bir kaydın dosyası okunamazsa yine null.
+    /// </summary>
     internal static HashSet<string>? EkrandakiDosyalar(IDesktopWallpaper wallpaper)
     {
         try
         {
-            var dosyalar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            uint count = wallpaper.GetMonitorDevicePathCount();
-            for (uint i = 0; i < count; i++)
+            IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(wallpaper);
+            if (kayitlar is null)
             {
-                string? yol = wallpaper.GetWallpaper(wallpaper.GetMonitorDevicePathAt(i));
-                if (!string.IsNullOrWhiteSpace(yol))
+                return null;
+            }
+
+            var dosyalar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DuvarKagidiKaydi kayit in kayitlar)
+            {
+                if (kayit.Dosya is null)
                 {
-                    dosyalar.Add(yol);
+                    if (kayit.Durum == KayitDurumu.Hayalet)
+                    {
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                if (!string.IsNullOrWhiteSpace(kayit.Dosya))
+                {
+                    dosyalar.Add(kayit.Dosya);
                 }
             }
 
-            string? ortak = wallpaper.GetWallpaper(null);
+            string? ortak = (kayitlar as DuvarKagidiTablosu)?.Ortak;
+            if (ortak is null)
+            {
+                return null;
+            }
+
             if (!string.IsNullOrWhiteSpace(ortak))
             {
                 dosyalar.Add(ortak);

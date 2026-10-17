@@ -68,6 +68,12 @@ internal sealed class WallpaperCanvas
     /// </summary>
     private bool _listeBozukYazildi;
 
+    /// <summary>
+    /// Temizlikte ekranda duranlar okunamadı diye günlüğe yazıldı mı? Okunamama
+    /// dönemi başına bir kez (bkz. <see cref="CleanUnusedFiles"/>).
+    /// </summary>
+    private bool _temizlikOkunamadiYazildi;
+
     private bool _qualityChecked;
 
     /// <summary>
@@ -744,19 +750,34 @@ internal sealed class WallpaperCanvas
     /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
     private void CleanUnusedFiles(IDesktopWallpaper? wallpaper = null)
     {
+        bool okundu;
         try
         {
             wallpaper ??= DuvarKagidiKayitlari.Ac();
+            okundu = KullanilmayanlariSil(
+                Paths.CanvasFolder, _sonYazilanlar.Values.Select(v => v.Dosya), wallpaper, DateTime.UtcNow - FileGrace);
         }
         catch (Exception ex)
         {
             // Ekranda ne durduğu bilinmiyor: bu tur hiçbir dosya silinmez.
             Log.Debug("Eski zemin dosyaları silinmedi, duvar kâğıdı okunamadı: " + ex.Message);
-            return;
+            okundu = false;
         }
 
-        KullanilmayanlariSil(
-            Paths.CanvasFolder, _sonYazilanlar.Values.Select(v => v.Dosya), wallpaper, DateTime.UtcNow - FileGrace);
+        // Ekran okunamadıkça hiçbir dosya silinmiyor; takvim yazıldıkça her
+        // yazım büyük bir dosya bırakıyor. Sürerse görünsün diye dönem başına
+        // bir kez hata olarak yazılır (günlüğe varsayılan olarak yalnız hatalar
+        // yazılıyor).
+        if (okundu)
+        {
+            _temizlikOkunamadiYazildi = false;
+        }
+        else if (!_temizlikOkunamadiYazildi)
+        {
+            _temizlikOkunamadiYazildi = true;
+            Log.Error("Eski zemin dosyaları silinemiyor: Windows'un duvar kâğıdı listesi okunamıyor; ekranda duran "
+                + "bir görüntü silinmesin diye okunabilene dek hiçbir zemin dosyasına dokunulmuyor.");
+        }
     }
 
     /// <summary>
@@ -776,7 +797,8 @@ internal sealed class WallpaperCanvas
     /// listesi bozukken ekranda kalan) silinebiliyordu.
     /// </param>
     /// <param name="esik">Bundan sonra yazılan dosyalara dokunulmaz.</param>
-    internal static void KullanilmayanlariSil(
+    /// <returns>Ekranda duranlar okunamadığı için hiçbir dosya silinmediyse false.</returns>
+    internal static bool KullanilmayanlariSil(
         string klasor, IEnumerable<string> sonYazilanlar, IDesktopWallpaper wallpaper, DateTime esik)
     {
         try
@@ -784,7 +806,7 @@ internal sealed class WallpaperCanvas
             HashSet<string>? gorunenler = WallpaperService.EkrandakiDosyalar(wallpaper);
             if (gorunenler is null)
             {
-                return;
+                return false;
             }
 
             var ekrandakiler = new HashSet<string>(sonYazilanlar, StringComparer.OrdinalIgnoreCase);
@@ -801,8 +823,11 @@ internal sealed class WallpaperCanvas
         }
         catch (Exception ex)
         {
+            // Klasör ya da dosya hatası; ekran okundu, bir sonraki tur yeniden dener.
             Log.Debug("Eski zemin dosyaları silinemedi: " + ex.Message);
         }
+
+        return true;
     }
 
     /// <summary>
