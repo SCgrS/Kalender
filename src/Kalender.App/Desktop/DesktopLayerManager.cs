@@ -914,9 +914,12 @@ internal sealed class DesktopLayerManager : IDisposable
             // Ekrana bakılır, bu sürecin yazıp yazmadığına değil: açılışta
             // önceki sürümlerin donmuş bıraktığı takvimi bu süreç yazmadı;
             // önceki duvar kâğıdı geri konamayınca o takvim ekranda kalıyordu.
+            // Bütün bağlı ekranlara bakılır: görüntüsü üretilemeyen ekran da
+            // sayılır, yoksa iki ekranlı düzen tek ekran sanılırdı (bkz.
+            // TakvimGosterenler). Zemin yine yalnız çizilebilen ekranlara yazılır.
             if (eksikKaldi)
             {
-                HashSet<string> duranlar = WallpaperCanvas.TakvimGosterenler(_screens.Select(s => s.Monitor).ToList());
+                HashSet<string> duranlar = WallpaperCanvas.TakvimGosterenler(_monitors);
                 if (duranlar.Count > 0)
                 {
                     PaintPlainBackground(duranlar);

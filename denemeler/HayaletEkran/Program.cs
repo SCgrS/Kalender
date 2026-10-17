@@ -49,6 +49,9 @@ using System.Text;
 //        nöbet yeniden yazdırır; atlanan ekran döngüye sokmaz.
 //   S14. Temizlik: yalnız hayaletin dosyası okunamıyorsa eski dosyalar yine
 //        silinir; canlı kayıt okunamazsa hiçbiri, günlüğe bir kez hata.
+//   S15. Canlı kayıt yokken nöbet aygıt yolu verilmeden okunan dosyaya bakar.
+//   S16. Geri yükleme eksik kalınca takvimin durduğu ekranlar bütün bağlı
+//        ekranlarla aranır.
 // (S5 ve S10 duvar kâğıdı yedeğiyle ilgili; WallpaperService değişikliğiyle gelir.)
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
@@ -420,6 +423,8 @@ internal static class Program
             Bolum(S12);
             Bolum(S13);
             Bolum(S14);
+            Bolum(S15);
+            Bolum(S16);
         }
         finally
         {
@@ -1109,6 +1114,68 @@ internal static class Program
         k.OkunamayanKimlikler.Clear();
         Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
         Denetle("okunabilince yine siliniyor, hata bayrağı iniyor", !File.Exists(f0) && !(bool)AlanOku(tuval, "_temizlikOkunamadiYazildi"));
+    }
+
+    // ------------------------------------------------------------------ S15
+
+    private static void S15()
+    {
+        Console.WriteLine("S15) Canlı kayıt yokken: aygıt yolu verilmeden yazılıyor, nöbet aygıt yolu verilmeden okunan dosyaya bakıyor");
+        // Ekran bağlı değil (S_FALSE); Windows aygıt yolu verilmeden okununca kendi ortak yolunu veriyor.
+        SahteKabuk k = Kabuk(new Kayit(Aus, SFalse, Rectangle.Empty, Foto));
+        k.AygitsizIlkCanliyiVerir = false;
+        k.Ortak = Foto;
+        object ekran = Ekran(Aus, 0);
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (ekran, Color.Navy));
+        string yazilan = k.Yazilanlar.Count == 1 ? k.Yazilanlar[0].Yol : "?";
+        Denetle("tek yazım, aygıt yolu verilmeden", k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit is null, Yazimlar(k));
+        Denetle("nöbet: aygıt yolu verilmeden okunan dosya bizimki, yerinde", Denetim(tuval) == "Yerinde");
+
+        k.Ortak = Foto;
+        Denetle("aygıt yolu verilmeden okunan dosya değişince görüntü yok sayılıyor (kayıt aynı kalsa da)",
+            k.Kayitlar[0].Dosya == yazilan && Denetim(tuval) == "Gorunmuyor", Denetim(tuval));
+
+        k.OkumadaHata = true;
+        Denetle("aygıt yolu verilmeden okunamazsa bilinmiyor", Denetim(tuval) == "Bilinmiyor");
+        k.OkumadaHata = false;
+
+        // Yalnız hayalet kayıt (bozuk liste, canlı kayıt yok).
+        int hata = Hatalar.Count;
+        SahteKabuk h = Kabuk(new Kayit(Aus, EFail, Rectangle.Empty, Foto));
+        h.AygitsizIlkCanliyiVerir = false;
+        h.Ortak = Foto;
+        object tuval2 = Tuval(1);
+        Uygula(tuval2, false, (ekran, Color.Navy));
+        Denetle("yalnız hayalet kayıtta da aygıt yolu verilmeden; yerinde; günlüğe bir kez hata",
+            h.Yazilanlar.Count == 1 && h.Yazilanlar[0].Aygit is null && Denetim(tuval2) == "Yerinde" && Hatalar.Count == hata + 1,
+            Yazimlar(h));
+    }
+
+    // ------------------------------------------------------------------ S16
+
+    private static void S16()
+    {
+        Console.WriteLine("S16) Geri yükleme eksik kalınca takvimin durduğu ekranlar bütün bağlı ekranlarla aranıyor");
+        string aId = @"\\?\DISPLAY#AAA0001#1";
+        string bId = @"\\?\DISPLAY#BBB0002#1";
+        object a = Ekran(aId, 0, 1920, 1080);
+        object b = Ekran(bId, 1920, 1920, 1080);
+        string takvimli = Path.Combine(ZeminKlasoru, "zemin-aaaaaaaa-20261017-101010-123.bmp");
+        SahteKabuk k = Kabuk(new Kayit(aId, SOk, Sinir(0, 1920, 1080), takvimli), new(bId, SOk, Sinir(1920, 1920, 1080), Foto));
+        HashSet<string> Gosterenler(params object[] ekranlar) => (HashSet<string>)Statik(
+            Tip("Kalender.Desktop.WallpaperCanvas"), "TakvimGosterenler", EkranListesi(ekranlar), k)!;
+        Denetle("iki ekran verilince takvimin durduğu ekran bulunuyor", Gosterenler(a, b).SetEquals(new[] { aId }));
+        Denetle("yalnız biri verilseydi tek ekran sanılır, bulunamazdı (bu yüzden bütün bağlı ekranlar veriliyor)",
+            Gosterenler(a).Count == 0);
+
+        // Derlenmiş koddan: katman çizilebilen ekranları değil bütün bağlı ekranları veriyor.
+        Type katman = Tip("Kalender.Desktop.DesktopLayerManager");
+        List<Komut> k2 = Komutlar(katman.GetMethod("DuvarKagidiniGeriYukle", Hepsi)!);
+        int gosteren = Bul(k2, x => Cagri(x, Tip("Kalender.Desktop.WallpaperCanvas"), "TakvimGosterenler"));
+        Denetle("geri yüklemede takvimi gösteren ekranlar bütün bağlı ekranlarla (_monitors) aranıyor",
+            gosteren > 0 && k2.GetRange(0, gosteren).Any(x => x.Uye is FieldInfo f && f.Name == "_monitors")
+            && !k2.GetRange(0, gosteren).Any(x => x.Uye is FieldInfo f && f.Name == "_screens"));
     }
 
     // ---------------------------------------------------------------- ölçüm

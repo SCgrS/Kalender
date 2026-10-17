@@ -581,7 +581,12 @@ internal sealed class WallpaperCanvas
     /// resim kipi kapalıysa (düz renk) ekranda görüntü yoktur. Okunamayan ekran
     /// sayılmaz; emin olamadığımız yere yazmıyoruz.
     /// </summary>
-    /// <param name="ekranlar">Bakılacak ekranlar.</param>
+    /// <param name="ekranlar">
+    /// Bütün bağlı ekranlar: sayıları yazım yolunu belirler (bkz.
+    /// <see cref="DuvarKagidiKayitlari.Coz"/>). Yalnız görüntüsü üretilebilen
+    /// ekranlar verilirse iki ekranlı düzen tek ekran sanılır, takvimin durduğu
+    /// ekran bulunamaz.
+    /// </param>
     /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
     /// <returns>Monitör kimlikleri.</returns>
     internal static HashSet<string> TakvimGosterenler(IReadOnlyList<MonitorTarget> ekranlar, IDesktopWallpaper? wallpaper = null)
