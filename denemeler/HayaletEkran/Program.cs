@@ -1399,17 +1399,37 @@ internal static class Program
         AlanAta(y, "_bilinenKimlikler", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         AlanAta(y, "_rebuildTimer", new System.Windows.Threading.DispatcherTimer());
         AlanAta(y, "_tazelemeTimer", new System.Windows.Threading.DispatcherTimer());
+        AlanAta(y, "_renderer", Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"), true)!);
         AlanAta(y, "_configSignature", Statik(t, "BuildConfigSignature", Cagir(y, "EkranlariOku")));
         return y;
     }
 
-    /// <summary>Katmanın bir duvar kâğıdı denetim turu (Nobet); takvimi yeniden yazdırdıysa (Forget) true.</summary>
+    /// <summary>
+    /// Katmanın bir duvar kâğıdı denetim turu (Nobet); takvimi yeniden
+    /// yazdırdıysa (Forget) true. Tur boyunca katman kapanıyormuş gibi
+    /// gösterilir: nöbetin ekran yapılandırması denetimi (EnsureAlive) ve
+    /// yeniden çizim hiçbir şey yapmaz, duvar kâğıdı denetimi yine yapılır.
+    /// Önceden gerçek ekran tur sırasında bir an kimliksiz okununca (ekran
+    /// kapalıyken monitör veri yolundan düşüp kalkıyor) katman gerçek ekranla
+    /// yeniden kurulabiliyordu: kimlik beklenirken duvar kâğıdı denetimi
+    /// atlanıyor, kimlik geri gelince geri çekilme sıfırlanıyor, takvim gerçek
+    /// ekrana çizilmeye kalkıyordu (Lite'ta 2026-10-17'de bir kez görüldü).
+    /// </summary>
     private static bool NobetTuru(object katman)
     {
         object tuval = AlanOku(katman, "_canvas");
         AlanAta(katman, "_nobetSayaci", 3);
         ((IDictionary)AlanOku(tuval, "_hashes"))["iz"] = "iz";
-        Cagir(katman, "Nobet");
+        AlanAta(katman, "_disposed", true);
+        try
+        {
+            Cagir(katman, "Nobet");
+        }
+        finally
+        {
+            AlanAta(katman, "_disposed", false);
+        }
+
         return ((IDictionary)AlanOku(tuval, "_hashes")).Count == 0;
     }
 
