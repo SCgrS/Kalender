@@ -44,11 +44,29 @@ internal sealed class WallpaperCanvas
     private readonly Dictionary<string, string> _hashes = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Monitör kimliği -> en son yazılan dosya ve yazarken kullanılan aygıt yolu.
+    /// Monitör kimliği -> ekran, yazarken izlenen yol (bkz.
+    /// <see cref="DuvarKagidiKayitlari.Coz"/>) ve en son yazılan dosya.
     /// Windows'un gerçekten bunu gösterip göstermediği buradan denetlenir;
     /// dosya temizliği de bu dosyalara dokunmaz.
     /// </summary>
-    private readonly Dictionary<string, (string? Aygit, string Dosya)> _sonYazilanlar = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> _sonYazilanlar
+        = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Monitör kimliği -> nöbet denetiminde görülen, yazımdakinden farklı yol.
+    /// Yol ancak iki ardışık denetimde aynı farklılık görülünce değişmiş
+    /// sayılır (bkz. <see cref="EkrandakilerBizimMi"/>).
+    /// </summary>
+    private readonly Dictionary<string, DuvarKagidiHedefi> _bekleyenDegisimler = new(StringComparer.Ordinal);
+
+    /// <summary>Son yazımda hesaba katılan bağlı ekran sayısı; denetimler aynı sayıyla çözer.</summary>
+    private int _yazimdakiEkranSayisi;
+
+    /// <summary>
+    /// Windows'un duvar kâğıdı ekran listesi tutarsız diye günlüğe yazıldı mı?
+    /// Bozukluk dönemi başına bir kez yazılır; liste düzelince de bir kez.
+    /// </summary>
+    private bool _listeBozukYazildi;
 
     private bool _qualityChecked;
 
@@ -67,6 +85,15 @@ internal sealed class WallpaperCanvas
     /// buna bakar.
     /// </summary>
     public bool HasPainted { get; private set; }
+
+    /// <summary>
+    /// Bağlı ekran sayısı; masaüstü katmanı her yazımdan önce verir. Yazıma
+    /// bütün ekranlar gelmeyebilir: takvim kaldırılırken takvimsiz zemin yalnız
+    /// takvimi gösteren ekranlara yazılıyor. Tek ekranlı düzende aygıt yolu
+    /// verilmeden yazmak (bütün ekranlara) yalnız gerçekten tek ekran varken
+    /// doğru. Sıfırsa yazılan ekran sayısı kullanılır.
+    /// </summary>
+    public int BagliEkranSayisi { get; set; }
 
     /// <summary>
     /// Bir sonraki turda her şeyin yeniden yazılmasını sağlar. "Yeniden çiz"
@@ -90,6 +117,7 @@ internal sealed class WallpaperCanvas
     {
         Forget();
         _sonYazilanlar.Clear();
+        _bekleyenDegisimler.Clear();
         HasPainted = false;
 
         // Ekranda ne durduğunu artık bu sınıf bilmiyor (önceki duvar kâğıdını
@@ -122,6 +150,7 @@ internal sealed class WallpaperCanvas
         foreach (string eski in _sonYazilanlar.Keys.Where(k => screens.All(s => s.Monitor.StableId != k)).ToList())
         {
             _sonYazilanlar.Remove(eski);
+            _bekleyenDegisimler.Remove(eski);
         }
 
         try
@@ -129,9 +158,11 @@ internal sealed class WallpaperCanvas
             // Hangi ekranlar gerçekten değişti? Önce bunu bilmemiz gerekiyor:
             // değişen yoksa duvar kağıdı arayüzüne hiç dokunmuyoruz.
             var pending = new List<(CanvasScreen Screen, string Hash)>();
+            var ozetler = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (CanvasScreen screen in screens)
             {
                 string hash = HashOf(screen.Image);
+                ozetler[screen.Monitor.StableId] = hash;
                 if (_hashes.TryGetValue(screen.Monitor.StableId, out string? previous)
                     && string.Equals(previous, hash, StringComparison.Ordinal))
                 {
@@ -164,30 +195,52 @@ internal sealed class WallpaperCanvas
                 wallpaper.SetPosition(DesktopWallpaperPosition.Fill);
             }
 
-            IReadOnlyList<string> devicePaths = ReadDevicePaths(wallpaper);
+            // Her ekranın yazım yolu Windows'un listesindeki canlı kayıtlardan
+            // seçilir (bkz. DuvarKagidiKayitlari.Coz); hayalet kayda yazılan
+            // görüntü hatasız kabul ediliyor ama ekrana çıkmıyor. Liste
+            // okunamazsa boş sayılır: tek ekranda aygıt yolu verilmeden yazılır,
+            // çok ekranda hiçbir ekran yazılmaz (önceden de böyleydi).
+            IReadOnlyList<DuvarKagidiKaydi>? okunan = DuvarKagidiKayitlari.Oku(wallpaper);
+            if (okunan is null)
+            {
+                Log.Warn("Monitör aygıt yolları okunamadı.");
+            }
+
+            IReadOnlyList<DuvarKagidiKaydi> kayitlar = okunan ?? Array.Empty<DuvarKagidiKaydi>();
+            int bagli = BagliEkranSayisi > 0 ? BagliEkranSayisi : screens.Count;
+            _yazimdakiEkranSayisi = bagli;
+
+            var hedefler = screens.Select(s => (Screen: s, Hedef: DuvarKagidiKayitlari.Coz(kayitlar, s.Monitor, bagli))).ToList();
+            var atlananlar = new List<MonitorTarget>();
+            List<(CanvasScreen Screen, DuvarKagidiHedefi Hedef)> sira = YazimSirasi(
+                hedefler, pending.Select(p => p.Screen.Monitor.StableId).ToHashSet(StringComparer.Ordinal), bagli, atlananlar);
             int written = 0;
 
-            foreach ((CanvasScreen screen, string hash) in pending)
+            // Windows görüntüyü ~270 ms'de işliyor; yazımdan hemen sonra okumak
+            // yanıltır. Yazılanın ekranda durduğunu nöbet denetimi doğrular.
+            foreach ((CanvasScreen screen, DuvarKagidiHedefi hedef) in sira)
             {
-                string? id = MatchDevicePath(wallpaper, devicePaths, screen.Monitor);
-                if (id is null && screens.Count > 1)
-                {
-                    // Kimliği bulamadığımız ekrana yazmak yerine atlıyoruz:
-                    // null geçmek bütün ekranlara aynı görüntüyü basardı.
-                    Log.Warn($"Monitörün duvar kâğıdı kimliği eşleşmedi, atlandı: {screen.Monitor}");
-                    continue;
-                }
-
                 string file = DosyaYolu(screen.Monitor.StableId, kaldirirken);
                 SaveBmp(screen.Image, file);
-                wallpaper.SetWallpaper(id, file);
+                wallpaper.SetWallpaper(hedef.Tur == HedefTuru.Kimlik ? hedef.Kimlik : null, file);
 
-                _hashes[screen.Monitor.StableId] = hash;
-                _sonYazilanlar[screen.Monitor.StableId] = (id, file);
+                _hashes[screen.Monitor.StableId] = ozetler[screen.Monitor.StableId];
+                _sonYazilanlar[screen.Monitor.StableId] = (screen.Monitor, hedef, file);
+                _bekleyenDegisimler.Remove(screen.Monitor.StableId);
                 written++;
 
-                Log.Debug($"Duvar kâğıdı yazıldı: {screen.Monitor} -> {Path.GetFileName(file)}");
+                Log.Debug($"Duvar kâğıdı yazıldı: {screen.Monitor} -> {Path.GetFileName(file)} ({YolAdi(hedef)})");
             }
+
+            // Yazılamayan ekranın eski kaydı denetimi yanıltmasın: liste değişti
+            // diye her denetimde yeniden yazım istenir, o ekran yine yazılamazdı.
+            foreach (MonitorTarget atlanan in atlananlar)
+            {
+                _sonYazilanlar.Remove(atlanan.StableId);
+                _bekleyenDegisimler.Remove(atlanan.StableId);
+            }
+
+            ListeDurumunuYaz(okunan, sira, atlananlar);
 
             if (written > 0)
             {
@@ -209,10 +262,11 @@ internal sealed class WallpaperCanvas
 
                 HasPainted = true;
 
-                // Takvim kaldırılırken ekranda bu sürecin yazmadığı görüntüler de
-                // durabilir (açılışta, önceki oturumun başka ekrana yazdığı
-                // takvimsiz zemin); temizlik onları da ekrana bakarak korur.
-                CleanUnusedFiles(kaldirirken ? wallpaper : null);
+                // Temizlik ekranda duran her dosyayı korur (bkz.
+                // KullanilmayanlariSil). Önceden olağan yazımda ekrana bakılmıyor,
+                // yalnız bu sürecin son yazdıkları korunuyordu: Explorer'ın
+                // listesi bozukken (2026-10-17) ekranda duran görüntü silindi.
+                CleanUnusedFiles(wallpaper);
                 TemizligiPlanla();
             }
 
@@ -223,6 +277,116 @@ internal sealed class WallpaperCanvas
             Log.Error("Takvim duvar kâğıdına yazılamadı.", ex);
             return new CanvasResult(false, 0);
         }
+    }
+
+    /// <summary>
+    /// Bu turda hangi ekranların, hangi sırayla yazılacağı.
+    ///
+    /// Olağan durumda değişen ekranlar kendi yollarıyla yazılır; kaydı
+    /// bulunamayan ekran atlanır. Çok ekranda bir ekranın kaydı kimliksizse ona
+    /// yalnız aygıt yolu verilmeden ulaşılabiliyor; bu da bütün ekranlara aynı
+    /// görüntüyü basar. Bu yüzden önce o ekran aygıt yolu verilmeden, ardından
+    /// öbür bütün ekranlar (değişmemiş olsalar da) kendi kayıtlarına yeniden
+    /// yazılır. Bu yalnız tam bir kimliksiz ekran varsa, bu turda bütün bağlı
+    /// ekranlar yazılıyorsa ve öbür ekranların hepsinin kaydı bulunduysa
+    /// yapılır: yoksa geri yazılamayan bir ekranda başka ekranın görüntüsü
+    /// kalırdı. Öyle değilse kimliksiz ekran atlanır.
+    /// </summary>
+    /// <param name="hedefler">Bu turdaki bütün ekranlar ve yazım yolları.</param>
+    /// <param name="degisenler">İçeriği değişen ekranların kimlikleri.</param>
+    /// <param name="atlananlar">Yazılamayan değişmiş ekranlar buraya eklenir.</param>
+    private static List<(CanvasScreen Screen, DuvarKagidiHedefi Hedef)> YazimSirasi(
+        IReadOnlyList<(CanvasScreen Screen, DuvarKagidiHedefi Hedef)> hedefler,
+        HashSet<string> degisenler,
+        int bagliEkranSayisi,
+        List<MonitorTarget> atlananlar)
+    {
+        var sira = new List<(CanvasScreen Screen, DuvarKagidiHedefi Hedef)>();
+        var kimliksizler = hedefler.Where(h => h.Hedef.Tur == HedefTuru.Kimliksiz).ToList();
+
+        if (kimliksizler.Count == 1
+            && degisenler.Contains(kimliksizler[0].Screen.Monitor.StableId)
+            && hedefler.Count >= bagliEkranSayisi
+            && hedefler.All(h => h.Hedef.Tur is HedefTuru.Kimlik or HedefTuru.Kimliksiz))
+        {
+            sira.Add(kimliksizler[0]);
+            sira.AddRange(hedefler.Where(h => h.Hedef.Tur == HedefTuru.Kimlik));
+            return sira;
+        }
+
+        foreach ((CanvasScreen Screen, DuvarKagidiHedefi Hedef) h in hedefler)
+        {
+            if (!degisenler.Contains(h.Screen.Monitor.StableId))
+            {
+                continue;
+            }
+
+            if (h.Hedef.Tur is HedefTuru.Kimlik or HedefTuru.Hepsi)
+            {
+                sira.Add(h);
+            }
+            else
+            {
+                atlananlar.Add(h.Screen.Monitor);
+            }
+        }
+
+        return sira;
+    }
+
+    /// <summary>Yazım yolunun günlükteki adı.</summary>
+    private static string YolAdi(DuvarKagidiHedefi hedef) => hedef.Tur switch
+    {
+        HedefTuru.Kimlik => "kendi kaydına",
+        HedefTuru.Hepsi => "aygıt yolu verilmeden, bütün ekranlara",
+        HedefTuru.Kimliksiz => "aygıt yolu verilmeden, kimliksiz kayda",
+        _ => "yazılmadı",
+    };
+
+    /// <summary>
+    /// Windows'un listesi tutarsızsa bunu günlüğe yazar: bozukluk dönemi başına
+    /// bir kez, hata olarak (günlüğe varsayılan olarak yalnız hatalar yazılıyor;
+    /// sonradan "takvim neden eskidi?" diye bakınca görünsün). Liste düzelince
+    /// de bir kez. Liste tutarlıyken kaydı bulunamayan ekran yalnız uyarıdır
+    /// (önceden de böyleydi; ekran yeni takıldıysa Windows'un listesi gecikebiliyor).
+    /// </summary>
+    /// <param name="okunan">Okunan kayıtlar; okunamadıysa null (bir şey yazılmaz).</param>
+    private void ListeDurumunuYaz(
+        IReadOnlyList<DuvarKagidiKaydi>? okunan,
+        IReadOnlyList<(CanvasScreen Screen, DuvarKagidiHedefi Hedef)> yazilanlar,
+        IReadOnlyList<MonitorTarget> atlananlar)
+    {
+        if (okunan is null || DuvarKagidiKayitlari.Saglikli(okunan))
+        {
+            if (okunan is not null && _listeBozukYazildi)
+            {
+                _listeBozukYazildi = false;
+                Log.Error("Windows'un duvar kâğıdı ekran listesi düzeldi; takvim yeniden ekranların kendi kayıtlarına yazılıyor. Kayıtlar: "
+                    + DuvarKagidiKayitlari.Ozet(okunan));
+            }
+
+            foreach (MonitorTarget ekran in atlananlar)
+            {
+                Log.Warn($"Monitörün duvar kâğıdı kaydı bulunamadı, atlandı: {ekran}");
+            }
+
+            return;
+        }
+
+        if (_listeBozukYazildi)
+        {
+            return;
+        }
+
+        _listeBozukYazildi = true;
+        string yollar = yazilanlar.Count == 0
+            ? "yok"
+            : string.Join(", ", yazilanlar.Select(y => $"{y.Screen.Monitor.DeviceName} {YolAdi(y.Hedef)}"));
+        string atlanan = atlananlar.Count == 0
+            ? string.Empty
+            : "; yazılamayan ekran: " + string.Join(", ", atlananlar.Select(e => e.DeviceName));
+        Log.Error($"Windows'un duvar kâğıdı ekran listesi tutarsız; takvimin yazım yolu: {yollar}{atlanan}. Kayıtlar: "
+            + DuvarKagidiKayitlari.Ozet(okunan));
     }
 
     /// <summary>
@@ -245,6 +409,15 @@ internal sealed class WallpaperCanvas
     /// Önceden Kalender bunu fark etmiyordu; takvim bir sonraki değişikliğe
     /// (yeni etkinlik, gün dönümü) kadar ekrana gelmiyordu. Emin olamadığımız
     /// durumda true döner, yanlış alarmla boşuna yazmayalım.
+    ///
+    /// Ekranda ne durduğu yazarken kullanılan kayıttan değil, Windows'un
+    /// listesinin şimdiki hâlinden okunur. 1.14 yazdığı kayda bakıyordu:
+    /// Explorer'ın listesi bozulup o kayıt hiçbir ekrana karşılık gelmez
+    /// olunca görüntü ekrana çıkmıyor, denetim yine "yerinde" diyordu. Listeye
+    /// göre yazım yolu değiştiyse (liste bozuldu ya da düzeldi) ancak iki ardışık
+    /// denetimde aynı yeni yol görülünce yeniden yazılır: Windows'un listesi
+    /// ekran açılıp kapanırken bir anlığına farklı görünebilir. Aygıt yolu
+    /// verilmeden yazılan görüntü de denetlenir.
     /// </summary>
     public bool EkrandakilerBizimMi()
     {
@@ -255,29 +428,47 @@ internal sealed class WallpaperCanvas
 
         try
         {
-            var wallpaper = DuvarKagidiKayitlari.Ac();
-
-            foreach ((string? aygit, string dosya) in _sonYazilanlar.Values)
+            IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(DuvarKagidiKayitlari.Ac());
+            if (kayitlar is null)
             {
-                // Aygıt yolu olmadan (tek ekranda ortak olarak) yazılan görüntü
-                // denetlenemiyor: ekran başına duvar kağıdında Windows ortak
-                // yolu boş döndürüyor.
-                if (aygit is null)
+                return true;
+            }
+
+            bool bizim = true;
+            foreach (KeyValuePair<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> kayit in _sonYazilanlar)
+            {
+                (MonitorTarget ekran, DuvarKagidiHedefi yazilan, string dosya) = kayit.Value;
+                DuvarKagidiHedefi simdi = DuvarKagidiKayitlari.Coz(kayitlar, ekran, _yazimdakiEkranSayisi);
+
+                if (simdi != yazilan)
                 {
+                    if (_bekleyenDegisimler.TryGetValue(kayit.Key, out DuvarKagidiHedefi onceki) && onceki == simdi)
+                    {
+                        Log.Warn($"Ekranın duvar kâğıdı kaydı değişti ({YolAdi(yazilan)} -> {YolAdi(simdi)}); yeniden yazılacak: {ekran}");
+                        bizim = false;
+                    }
+                    else
+                    {
+                        // İlk görüş: bir sonraki denetimde de böyleyse yazılır.
+                        _bekleyenDegisimler[kayit.Key] = simdi;
+                    }
+
                     continue;
                 }
 
-                string gorunen = wallpaper.GetWallpaper(aygit) ?? string.Empty;
+                _bekleyenDegisimler.Remove(kayit.Key);
+
+                string gorunen = DuvarKagidiKayitlari.Gorunen(kayitlar, simdi, ekran) ?? string.Empty;
                 if (!string.Equals(gorunen, dosya, StringComparison.OrdinalIgnoreCase))
                 {
                     Log.Warn("Ekranda Kalender'in görüntüsü yok ("
                         + (gorunen.Length == 0 ? "boş" : Path.GetFileName(gorunen))
                         + "); yeniden yazılacak.");
-                    return false;
+                    bizim = false;
                 }
             }
 
-            return true;
+            return bizim;
         }
         catch (Exception ex)
         {
@@ -291,7 +482,9 @@ internal sealed class WallpaperCanvas
     /// Takvim duvar kâğıdından kaldırılırken (kapanış, geri yükleme) takvimsiz
     /// zemin yalnız bu ekranlara yazılır: önceki duvar kâğıdı geri gelen ya da
     /// kullanıcının başka bir duvar kâğıdı seçtiği ekrana dokunulmaz. Okunamayan
-    /// ekran sayılmaz; emin olamadığımız yere yazmıyoruz.
+    /// ekran sayılmaz; emin olamadığımız yere yazmıyoruz. Ekranda ne durduğu
+    /// Windows'un listesinin şimdiki hâlinden okunur (bkz.
+    /// <see cref="EkrandakilerBizimMi"/>); hayalet kaydın dosyası sayılmaz.
     /// </summary>
     /// <returns>Monitör kimlikleri.</returns>
     public HashSet<string> EkrandaDuranlar()
@@ -304,22 +497,20 @@ internal sealed class WallpaperCanvas
 
         try
         {
-            var wallpaper = DuvarKagidiKayitlari.Ac();
-
-            foreach (KeyValuePair<string, (string? Aygit, string Dosya)> kayit in _sonYazilanlar)
+            IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(DuvarKagidiKayitlari.Ac());
+            if (kayitlar is null)
             {
-                try
+                return duranlar;
+            }
+
+            foreach (KeyValuePair<string, (MonitorTarget Ekran, DuvarKagidiHedefi Hedef, string Dosya)> kayit in _sonYazilanlar)
+            {
+                MonitorTarget ekran = kayit.Value.Ekran;
+                DuvarKagidiHedefi hedef = DuvarKagidiKayitlari.Coz(kayitlar, ekran, _yazimdakiEkranSayisi);
+                if (string.Equals(DuvarKagidiKayitlari.Gorunen(kayitlar, hedef, ekran), kayit.Value.Dosya,
+                        StringComparison.OrdinalIgnoreCase))
                 {
-                    // Aygıt yolu olmadan yalnız tek ekranda yazılıyor; ortak yol o ekranınki.
-                    string gorunen = wallpaper.GetWallpaper(kayit.Value.Aygit) ?? string.Empty;
-                    if (string.Equals(gorunen, kayit.Value.Dosya, StringComparison.OrdinalIgnoreCase))
-                    {
-                        duranlar.Add(kayit.Key);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Debug($"Ekrandaki duvar kâğıdı okunamadı ({kayit.Key}): {ex.Message}");
+                    duranlar.Add(kayit.Key);
                 }
             }
         }
@@ -355,29 +546,25 @@ internal sealed class WallpaperCanvas
         try
         {
             wallpaper ??= DuvarKagidiKayitlari.Ac();
-            IReadOnlyList<string> devicePaths = ReadDevicePaths(wallpaper);
+            IReadOnlyList<DuvarKagidiKaydi>? kayitlar = DuvarKagidiKayitlari.Oku(wallpaper);
+            if (kayitlar is null)
+            {
+                return gosterenler;
+            }
 
             foreach (MonitorTarget ekran in ekranlar)
             {
-                try
+                // Ekranın kaydı yazımdaki gibi seçilir; bulunamayan ekran sayılmaz.
+                DuvarKagidiHedefi hedef = DuvarKagidiKayitlari.Coz(kayitlar, ekran, ekranlar.Count);
+                if (hedef.Tur == HedefTuru.Yok)
                 {
-                    // Aygıt yolu bulunamazsa ortak yol yalnız tek ekranda o
-                    // ekranınkidir (yazımdaki gibi).
-                    string? id = MatchDevicePath(wallpaper, devicePaths, ekran);
-                    if (id is null && ekranlar.Count > 1)
-                    {
-                        continue;
-                    }
-
-                    string? gorunen = wallpaper.GetWallpaper(id);
-                    if (WallpaperService.ZeminDosyasiMi(gorunen) && !TakvimsizZeminMi(gorunen))
-                    {
-                        gosterenler.Add(ekran.StableId);
-                    }
+                    continue;
                 }
-                catch (Exception ex)
+
+                string? gorunen = DuvarKagidiKayitlari.Gorunen(kayitlar, hedef, ekran);
+                if (WallpaperService.ZeminDosyasiMi(gorunen) && !TakvimsizZeminMi(gorunen))
                 {
-                    Log.Debug($"Ekrandaki duvar kâğıdı okunamadı ({ekran.StableId}): {ex.Message}");
+                    gosterenler.Add(ekran.StableId);
                 }
             }
         }
@@ -511,10 +698,23 @@ internal sealed class WallpaperCanvas
     /// <summary>
     /// Artık kullanılmayan görüntüleri siler (bkz. <see cref="KullanilmayanlariSil"/>).
     /// </summary>
-    /// <param name="wallpaper">Verilirse ekranda duran bütün dosyalar da korunur.</param>
+    /// <param name="wallpaper">Ekrandakileri okumak için; null ise burada açılır.</param>
     private void CleanUnusedFiles(IDesktopWallpaper? wallpaper = null)
-        => KullanilmayanlariSil(
+    {
+        try
+        {
+            wallpaper ??= DuvarKagidiKayitlari.Ac();
+        }
+        catch (Exception ex)
+        {
+            // Ekranda ne durduğu bilinmiyor: bu tur hiçbir dosya silinmez.
+            Log.Debug("Eski zemin dosyaları silinmedi, duvar kâğıdı okunamadı: " + ex.Message);
+            return;
+        }
+
+        KullanilmayanlariSil(
             Paths.CanvasFolder, _sonYazilanlar.Values.Select(v => v.Dosya), wallpaper, DateTime.UtcNow - FileGrace);
+    }
 
     /// <summary>
     /// Artık kullanılmayan görüntüleri siler. Windows dosyayı uygulamadan
@@ -525,27 +725,27 @@ internal sealed class WallpaperCanvas
     /// <param name="klasor">Zemin klasörü.</param>
     /// <param name="sonYazilanlar">Bu sürecin ekranlara en son yazdığı dosyalar.</param>
     /// <param name="wallpaper">
-    /// Verilirse ekranda duran bütün dosyalar da korunur; ekran okunamazsa o
-    /// turda hiçbir dosya silinmez. Takvim kaldırılırken verilir: ekranda bu
-    /// sürecin yazmadığı bir zemin durabiliyor, önceden silinebiliyordu.
+    /// Ekranda duran dosyaları okumak için: Windows'un listesindeki bütün
+    /// kayıtların (hayalet, bağlı olmayan, kimliği boş olanlar dâhil) ve aygıt
+    /// yolu verilmeden okunan dosya korunur. Ekran okunamazsa o turda hiçbir
+    /// dosya silinmez. Önceden olağan yazımda ekrana bakılmıyordu: ekranda bu
+    /// sürecin yazmadığı bir zemin (açılışta önceki oturumunki, Explorer'ın
+    /// listesi bozukken ekranda kalan) silinebiliyordu.
     /// </param>
     /// <param name="esik">Bundan sonra yazılan dosyalara dokunulmaz.</param>
     internal static void KullanilmayanlariSil(
-        string klasor, IEnumerable<string> sonYazilanlar, IDesktopWallpaper? wallpaper, DateTime esik)
+        string klasor, IEnumerable<string> sonYazilanlar, IDesktopWallpaper wallpaper, DateTime esik)
     {
         try
         {
-            var ekrandakiler = new HashSet<string>(sonYazilanlar, StringComparer.OrdinalIgnoreCase);
-            if (wallpaper is not null)
+            HashSet<string>? gorunenler = WallpaperService.EkrandakiDosyalar(wallpaper);
+            if (gorunenler is null)
             {
-                HashSet<string>? gorunenler = WallpaperService.EkrandakiDosyalar(wallpaper);
-                if (gorunenler is null)
-                {
-                    return;
-                }
-
-                ekrandakiler.UnionWith(gorunenler);
+                return;
             }
+
+            var ekrandakiler = new HashSet<string>(sonYazilanlar, StringComparer.OrdinalIgnoreCase);
+            ekrandakiler.UnionWith(gorunenler);
 
             // Uzantısız: 1.4.4'e kadar yazılan PNG'ler de temizlensin.
             foreach (string file in Directory.EnumerateFiles(klasor, "zemin-*"))
@@ -587,73 +787,6 @@ internal sealed class WallpaperCanvas
 
         _temizlikZamanlayicisi.Stop();
         _temizlikZamanlayicisi.Start();
-    }
-
-    // -------------------------------------------------------------- monitörler
-
-    private static IReadOnlyList<string> ReadDevicePaths(IDesktopWallpaper wallpaper)
-    {
-        var list = new List<string>();
-
-        try
-        {
-            uint count = wallpaper.GetMonitorDevicePathCount();
-            for (uint i = 0; i < count; i++)
-            {
-                string id = wallpaper.GetMonitorDevicePathAt(i);
-                if (!string.IsNullOrWhiteSpace(id))
-                {
-                    list.Add(id);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Monitör aygıt yolları okunamadı.", ex);
-        }
-
-        return list;
-    }
-
-    /// <summary>
-    /// Monitörün duvar kağıdı arayüzündeki karşılığını bulur.
-    ///
-    /// Birinci yol kimlik karşılaştırması: <see cref="MonitorTarget.StableId"/>
-    /// da aygıt arayüzü yolu olduğu için normalde bire bir tutuyor. Tutmazsa
-    /// (kimliği okunamamış bir ekran, aygıt yolu biçimi değişmiş bir sürüm)
-    /// ekranın dikdörtgenine bakıyoruz. O da tutmazsa null dönüyoruz; çağıran
-    /// taraf null'ı yalnızca tek ekranlı kurulumda kullanıyor.
-    /// </summary>
-    private static string? MatchDevicePath(
-        IDesktopWallpaper wallpaper, IReadOnlyList<string> devicePaths, MonitorTarget monitor)
-    {
-        foreach (string id in devicePaths)
-        {
-            if (string.Equals(id, monitor.StableId, StringComparison.OrdinalIgnoreCase))
-            {
-                return id;
-            }
-        }
-
-        foreach (string id in devicePaths)
-        {
-            try
-            {
-                int hr = wallpaper.GetMonitorRECT(id, out NativeMethods.RECT rect);
-                if (hr == 0
-                    && rect.Left == monitor.Bounds.Left && rect.Top == monitor.Bounds.Top
-                    && rect.Right == monitor.Bounds.Right && rect.Bottom == monitor.Bounds.Bottom)
-                {
-                    return id;
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Debug($"Monitör dikdörtgeni okunamadı ({id}): {ex.Message}");
-            }
-        }
-
-        return null;
     }
 
     // ------------------------------------------------------------ görüntü özeti

@@ -468,6 +468,8 @@ internal sealed class DesktopLayerManager : IDisposable
 
         if (settings.SyncSystemWallpaper)
         {
+            // Görüntüsü üretilemeyen ekran da bağlı ekrandır (bkz. BagliEkranSayisi).
+            _canvas.BagliEkranSayisi = _monitors.Count;
             CanvasResult result = _canvas.Apply(
                 fresh.Select(s => new CanvasScreen(s.Monitor, s.Surface.Image)).ToList());
 
@@ -908,6 +910,9 @@ internal sealed class DesktopLayerManager : IDisposable
                 plain.Add(new ScreenSurface(screen.Monitor, surface));
             }
 
+            // Yalnız takvimi gösteren ekranlar yazılıyor; tek ekranlı yazım yolu
+            // (aygıt yolu verilmeden, bütün ekranlara) yalnız gerçekten tek ekran varken.
+            _canvas.BagliEkranSayisi = _monitors.Count;
             _canvas.Apply(plain.Select(s => new CanvasScreen(s.Monitor, s.Surface.Image)).ToList(), kaldirirken: true);
 
             foreach (ScreenSurface s in plain)

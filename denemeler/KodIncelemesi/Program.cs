@@ -287,6 +287,19 @@ internal static class Program
         return m;
     }
 
+    /// <summary>
+    /// Tuvalin bir ekran için tuttuğu son yazım kaydı: ekran, yazım yolu (kimlik
+    /// verilirse o kayda, verilmezse aygıt yolu olmadan) ve dosya.
+    /// </summary>
+    private static object SonYazim(object ekran, string? kimlik, string dosya)
+    {
+        Type hedefTipi = Tip("Kalender.Desktop.DuvarKagidiHedefi");
+        object tur = Enum.Parse(Tip("Kalender.Desktop.HedefTuru"), kimlik is null ? "Hepsi" : "Kimlik");
+        object hedef = Activator.CreateInstance(hedefTipi, tur, kimlik)!;
+        return Activator.CreateInstance(
+            typeof(ValueTuple<,,>).MakeGenericType(ekran.GetType(), hedefTipi, typeof(string)), ekran, hedef, dosya)!;
+    }
+
     private static object Liste(params object[] ekranlar)
     {
         var liste = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(Tip("Kalender.Interop.MonitorTarget")))!;
@@ -605,7 +618,7 @@ internal static class Program
         var son = (IDictionary)AlanOku(tuval, "_sonYazilanlar");
         PropertyInfo yazdi = tuvalTipi.GetProperty("HasPainted")!;
 
-        son["MON-X"] = ValueTuple.Create((string?)null, @"C:\yok\zemin-deneme.bmp");
+        son["MON-X"] = SonYazim(Ekran("MON-X", 5000, 1920, 1080), null, @"C:\yok\zemin-deneme.bmp");
         yazdi.SetValue(tuval, true);
         string artik1 = Artik("zemin-deneme-1.bmp");
         Cagir(y, "RefreshOnce");
@@ -703,8 +716,8 @@ internal static class Program
         HashSet<string> duranEkranlar = new();
         SahteyleCalistir(ekranli, () =>
         {
-            okuyucuSon["MON-A"] = ValueTuple.Create((string?)"A", gorunen);
-            okuyucuSon["MON-B"] = ValueTuple.Create((string?)"A", @"C:\yok\zemin-deneme.bmp");
+            okuyucuSon["MON-A"] = SonYazim(Ekran("A", 0, 1920, 1080), "A", gorunen);
+            okuyucuSon["MON-B"] = SonYazim(Ekran("A", 0, 1920, 1080), "A", @"C:\yok\zemin-deneme.bmp");
             duranEkranlar = (HashSet<string>)Cagir(okuyucu, "EkrandaDuranlar")!;
         });
         Denetle("ekranda duran görüntü bulunuyor, başkası (geri yüklenen) sayılmıyor",
@@ -1024,7 +1037,7 @@ internal static class Program
         kalite.SetValue(tuval, true);
         Yaz(tuval, "HasPainted", true);
         ((IDictionary)AlanOku(tuval, "_hashes"))["MON-A"] = "özet";
-        ((IDictionary)AlanOku(tuval, "_sonYazilanlar"))["MON-A"] = ValueTuple.Create((string?)null, "zemin-deneme.bmp");
+        ((IDictionary)AlanOku(tuval, "_sonYazilanlar"))["MON-A"] = SonYazim(Ekran("MON-A", 0, 1920, 1080), null, "zemin-deneme.bmp");
         Cagir(tuval, "Birak");
         Denetle("geri yüklemeden sonra her şey (kalite dâhil) baştan yazılacak",
             !(bool)kalite.GetValue(tuval)! && !(bool)Oku(tuval, "HasPainted")!
@@ -2218,7 +2231,7 @@ internal static class Program
         string ara2 = Dosya("zemin-bbbbbbbb-20261012-100000-080.bmp", true);
         string yeni = Dosya("zemin-aaaaaaaa-20261012-100959-000.bmp", false);
         string baska = Dosya("deniz.jpg", true);
-        ((IDictionary)AlanOku(canvas, "_sonYazilanlar"))["A"] = ("aygıt-A", ekranda);
+        ((IDictionary)AlanOku(canvas, "_sonYazilanlar"))["A"] = SonYazim(Ekran("A", 0, 1920, 1080), "aygıt-A", ekranda);
 
         Cagir(canvas, "TemizligiPlanla");
         var zamanlayici = (DispatcherTimer?)tuval.GetField("_temizlikZamanlayicisi", Hepsi)!.GetValue(canvas);

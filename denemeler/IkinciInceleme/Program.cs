@@ -1812,10 +1812,17 @@ internal static class Program
         SahteDuvarKagidi tek = Sahte("X");
         tek.Sinirlar["X"] = (unchecked((int)0x80004005), System.Drawing.Rectangle.Empty);
         tek.Ortak = takvimli;
-        Denetle("tek ekranda aygıt yolu eşleşmezse ortak yola bakılıyor (yazımdaki gibi)",
+        Denetle("tek ekranda canlı kayıt yoksa aygıt yolu verilmeden okunan yola bakılıyor (yazımdaki gibi)",
             Gosterenler(Ekranlar("M"), tek, ResimAcik).SetEquals(new[] { "M" }));
-        Denetle("birden çok ekranda aygıt yolu eşleşmeyen ekran sayılmıyor",
+        Denetle("birden çok ekranda kaydı bulunamayan ekran sayılmıyor",
             Gosterenler(Ekranlar("M", "N"), tek, ResimAcik).Count == 0);
+
+        // 1.15: tek ekranda tek canlı kayıt, kimliği ekranınkiyle tutmasa da o
+        // ekranın kaydıdır (kimliği okunamamış ekran \\.\DISPLAY1 adını taşır).
+        SahteDuvarKagidi tekCanli = Sahte("X");
+        tekCanli.Ekranda["X"] = takvimli;
+        Denetle("tek ekranda kimliği tutmayan tek canlı kayıt o ekranın kaydı sayılıyor",
+            Gosterenler(Ekranlar("M"), tekCanli, ResimAcik).SetEquals(new[] { "M" }));
 
         // Takvimsiz zemin dosya adından tanınıyor; takvim kaldırılırken yazılan zemin o adla yazılıyor.
         MethodInfo yol = tuvalTipi.GetMethod("DosyaYolu", Hepsi)!;
@@ -1900,9 +1907,13 @@ internal static class Program
         Denetle("takvim kaldırılırken ekranda duran, bu sürecin yazmadığı eski zemin silinmiyor; kullanılmayan siliniyor",
             File.Exists(ekrandaki) && File.Exists(sonYazilan) && File.Exists(yeni) && File.Exists(baska) && !File.Exists(kullanilmayan));
 
+        // 1.15'ten beri olağan yazımda da ekrana bakılıyor (önceden arayüz
+        // verilmeyince yalnız son yazılanlar korunuyordu); ekranda durmayan eski
+        // zemin yine siliniyor.
         Kur();
-        Sil(null);
-        Denetle("olağan yazımda ekran okunmuyor, eskisi gibi yalnız son yazılanlar korunuyor",
+        s.Ekranda["A"] = @"C:\Users\deneme\Pictures\deniz.jpg";
+        Sil(s);
+        Denetle("ekranda durmayan eski zemin siliniyor, son yazılan ve yeni dosya korunuyor",
             !File.Exists(ekrandaki) && File.Exists(sonYazilan) && File.Exists(yeni) && !File.Exists(kullanilmayan));
 
         Kur();
@@ -1912,12 +1923,19 @@ internal static class Program
         Denetle("ekran okunamazsa o turda hiçbir dosya silinmiyor",
             File.Exists(ekrandaki) && File.Exists(sonYazilan) && File.Exists(kullanilmayan));
 
-        // Yazımda: duvar kâğıdı arayüzü temizliğe yalnız takvim kaldırılırken veriliyor (derlenmiş koddan).
+        // Yazımda (derlenmiş koddan): temizliğe duvar kâğıdı arayüzü her zaman
+        // veriliyor. Önceden yalnız takvim kaldırılırken veriliyordu (kaldirirken ?
+        // wallpaper : null); 1.15'te Explorer'ın listesi bozukken ekranda duran
+        // görüntü silindiği için denetim buna göre güncellendi. Zamanlayıcının
+        // çağırdığı temizlik de arayüzü kendisi açıyor.
         List<Komut> uygula = Komutlar(tuvalTipi.GetMethod("Apply", Hepsi)!);
         int temizle = Bul(uygula, x => Cagri(x, tuvalTipi, "CleanUnusedFiles"));
-        Denetle("takvim kaldırılırken yazılan zeminden sonra temizlik ekrana bakıyor",
-            temizle > 6 && uygula.GetRange(temizle - 6, 6).Any(x => x.Kod == OpCodes.Ldarg_2)
+        Denetle("yazımdan sonraki temizlik her zaman ekrana bakıyor (koşulsuz arayüz veriliyor)",
+            temizle > 6 && !uygula.GetRange(temizle - 6, 6).Any(x => x.Kod == OpCodes.Ldarg_2 || x.Kod == OpCodes.Ldnull)
             && Bul(uygula, x => Cagri(x, tuvalTipi, "TemizligiPlanla"), temizle) > temizle);
+        List<Komut> temizlik = Komutlar(tuvalTipi.GetMethod("CleanUnusedFiles", Hepsi)!);
+        Denetle("arayüz verilmeyen temizlik (zamanlayıcı) arayüzü fabrikadan açıyor",
+            Bul(temizlik, x => Cagri(x, Tip("Kalender.Desktop.DuvarKagidiKayitlari"), "get_Ac")) >= 0);
     }
 
     /// <summary>
