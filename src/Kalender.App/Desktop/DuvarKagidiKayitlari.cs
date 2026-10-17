@@ -127,10 +127,13 @@ internal static class DuvarKagidiKayitlari
 
     /// <summary>
     /// Bütün kayıtları okur: her kayıtta kimlik, dikdörtgen ve gösterdiği
-    /// dosya; ayrıca aygıt yolu verilmeden okunan dosya. Bir kayıttaki hata
-    /// öbürlerini durdurmaz. Yalnız okur.
+    /// dosya; ayrıca aygıt yolu verilmeden okunan dosya. Bir kaydın
+    /// dikdörtgeni ya da dosyası okunamazsa öbürleri yine okunur. Yalnız okur.
     /// </summary>
-    /// <returns>Kayıtlar (<see cref="DuvarKagidiTablosu"/>); kayıt sayısı okunamazsa null.</returns>
+    /// <returns>
+    /// Kayıtlar (<see cref="DuvarKagidiTablosu"/>); kayıt sayısı ya da bir
+    /// kaydın kimliği okunamazsa null (liste bilinmiyor).
+    /// </returns>
     internal static IReadOnlyList<DuvarKagidiKaydi>? Oku(IDesktopWallpaper wp)
     {
         uint sayi;
@@ -147,7 +150,19 @@ internal static class DuvarKagidiKayitlari
         var kayitlar = new List<DuvarKagidiKaydi>();
         for (uint i = 0; i < sayi; i++)
         {
-            kayitlar.Add(KaydiOku(wp, i));
+            // Kimliği okunamayan kayıt hayalet sayılmaz: hangi ekrana ait olduğu
+            // bilinmiyor, kullanıcının bir ekranı da olabilir. Hayalet sayılsaydı
+            // yedekten atılır, gösterdiği dosya temizlikte korunmazdı; tek bir
+            // anlık okuma hatası o ekransız, kalıcı bir yedek yazdırırdı. 1.14'te
+            // de bu hata yedeği durduruyordu, sonraki yazım yeniden deniyordu.
+            // Liste o tur bilinmiyor sayılır: yedek alınmaz, dosya silinmez,
+            // nöbet yeniden yazdırmaz.
+            if (KaydiOku(wp, i) is not DuvarKagidiKaydi kayit)
+            {
+                return null;
+            }
+
+            kayitlar.Add(kayit);
         }
 
         string? ortak;
@@ -164,7 +179,8 @@ internal static class DuvarKagidiKayitlari
         return new DuvarKagidiTablosu(kayitlar, ortak);
     }
 
-    private static DuvarKagidiKaydi KaydiOku(IDesktopWallpaper wp, uint sira)
+    /// <returns>Kayıt; kimliği okunamazsa null.</returns>
+    private static DuvarKagidiKaydi? KaydiOku(IDesktopWallpaper wp, uint sira)
     {
         string kimlik;
         try
@@ -173,9 +189,8 @@ internal static class DuvarKagidiKayitlari
         }
         catch (Exception ex)
         {
-            // Kimliği okunamayan kayda ne yazılabilir ne de ondan okunabilir.
             Log.Debug($"Duvar kâğıdı kaydının kimliği okunamadı ({sira}): {ex.Message}");
-            return new DuvarKagidiKaydi(sira, string.Empty, KayitDurumu.Hayalet, Rectangle.Empty, null, HataKodu(ex));
+            return null;
         }
 
         // Kimliği boş kayıtla da sorulur: boş dizeyle hem dikdörtgen hem dosya

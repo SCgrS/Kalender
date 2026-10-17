@@ -65,6 +65,8 @@ using System.Text.Json;
 //   S17. Liste iki hâl arasında gidip gelirken yeniden yazım sınırlı: görüntü
 //        yeni yoldan da görünüyorsa ya da ekranın kaydı bulunamıyorsa yazılmaz;
 //        hiç görünmüyorsa yol değişimi yazımları da geri çekilmeye girer.
+//   S18. Bir kaydın kimliği okunamazsa liste bilinmiyor (hayalet sayılmaz):
+//        yedek o tur alınmaz, dosya silinmez, nöbet yeniden yazdırmaz.
 //
 // Gerçek duvar kâğıdına dokunulmaz: uygulamanın duvar kâğıdı fabrikası
 // (DuvarKagidiKayitlari.Ac) ilk iş olarak açılırsa hata veren bir fabrikaya, her
@@ -503,6 +505,7 @@ internal static class Program
             Bolum(S15);
             Bolum(S16);
             Bolum(S17);
+            Bolum(S18);
         }
         finally
         {
@@ -1072,6 +1075,52 @@ internal static class Program
     }
 
     private static int DuvarKagidiNobetiEsik(Type nobetTipi) => (int)nobetTipi.GetField("IlkEsik", Hepsi)!.GetValue(null)!;
+
+    // ------------------------------------------------------------------ S18
+
+    private static void S18()
+    {
+        Console.WriteLine("S18) Bir kaydın kimliği okunamazsa liste bilinmiyor: yedek alınmıyor, dosya silinmiyor, yeniden yazım istenmiyor");
+        string harici = @"\\?\DISPLAY#DEL4321#1";
+        string dizustuFoto = Fotograf("dizüstü.jpg");
+        string hariciFoto = Fotograf("haricî.jpg");
+        string f0 = ZeminDosyasi("zemin-eeeeeeee-20261014-090000-000.bmp");
+        SahteKabuk k = Kabuk(new Kayit(Aus, SOk, Sinir(0), dizustuFoto), new(harici, SFalse, Rectangle.Empty, hariciFoto));
+        k.KimligiOkunamayanSiralar.Add(1);
+
+        Denetle("kimliği okunamayan kayıt varken liste bilinmiyor (hayalet sayılmıyor)", Tablo(k) is null);
+
+        // Yedek: o tur alınmıyor (haricî ekranın fotoğrafı eksik kalmasın); sonraki yazım yeniden dener.
+        YedekleriSil();
+        Statik(Servis, "EnsureBackup", k);
+        Denetle("o tur yedek alınmıyor (haricî ekranın fotoğrafı eksik bir yedek yazılmıyor)", YedekOku() is null);
+
+        // Temizlik: ekranda ne durduğu bilinmiyor, hiçbir dosya silinmiyor.
+        Denetle("ekrandaki dosyalar bilinmiyor; temizlik hiçbir dosyayı silmiyor",
+            Statik(Servis, "EkrandakiDosyalar", k) is null
+            && !(bool)Statik(Tip("Kalender.Desktop.WallpaperCanvas"), "KullanilmayanlariSil",
+                ZeminKlasoru, Array.Empty<string>(), k, DateTime.UtcNow)!
+            && File.Exists(f0));
+        Denetle("ekranda takvim kalmış mı sorusu da bilinmiyor", ZeminVar(k) is null);
+
+        // Nöbet: bilinmiyor, yeniden yazım istenmiyor.
+        k.KimligiOkunamayanSiralar.Clear();
+        object tuval = Tuval(1);
+        Uygula(tuval, false, (Ekran(Aus, 0), Color.Navy));
+        k.KimligiOkunamayanSiralar.Add(1);
+        Denetle("nöbet: bilinmiyor, yeniden yazım istenmiyor", Denetim(tuval) == "Bilinmiyor" && BizimMi(tuval));
+
+        // Okunabilince yedek yeniden deneniyor ve iki ekranın fotoğrafı da yedekte.
+        k.KimligiOkunamayanSiralar.Clear();
+        YedekleriSil();
+        k.Kayitlar[0].Dosya = dizustuFoto;
+        Statik(Servis, "EnsureBackup", k);
+        object? yedek = YedekOku();
+        Denetle("okunabilince yedekte iki ekranın fotoğrafı da var",
+            yedek is not null && EkranBasina(yedek).Count == 2 && EkranBasina(yedek)[harici] == hariciFoto);
+        YedekleriSil();
+        File.Delete(f0);
+    }
 
     // ------------------------------------------------------------------ S10
 
@@ -1677,6 +1726,9 @@ public class SahteKabuk : DispatchProxy
     /// <summary>Bu kimliklerde GetWallpaper hata verir (yalnız o kayıt okunamıyor; boş kimlik de olur).</summary>
     public HashSet<string> OkunamayanKimlikler { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Bu sıralardaki kayıtların kimliği okunamaz (GetMonitorDevicePathAt hata verir).</summary>
+    public HashSet<int> KimligiOkunamayanSiralar { get; } = new();
+
     /// <summary>SetWallpaper çağrıları, sırasıyla.</summary>
     public List<(string? Aygit, string Yol)> Yazilanlar { get; } = new();
 
@@ -1700,7 +1752,13 @@ public class SahteKabuk : DispatchProxy
                 return (uint)Kayitlar.Count;
 
             case "GetMonitorDevicePathAt":
-                return Kayitlar[(int)(uint)a![0]!].Kimlik;
+                int sira = (int)(uint)a![0]!;
+                if (KimligiOkunamayanSiralar.Contains(sira))
+                {
+                    throw new COMException("Kaydın kimliği okunamadı (deneme).", EFail);
+                }
+
+                return Kayitlar[sira].Kimlik;
 
             case "GetMonitorRECT":
                 Kayit? kayit = Bul((string)a![0]!);
