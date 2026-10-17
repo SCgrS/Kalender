@@ -816,13 +816,15 @@ internal static class Program
             return t;
         }
 
+        // Bağlı ekran sayısı (2026-10-17'den beri ikinci bağımsız değişken) yalnız
+        // Windows'un listesi bozukken kullanılıyor; buradaki listeler sağlıklı, 0 (bilinmiyor) verilir.
         MethodInfo geriKoyma = servis.GetMethod("EkranlariGeriYukle", Hepsi)!;
         int konan = -1;
         bool GeriKoy(SahteDuvarKagidi t, object b)
         {
-            object?[] a = { t, b, 0 };
+            object?[] a = { t, b, 0, 0 };
             bool hepsi = (bool)geriKoyma.Invoke(null, a)!;
-            konan = (int)a[2]!;
+            konan = (int)a[3]!;
             return hepsi;
         }
 

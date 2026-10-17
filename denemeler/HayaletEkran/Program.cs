@@ -43,10 +43,13 @@ using System.Text.Json;
 //       verilmeden yazılır, günlüğe hata yazılmaz.
 //   S9. Dalgalanma: tek seferlik farklı okuma yeniden yazım istemez.
 //   S10. Bozuk listede yedek ve geri yükleme: yedekte boş anahtar ve hayaletin
-//        kimliği yok; geri yükleme tek canlı kayıtta aygıt yolu verilmeden,
-//        çok ekranda yalnız kimliği dolu canlı kayıtlara; hayalete yazılmaz,
-//        başarı sayılmaz; eski yedeğin boş anahtarı ortak yol gibi okunur;
-//        açılıştaki "ekranda takvim kalmış mı" sorusu hayalete bakmaz.
+//        kimliği yok; geri yükleme tek ekranda aygıt yolu verilmeden (canlı kayıt
+//        olmasa da), çok ekranda kimliği dolu canlı kayıtlara, tek kimliksiz
+//        ekran önce aygıt yolu verilmeden; iki bağlı ekranda tek canlı kayıt
+//        varken aygıt yolu verilmeden yazılmaz; hayalet ve bağlı olmayan kayıtlar
+//        kendi fotoğraflarını alır, başarı sayılmaz; eski yedeğin boş anahtarı
+//        ortak yol gibi okunur; açılıştaki "ekranda takvim kalmış mı" sorusu
+//        hayalete bakmaz.
 //   S2b. 17.10 06:54'te ölçülen liste (aygıt yollu kayıt canlı, boş kimlikli
 //        kayıt hayalet; roller önceki ölçümün tersi): liste tutarsız olduğu için
 //        yine aygıt yolu verilmeden; roller yer değiştirse de yol değişmez.
@@ -426,12 +429,15 @@ internal static class Program
 
     private static IDictionary<string, string> EkranBasina(object yedek) => (IDictionary<string, string>)Oku(yedek, "PerMonitor")!;
 
-    /// <summary>Yedeği ekranlara geri koyar (EkranlariGeriYukle); her ekran geri yüklendiyse true.</summary>
-    private static bool GeriKoy(SahteKabuk k, object yedek, out int konan)
+    /// <summary>
+    /// Yedeği ekranlara geri koyar (EkranlariGeriYukle; bağlı ekran sayısı
+    /// verilerek); her ekran geri yüklendiyse true.
+    /// </summary>
+    private static bool GeriKoy(SahteKabuk k, object yedek, out int konan, int bagli = 1)
     {
-        object?[] a = { k, yedek, 0 };
+        object?[] a = { k, yedek, bagli, 0 };
         bool hepsi = (bool)Servis.GetMethod("EkranlariGeriYukle", Hepsi)!.Invoke(null, a)!;
-        konan = (int)a[2]!;
+        konan = (int)a[3]!;
         return hepsi;
     }
 
@@ -1158,9 +1164,18 @@ internal static class Program
         // 1.14'ün sağlıklı listede aldığı yedek (ekranın aygıt yoluyla), bugünkü bozuk liste.
         SahteKabuk k = Bugunku(f15, f16);
         bool tam = GeriKoy(k, Yedek(null, (Aus, foto)), out int konan);
-        Denetle("yalnız aygıt yolu verilmeden geri konuyor, hayalete yazılmıyor; fotoğraf ekranda",
-            tam && konan == 1 && k.Yazilanlar.Count == 1 && k.Yazilanlar[0].Aygit is null && k.Yazilanlar[0].Yol == foto
-            && k.Kayitlar[0].Dosya == foto, Yazimlar(k));
+        Denetle("ekrana aygıt yolu verilmeden geri konuyor; hayalete ondan sonra kendi kimliğiyle, başarı sayılmadan",
+            tam && konan == 1 && k.Yazilanlar.Count == 2 && k.Yazilanlar[0].Aygit is null && k.Yazilanlar[0].Yol == foto
+            && k.Yazilanlar[1].Aygit == Aus && k.Yazilanlar[1].Yol == foto && k.Kayitlar[0].Dosya == foto, Yazimlar(k));
+
+        // Aygıt yolu verilmeden yazım hayalete ulaşmıyorsa (ölçülmedi): hayalet yine
+        // ekranın fotoğrafını alıyor; liste düzelince (oturum yeniden açılınca hayaletin
+        // aygıt yolu ekranın kaydı oluyor) takvimin donmuş zemini gelmiyor.
+        SahteKabuk kh = Bugunku(f15, f16);
+        kh.AygitsizHayaleteUlasmaz = true;
+        tam = GeriKoy(kh, Yedek(null, (Aus, foto)), out konan);
+        Denetle("aygıt yolu verilmeden yazım hayalete ulaşmasa da hayalette takvimin zemini kalmıyor",
+            tam && konan == 1 && kh.Kayitlar[0].Dosya == foto && kh.Kayitlar[1].Dosya == foto, Yazimlar(kh));
 
         // 06:54'teki liste (aygıt yollu kayıt canlı): o kaydın kimliğiyle yedeklenen fotoğraf önce.
         SahteKabuk k2 = Kabuk(new Kayit(Aus, SOk, Sinir(0), f16), new("", EFail, Rectangle.Empty, f16));
@@ -1171,20 +1186,94 @@ internal static class Program
         SahteKabuk k3 = Bugunku(f15, f16);
         tam = GeriKoy(k3, Yedek(foto2, (Aus, silinmis)), out konan);
         Denetle("ekranın fotoğrafı silinmişse ortak yol; dosyası olmayan yol denenmiyor",
-            tam && konan == 1 && k3.Yazilanlar.Count == 1 && k3.Yazilanlar[0].Aygit is null && k3.Yazilanlar[0].Yol == foto2, Yazimlar(k3));
+            tam && konan == 1 && k3.Yazilanlar.Count == 2 && k3.Yazilanlar[0].Aygit is null && k3.Yazilanlar[0].Yol == foto2
+            && k3.Yazilanlar.All(y => y.Yol == foto2), Yazimlar(k3));
 
         SahteKabuk k4 = Bugunku(f15, f16);
         tam = GeriKoy(k4, Yedek(null, (Aus, silinmis)), out konan);
         Denetle("hiçbir fotoğrafın dosyası yoksa geri konmuyor, sayı sıfır, ekran olduğu gibi",
             !tam && konan == 0 && k4.Yazilanlar.Count == 0 && k4.Kayitlar[0].Dosya == f15, Yazimlar(k4));
 
+        // Canlı kayıt hiç yok (uyanma anı: ekran bağlı değil, yanında hayalet): yine aygıt yolu verilmeden.
+        SahteKabuk k7 = Kabuk(new Kayit(Aus, SFalse, Rectangle.Empty, f15), new("", EFail, Rectangle.Empty, f16));
+        tam = GeriKoy(k7, Yedek(null, (Aus, foto)), out konan);
+        Denetle("canlı kayıt yokken de aygıt yolu verilmeden geri konuyor, sayı bir",
+            tam && konan == 1 && k7.Yazilanlar.Count >= 1 && k7.Yazilanlar[0].Aygit is null && k7.Yazilanlar[0].Yol == foto
+            && k7.Kayitlar[0].Dosya == foto, Yazimlar(k7));
+
+        // Dizüstü + çıkarılmış haricî ekran (S_FALSE) + hayalet: haricî ekranın kaydı kendi fotoğrafına dönüyor.
+        string harici = @"\\?\DISPLAY#DEL4321#1";
+        string dizustuFoto = Fotograf("dizüstü.jpg");
+        string hariciFoto = Fotograf("haricî.jpg");
+        SahteKabuk k8 = Kabuk(
+            new Kayit(Aus, SOk, Sinir(0), f15), new(harici, SFalse, Rectangle.Empty, f15), new("", EFail, Rectangle.Empty, f16));
+        tam = GeriKoy(k8, Yedek(null, (Aus, dizustuFoto), (harici, hariciFoto)), out konan);
+        Denetle("bozuk listede bağlı olmayan haricî ekranın kaydı kendi fotoğrafına dönüyor, başarı sayılmıyor",
+            tam && konan == 1 && k8.Yazilanlar[0].Aygit is null && k8.Yazilanlar[0].Yol == dizustuFoto
+            && k8.Kayitlar[0].Dosya == dizustuFoto && k8.Kayitlar[1].Dosya == hariciFoto, Yazimlar(k8));
+
         // ------------------------------------------ geri yükleme, çok ekran
+        // S7 düzeni: A'nın kaydı kimliksiz, A'nın aygıt yolu hayalette; yedek sağlıklı listede alınmış.
         SahteKabuk cok2 = Kabuk(
             new("", SOk, Sinir(0, 1920, 1080), f15), new(bId, SOk, Sinir(1920, 1920, 1080), f15), new(aId, EFail, Rectangle.Empty, f16));
-        tam = GeriKoy(cok2, Yedek(null, (aId, foto), (bId, foto2)), out konan);
-        Denetle("yalnız kimliği dolu canlı kayda kendi fotoğrafı; hayalete ve aygıt yolu verilmeden hiç yazılmıyor, hayalet sayılmıyor",
-            cok2.Yazilanlar.Count == 1 && cok2.Yazilanlar[0].Aygit == bId && cok2.Yazilanlar[0].Yol == foto2 && konan == 1, Yazimlar(cok2));
-        Denetle("kimliği boş ekran geri konamadığı için sonuç eksik (katman oraya takvimsiz zemin yazar)", !tam);
+        tam = GeriKoy(cok2, Yedek(null, (aId, foto), (bId, foto2)), out konan, bagli: 2);
+        Denetle("çok ekranda kimliksiz ekran önce aygıt yolu verilmeden (hayaletin kimliğiyle yedeklenen fotoğraf), sonra öbür ekran kendi kaydına",
+            cok2.Yazilanlar.Count >= 2 && cok2.Yazilanlar[0].Aygit is null && cok2.Yazilanlar[0].Yol == foto
+            && cok2.Yazilanlar[1].Aygit == bId && cok2.Yazilanlar[1].Yol == foto2, Yazimlar(cok2));
+        Denetle("her ekranda kendi fotoğrafı, hayalette de; iki ekran sayılıyor, sonuç tam",
+            tam && konan == 2 && cok2.Kayitlar[0].Dosya == foto && cok2.Kayitlar[1].Dosya == foto2 && cok2.Kayitlar[2].Dosya == foto,
+            $"{tam} / {konan}");
+
+        // Uçtan uca (katmanın yaptığı): geri yüklemeden sonra takvimi gösteren ekran yok, takvimsiz zemine gerek kalmıyor.
+        object a = Ekran(aId, 0, 1920, 1080);
+        object b = Ekran(bId, 1920, 1920, 1080);
+        HashSet<string> Gosterenler(SahteKabuk t) => (HashSet<string>)Statik(
+            Tip("Kalender.Desktop.WallpaperCanvas"), "TakvimGosterenler", EkranListesi(a, b), t)!;
+        Denetle("geri yüklemeden sonra kimliksiz ekranda takvim kalmıyor", Gosterenler(cok2).Count == 0);
+
+        // Aygıt yolu verilmeden yazım hata verirse kimliksiz ekranda takvim kalıyor; yalnız o
+        // ekrana takvimsiz zemin de yazılamıyor. Katman bunu görüp "geri yüklenemedi" diyor (aşağıda, derlenmiş koddan).
+        SahteKabuk cok3 = Kabuk(
+            new("", SOk, Sinir(0, 1920, 1080), f15), new(bId, SOk, Sinir(1920, 1920, 1080), f15), new(aId, EFail, Rectangle.Empty, f16));
+        cok3.AygitsizYazimdaHata = true;
+        tam = GeriKoy(cok3, Yedek(null, (aId, foto), (bId, foto2)), out konan, bagli: 2);
+        Uygula(Tuval(2), true, (a, Color.Gray));
+        Denetle("aygıt yolu verilmeden yazılamayınca sonuç eksik; öbür ekran yine kendi fotoğrafına; kimliksiz ekranda takvim kalıyor",
+            !tam && konan == 1 && cok3.Kayitlar[1].Dosya == foto2 && Gosterenler(cok3).SetEquals(new[] { aId }), Yazimlar(cok3));
+
+        // İki kimliksiz ekran: aygıt yolu verilmeden yazılamaz (iki ekran aynı fotoğrafı alırdı); sonuç eksik.
+        SahteKabuk iki = Kabuk(
+            new("", SOk, Sinir(0, 1920, 1080), f15), new("", SOk, Sinir(1920, 1920, 1080), f15),
+            new(aId, EFail, Rectangle.Empty, f16), new(bId, EFail, Rectangle.Empty, f16));
+        tam = GeriKoy(iki, Yedek(null, (aId, foto), (bId, foto2)), out konan, bagli: 2);
+        Denetle("iki kimliksiz ekranda aygıt yolu verilmeden hiç yazılmıyor; hayaletlere kendi fotoğrafları; sonuç eksik",
+            !tam && konan == 0 && iki.Yazilanlar.All(y => y.Aygit is not null) && iki.Kayitlar[2].Dosya == foto
+            && iki.Kayitlar[3].Dosya == foto2, Yazimlar(iki));
+
+        // İki bağlı ekran, yalnız biri canlı (öbürünün aygıt yolu hayalette): aygıt yolu verilmeden
+        // yazılmıyor (iki ekran da aynı fotoğrafı alırdı); öbür ekranın fotoğrafı hayalete; sonuç eksik.
+        SahteKabuk tekCanli = Kabuk(new Kayit(aId, SOk, Sinir(0, 1920, 1080), f15), new(bId, EFail, Rectangle.Empty, f16));
+        tam = GeriKoy(tekCanli, Yedek(null, (aId, foto), (bId, foto2)), out konan, bagli: 2);
+        Denetle("iki bağlı ekranda tek canlı kayıt: aygıt yolu verilmeden yazılmıyor, öbür ekranın fotoğrafı hayalete, sonuç eksik",
+            !tam && konan == 1 && tekCanli.Yazilanlar.All(y => y.Aygit is not null)
+            && tekCanli.Kayitlar[0].Dosya == foto && tekCanli.Kayitlar[1].Dosya == foto2, Yazimlar(tekCanli));
+        tekCanli = Kabuk(new Kayit(aId, SOk, Sinir(0, 1920, 1080), f15), new(bId, EFail, Rectangle.Empty, f16));
+        GeriKoy(tekCanli, Yedek(null, (aId, foto), (bId, foto2)), out konan, bagli: 0);
+        Denetle("bağlı ekran sayısı bilinmiyorsa canlı kayıtlardan tahmin ediliyor (önceki davranış: aygıt yolu verilmeden)",
+            tekCanli.Yazilanlar.Count >= 1 && tekCanli.Yazilanlar[0].Aygit is null, Yazimlar(tekCanli));
+
+        // Derlenmiş koddan: geri yükleme bağlı ekran sayısını veriyor; katman takvim kalırsa başarı bildirmiyor.
+        List<Komut> geri = Komutlar(Servis.GetMethod("Restore", Hepsi, new[] { typeof(bool).MakeByRefType() })!);
+        int sayi = Bul(geri, x => Cagri(x, Servis, "get_BagliEkranSayisiOkuyucu"));
+        Denetle("geri yükleme bağlı ekran sayısını Windows'tan okuyup veriyor",
+            sayi >= 0 && Bul(geri, x => Cagri(x, Servis, "EkranlariGeriYukle"), sayi) > sayi);
+        Type katmanTipi = Tip("Kalender.Desktop.DesktopLayerManager");
+        Type tuvalTipi = Tip("Kalender.Desktop.WallpaperCanvas");
+        List<Komut> kaldir = Komutlar(katmanTipi.GetMethod("DuvarKagidiniGeriYukle", Hepsi)!);
+        int zemin = Bul(kaldir, x => Cagri(x, katmanTipi, "PaintPlainBackground"));
+        int yeniden = Bul(kaldir, x => Cagri(x, tuvalTipi, "TakvimGosterenler"), zemin);
+        Denetle("katman takvimsiz zeminden sonra ekrana yeniden bakıyor; takvim kaldıysa günlüğe hata yazıp başarı bildirmiyor",
+            zemin > 0 && yeniden > zemin && Bul(kaldir, x => x.Uye is MethodBase m && m.Name == "Error", yeniden) > yeniden);
 
         // ------------------------------------------ eski yedekteki boş anahtar
         SahteKabuk k5 = Kabuk(new Kayit(Aus, SOk, Sinir(0), f15));
@@ -1717,6 +1806,16 @@ public class SahteKabuk : DispatchProxy
     /// <summary>Doğruysa aygıt yolu verilmeden yazılan görüntü kimliği boş kayda ulaşmıyor.</summary>
     public bool AygitsizBosKaydaUlasmaz { get; set; }
 
+    /// <summary>
+    /// Doğruysa aygıt yolu verilmeden yazılan görüntü hayalet kayda (dikdörtgen
+    /// sorusu hata veren) ulaşmıyor; ölçülmedi (Windows aygıt yolu verilmeden
+    /// okurken hayaleti saymıyor).
+    /// </summary>
+    public bool AygitsizHayaleteUlasmaz { get; set; }
+
+    /// <summary>Doğruysa aygıt yolu verilmeden yazım hata verir.</summary>
+    public bool AygitsizYazimdaHata { get; set; }
+
     /// <summary>Doğruysa kayıt sayısı okunamıyor.</summary>
     public bool SayimdaHata { get; set; }
 
@@ -1786,6 +1885,11 @@ public class SahteKabuk : DispatchProxy
 
             case "SetWallpaper":
                 string yol = (string)a![1]!;
+                if (a[0] is null && AygitsizYazimdaHata)
+                {
+                    throw new COMException("Aygıt yolu verilmeden yazılamadı (deneme).", EFail);
+                }
+
                 Yazilanlar.Add(((string?)a[0], yol));
                 if (a[0] is string hedef)
                 {
@@ -1795,7 +1899,8 @@ public class SahteKabuk : DispatchProxy
                 else
                 {
                     Ortak = yol;
-                    foreach (Kayit k in Kayitlar.Where(k => !(AygitsizBosKaydaUlasmaz && k.Kimlik.Length == 0)))
+                    foreach (Kayit k in Kayitlar.Where(k => !(AygitsizBosKaydaUlasmaz && k.Kimlik.Length == 0)
+                                 && !(AygitsizHayaleteUlasmaz && k.Hr < 0)))
                     {
                         k.Dosya = yol;
                     }

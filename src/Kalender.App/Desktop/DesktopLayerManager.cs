@@ -904,7 +904,9 @@ internal sealed class DesktopLayerManager : IDisposable
     /// zemin yazılır; ekranda donmuş bir takvim kalmasın. Çağırmadan önce yazma
     /// kapatılmış olmalı, yoksa bir sonraki çizim takvimi yeniden yazar.
     /// </summary>
-    /// <returns>Önceki duvar kâğıdı geri yüklendiyse true.</returns>
+    /// <returns>
+    /// Önceki duvar kâğıdı geri yüklendiyse ve hiçbir ekranda takvim kalmadıysa true.
+    /// </returns>
     public bool DuvarKagidiniGeriYukle()
     {
         _geriYukleniyor = true;
@@ -924,6 +926,18 @@ internal sealed class DesktopLayerManager : IDisposable
                 if (duranlar.Count > 0)
                 {
                     PaintPlainBackground(duranlar);
+
+                    // Takvimsiz zemin her ekrana yazılamayabilir: Windows'un
+                    // listesi bozukken kaydı kimliksiz ekrana yalnız o ekran
+                    // yazılırken ulaşılamıyor. Takvim bir ekranda donmuş kaldıysa
+                    // kullanıcı "geri yüklendi" görmesin; önceden görüyordu, yedek
+                    // de silinmişti.
+                    if (WallpaperCanvas.TakvimGosterenler(_monitors).Count > 0)
+                    {
+                        Log.Error("Önceki duvar kâğıdı geri yüklenirken bir ekranda takvim kaldı; o ekrana ne önceki duvar "
+                            + "kâğıdı ne takvimsiz zemin konabildi. Kayıtlar: " + DuvarKagidiKayitlari.SimdikiOzet());
+                        yuklendi = false;
+                    }
                 }
             }
 

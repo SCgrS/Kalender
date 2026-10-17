@@ -396,6 +396,20 @@ internal static class DuvarKagidiKayitlari
         return k is DuvarKagidiTablosu t ? ozet + "; aygıtsız -> " + DosyaAdi(t.Ortak) : ozet;
     }
 
+    /// <summary>Windows'un listesinin şimdiki hâlinin günlük özeti; okunamazsa bunu söyler.</summary>
+    internal static string SimdikiOzet()
+    {
+        try
+        {
+            IReadOnlyList<DuvarKagidiKaydi>? kayitlar = Oku(Ac());
+            return kayitlar is null ? "(liste okunamadı)" : Ozet(kayitlar);
+        }
+        catch (Exception ex)
+        {
+            return "(liste okunamadı: " + ex.Message + ")";
+        }
+    }
+
     private static string DosyaAdi(string? yol)
         => yol is null ? "(okunamadı)" : yol.Length == 0 ? "(boş)" : Path.GetFileName(yol);
 
