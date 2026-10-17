@@ -8,20 +8,21 @@ Ortada pencere olmadığı için masaüstünde klasör açmak, simge sürükleme
 üzerinde kısa süre beklediğinizde o günün Google Takvim etkinlikleri ve görevleri küçük bir kutuda listelenir. Google
 hesabına yalnızca okuma izniyle bağlanılır.
 
-<p align="center">
-  <img src="docs/masaustu-1.jpg" width="90%" alt="Kalender, koyu düz renk (Mürekkep) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi">
-</p>
+Konum, boyut ve renkler özelleştirilebilir.
+
+![Kalender, koyu düz renk (Mürekkep) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
+
+![Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla](docs/masaustu-2.jpg)
 
 ## Kurulum
 
-Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit. Yönetici hakkı ve ayrıca .NET kurmak gerekmez.
-Tüm sürümler: [Sürümler sayfası](https://github.com/SCgrS/Kalender/releases)
+Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit.
 
 1. Yukarıdaki bağlantıdan `Kalender-Kurulum.exe` dosyasını indirin ve çift tıklayın.
 2. Windows SmartScreen uyarı gösterirse **Daha fazla bilgi**'ye, sonra **Yine de çalıştır**'a basın.
 3. **Kur**'a basın. Kurulum birkaç saniye sürer, ardından Kalender başlar.
 
-Google Takvim ve Görevler bağlantısı isteğe bağlıdır; adımları aşağıda, **Google Takvim ve Görevler** başlığındadır.
+Google Takvim ve Görevler bağlantısı adımları aşağıda, **Google Takvim ve Görevler Bağlantısı** başlığındadır.
 
 ## Öne çıkanlar
 
@@ -42,8 +43,6 @@ Görüntülerdeki etkinlik ve görevler örnektir.
 
 Takvim duvar kâğıdının bir parçası olarak çizilir. Zemin düz renk, uygulamayla gelen dört fotoğraftan biri ya da kendi
 fotoğrafınız olabilir.
-
-![Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla](docs/masaustu-2.jpg)
 
 ![Kalender, sisli dağ sırtları fotoğrafında](docs/masaustu-3.jpg)
 
@@ -72,26 +71,40 @@ için tepsi menüsündeki **Şimdi yenile**'ye basın.
 
 > Dinî bayram tarihleri idari kararla değişebilir. Lütfen resmî kaynaklardan teyit ediniz.
 
-### Google Takvim ve Görevler
+### Ayarlar
+
+Saatin yanındaki tepsi simgesine tıklayın. Her değişiklik anında masaüstüne uygulanır.
+
+- **Arka plan:** hazır renkler, kendi renginiz, dört hazır fotoğraf ya da kendi fotoğrafınız.
+- **Renkler:** yazı, tatil ve bugün renkleri, cumartesinin kırmızı olup olmayacağı, gün kutusunun
+  opaklığı.
+- **Boyut ve Konum:** takvimin hangi ekranlarda görüneceği, yeri (sürükleyerek) ve boyutu.
+- **Google:** hesap bağlantısı (aşağıda).
+- **Genel:** Windows açılışında başlatma, güncelleme denetimi, Kalender'i kaldırma.
+
+Tepsi simgesine sağ tıklayınca **Şimdi yenile**, **Takvimi gizle**, **Eski duvar kâğıdıma dön**
+ve **Çıkış** gibi komutlar çıkar.
+
+## Google Takvim ve Görevler Bağlantısı
 
 Kalender Google hesabınıza **yalnızca okuma** izniyle bağlanır. Etkinlik veya görev eklemez,
 silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur. Bunun için
 kendi Google Cloud istemci kimliğinizi oluşturmanız gerekir (bir kerelik, yaklaşık beş dakika).
 Aynı adımlar Ayarlar penceresinde **Client ID nasıl alınır?** başlığı altında da yazılıdır.
 
-#### 1. Google Cloud projesi oluşturun
+### 1. Google Cloud projesi oluşturun
 
 1. [console.cloud.google.com](https://console.cloud.google.com) adresine Google hesabınızla girin.
 2. Üstteki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu) tıklayın, **Yeni
    proje**'ye basın, ada `Kalender` yazıp **Oluştur**'a basın. Sonra seçiciden bu projeyi seçin.
 
-#### 2. İki API'yi açın
+### 2. İki API'yi açın
 
 1. Sol menüden **API'ler ve Hizmetler > Kitaplık**'a girin.
 2. Arama kutusuna `Google Calendar API` yazın, sonuca tıklayın, **Etkinleştir**'e basın.
 3. Kitaplığa dönüp `Google Tasks API` arayın, onu da **Etkinleştir**'e basın.
 
-#### 3. İzin ekranını hazırlayın
+### 3. İzin ekranını hazırlayın
 
 Sol menüden **API'ler ve Hizmetler > OAuth izin ekranı**'na girin. Google sizi **Google Auth
 Platform** sayfasına yönlendirir.
@@ -108,14 +121,14 @@ Platform** sayfasına yönlendirir.
    production** olur. Yayımlamazsanız uygulama **Testing** durumunda kalır. O zaman kendinizi
    **Test users** bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür.
 
-#### 4. İstemci kimliğini oluşturun
+### 4. İstemci kimliğini oluşturun
 
 1. Sol menüden **Clients** → **+ Create client**.
 2. Application type: **Desktop app**. Ad: `Kalender` → **Create**.
 3. Çıkan pencerede **Client ID** ve **Client secret** yazar. İkisini de kopyalayın. Pencereyi
    kapatsanız bile Clients listesinden yeniden açabilirsiniz.
 
-#### 5. Kalender'e yapıştırın
+### 5. Kalender'e yapıştırın
 
 1. Tepsi simgesine tıklayıp **Ayarlar**'ı açın, soldan **Google** sayfasına geçin.
 2. İki değeri **İstemci kimliği (Client ID)** ve **İstemci gizli anahtarı (Client secret)**
@@ -138,20 +151,6 @@ Google izni geçersiz sayarsa (izni geri aldıysanız ya da uygulama hâlâ **Te
 durumundaysa) Kalender bağlantıyı keser ve tepside bir uyarı gösterir. **Google'a bağlan** ile
 yeniden bağlanın.
 
-### Ayarlar
-
-Saatin yanındaki tepsi simgesine tıklayın. Her değişiklik anında masaüstüne uygulanır.
-
-- **Arka plan:** hazır renkler, kendi renginiz, dört hazır fotoğraf ya da kendi fotoğrafınız.
-- **Renkler:** yazı, tatil ve bugün renkleri, cumartesinin kırmızı olup olmayacağı, gün kutusunun
-  opaklığı.
-- **Boyut ve Konum:** takvimin hangi ekranlarda görüneceği, yeri (sürükleyerek) ve boyutu.
-- **Google:** hesap bağlantısı (yukarıda).
-- **Genel:** Windows açılışında başlatma, güncelleme denetimi, Kalender'i kaldırma.
-
-Tepsi simgesine sağ tıklayınca **Şimdi yenile**, **Takvimi gizle**, **Eski duvar kâğıdıma dön**
-ve **Çıkış** gibi komutlar çıkar.
-
 ## Güncelleme
 
 Kalender yeni sürümleri kendisi bulur ve bir pencereyle haber verir. **Güncelle**'ye basmanız
@@ -165,9 +164,9 @@ veri kopyamı da sil** kutusunu işaretlemezseniz yeniden kurduğunuzda her şey
 
 ## Verileriniz
 
-Kalender telemetri içermez, hiçbir veri toplamaz. Google hesabınıza yalnızca okuma izniyle bağlanır; bağlantı doğrudan sizinle
+Kalender telemetri içermez, hiçbir veri toplamaz. Google hesabınıza yalnızca okuma izniyle bağlanır. Bağlantı doğrudan sizinle
 Google arasındadır. Görünen ayın etkinlik ve görevlerinin başlık ve tarihleriyle bir kopyası, internet yokken de gösterilebilsin
-diye bilgisayarınızda durur; **Bağlantıyı kes** bu kopyayı da siler. Kalender internete bunun dışında yalnızca resmî tatil
+diye bilgisayarınızda durur. **Bağlantıyı kes** bu kopyayı da siler. Kalender internete bunun dışında yalnızca resmî tatil
 listesini yenilemek ve yeni sürüm olup olmadığına bakmak için çıkar.
 
 ## Üçüncü taraf bileşenler
