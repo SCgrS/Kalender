@@ -829,6 +829,14 @@ internal sealed class WallpaperCanvas
     /// hemen sonra hâlâ okuyor olabildiği için yeni yazılanlara dokunmuyoruz.
     /// Ekranda duran görüntüler de korunur: Explorer yeniden başladığında ya
     /// da çözünürlük değiştiğinde Windows onları yeniden okuyor.
+    ///
+    /// Bağlı olmayan bir ekranın kaydının dosyası okunamazsa (ölçülmedi;
+    /// dizüstünden çıkarılmış haricî ekranda Windows bunu kalıcı olarak
+    /// yapabilir) temizlik durmaz: o ekranın en son yazılan görüntüsü (dosya
+    /// adındaki kısa kimlikle bulunur) korunur, öbür eski dosyalar silinir.
+    /// Dursaydı ekran yeniden takılana dek her yazım büyük bir dosya
+    /// bırakırdı. Önceki sürümlerin olağan temizliği bağlı olmayan ekranın
+    /// dosyasını hiç korumuyordu.
     /// </summary>
     /// <param name="klasor">Zemin klasörü.</param>
     /// <param name="sonYazilanlar">Bu sürecin ekranlara en son yazdığı dosyalar.</param>
@@ -847,7 +855,8 @@ internal sealed class WallpaperCanvas
     {
         try
         {
-            HashSet<string>? gorunenler = WallpaperService.EkrandakiDosyalar(wallpaper);
+            var okunamayanlar = new List<string>();
+            HashSet<string>? gorunenler = WallpaperService.EkrandakiDosyalariOku(wallpaper, okunamayanlar);
             if (gorunenler is null)
             {
                 return false;
@@ -857,7 +866,24 @@ internal sealed class WallpaperCanvas
             ekrandakiler.UnionWith(gorunenler);
 
             // Uzantısız: 1.4.4'e kadar yazılan PNG'ler de temizlensin.
-            foreach (string file in Directory.EnumerateFiles(klasor, "zemin-*"))
+            List<string> dosyalar = Directory.EnumerateFiles(klasor, "zemin-*").ToList();
+
+            foreach (string kimlik in okunamayanlar)
+            {
+                string onEk = $"zemin-{ShortId(kimlik)}-";
+                string? sonuncu = dosyalar
+                    .Where(f => Path.GetFileName(f).StartsWith(onEk, StringComparison.OrdinalIgnoreCase))
+                    .MaxBy(f => File.GetLastWriteTimeUtc(f));
+                if (sonuncu is not null)
+                {
+                    ekrandakiler.Add(sonuncu);
+                }
+
+                Log.Debug($"Bağlı olmayan ekranın duvar kâğıdı okunamadı ({kimlik}); son görüntüsü korunuyor: "
+                    + (sonuncu is null ? "(yok)" : Path.GetFileName(sonuncu)));
+            }
+
+            foreach (string file in dosyalar)
             {
                 if (!ekrandakiler.Contains(file) && File.GetLastWriteTimeUtc(file) < esik)
                 {

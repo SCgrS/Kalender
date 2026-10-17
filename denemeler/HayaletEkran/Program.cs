@@ -62,7 +62,9 @@ using System.Text.Json;
 //   S13. Çok ekranda yazım anında bağlı olmayan ekran atlanır, kaydı canlı olunca
 //        nöbet yeniden yazdırır; atlanan ekran döngüye sokmaz.
 //   S14. Temizlik: yalnız hayaletin dosyası okunamıyorsa eski dosyalar yine
-//        silinir; canlı kayıt okunamazsa hiçbiri, günlüğe bir kez hata.
+//        silinir; canlı kayıt okunamazsa hiçbiri, günlüğe bir kez hata; bağlı
+//        olmayan ekranın dosyası okunamazsa temizlik durmaz, o ekranın son
+//        görüntüsü korunur.
 //   S15. Canlı kayıt yokken nöbet aygıt yolu verilmeden okunan dosyaya bakar.
 //   S16. Geri yükleme eksik kalınca takvimin durduğu ekranlar bütün bağlı
 //        ekranlarla aranır.
@@ -1712,6 +1714,25 @@ internal static class Program
         k.OkunamayanKimlikler.Clear();
         Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
         Denetle("okunabilince yine siliniyor, hata bayrağı iniyor", !File.Exists(f0) && !(bool)AlanOku(tuval, "_temizlikOkunamadiYazildi"));
+
+        // Bağlı olmayan ekranın dosyası okunamıyor (ölçülmedi; dizüstünden çıkarılmış
+        // haricî ekranda kalıcı olabilir): olağan temizlik durmuyor, o ekranın en son
+        // görüntüsü (adındaki kısa kimlikle) korunuyor. Dursaydı ekran yeniden
+        // takılana dek her yazım büyük bir dosya bırakırdı.
+        string kisa = (string)Statik(Tip("Kalender.Desktop.WallpaperCanvas"), "ShortId", @"\\?\DISPLAY#DEL4321#1")!;
+        string hariciEski = ZeminDosyasi($"zemin-{kisa}-20261016-090000-000.bmp");
+        File.SetLastWriteTimeUtc(hariciEski, DateTime.UtcNow.AddMinutes(-20));
+        string hariciSon = ZeminDosyasi($"zemin-{kisa}-20261016-100000-000.bmp");
+        f0 = ZeminDosyasi("zemin-dddddddd-20261014-090000-000.bmp");
+        FabrikayiBagla(() => bagliDegil);
+        hata = Hatalar.Count;
+        Cagir(tuval, "CleanUnusedFiles", new object?[] { null });
+        Denetle("bağlı olmayan ekranın dosyası okunamasa da olağan temizlik sürüyor: o ekranın son görüntüsü ve canlı kaydınki "
+            + "kalıyor, öbür eski dosyalar siliniyor; günlüğe hata yok",
+            File.Exists(hariciSon) && !File.Exists(hariciEski) && File.Exists(f15) && !File.Exists(f0)
+            && Hatalar.Count == hata && !(bool)AlanOku(tuval, "_temizlikOkunamadiYazildi"));
+        Denetle("kaldırmada ve geri yüklemede (EkrandakiDosyalar) yine bilinmiyor: zemin klasörü korunuyor",
+            Statik(servis, "EkrandakiDosyalar", bagliDegil) is null && (bool)Statik(servis, "ZeminKlasoruKorunmali", bagliDegil)!);
     }
 
     // ------------------------------------------------------------------ S15

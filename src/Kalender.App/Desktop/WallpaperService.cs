@@ -1008,6 +1008,15 @@ internal static class WallpaperService
     /// Canlı ya da bağlı olmayan bir kaydın dosyası okunamazsa yine null.
     /// </summary>
     internal static HashSet<string>? EkrandakiDosyalar(IDesktopWallpaper wallpaper)
+        => EkrandakiDosyalariOku(wallpaper, null);
+
+    /// <summary>
+    /// <see cref="EkrandakiDosyalar"/>; <paramref name="okunamayanBagliOlmayanlar"/>
+    /// verilirse dosyası okunamayan, kimliği dolu bağlı olmayan kayıt sonucu
+    /// bilinmez yapmaz, kimliği bu listeye eklenir. Olağan temizlik bunu
+    /// kullanır (bkz. <see cref="WallpaperCanvas.KullanilmayanlariSil"/>).
+    /// </summary>
+    internal static HashSet<string>? EkrandakiDosyalariOku(IDesktopWallpaper wallpaper, List<string>? okunamayanBagliOlmayanlar)
     {
         try
         {
@@ -1024,6 +1033,14 @@ internal static class WallpaperService
                 {
                     if (kayit.Durum == KayitDurumu.Hayalet)
                     {
+                        continue;
+                    }
+
+                    if (okunamayanBagliOlmayanlar is not null
+                        && kayit.Durum == KayitDurumu.BagliDegil
+                        && !string.IsNullOrWhiteSpace(kayit.Kimlik))
+                    {
+                        okunamayanBagliOlmayanlar.Add(kayit.Kimlik);
                         continue;
                     }
 
