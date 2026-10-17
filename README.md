@@ -2,13 +2,13 @@
 
 ### [⬇ Windows için indir (Kalender-Kurulum.exe)](https://github.com/SCgrS/Kalender/releases/latest/download/Kalender-Kurulum.exe)
 
-Windows 10 ve Windows 11 için duvar kâğıdının bir parçası olarak çizilen aylık bir **masaüstü takvimi**.
+Duvar kâğıdının bir parçası olarak çizilen aylık bir **masaüstü takvimi**.
 
 Ortada pencere olmadığı için masaüstünde klasör açmak, simge sürüklemek ya da seçim yapmak hiç etkilenmez. Bir günün
 üzerinde kısa süre beklediğinizde o günün Google Takvim etkinlikleri ve görevleri küçük bir kutuda listelenir. Google
 hesabına yalnızca okuma izniyle bağlanılır.
 
-Konum, boyut ve renkler özelleştirilebilir.
+Takvim konumu, boyutu ve renkleri özelleştirilebilir.
 
 ![Kalender, koyu düz renk (Mürekkep) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
 
@@ -75,11 +75,11 @@ için tepsi menüsündeki **Şimdi yenile**'ye basın.
 
 Saatin yanındaki tepsi simgesine tıklayın. Her değişiklik anında masaüstüne uygulanır.
 
-- **Arka plan:** hazır renkler, kendi renginiz, dört hazır fotoğraf ya da kendi fotoğrafınız.
-- **Renkler:** yazı, tatil ve bugün renkleri, cumartesinin kırmızı olup olmayacağı, gün kutusunun
+- **Arka plan:** Hazır renkler, kendi renginiz, dört hazır fotoğraf ya da kendi fotoğrafınız.
+- **Renkler:** Yazı, tatil ve bugün renkleri, cumartesinin kırmızı olup olmayacağı, gün kutusunun
   opaklığı.
-- **Boyut ve Konum:** takvimin hangi ekranlarda görüneceği, yeri (sürükleyerek) ve boyutu.
-- **Google:** hesap bağlantısı (aşağıda).
+- **Boyut ve Konum:** Takvimin hangi ekranlarda görüneceği, yeri (sürükleyerek) ve boyutu.
+- **Google:** Hesap bağlantısı (aşağıda).
 - **Genel:** Windows açılışında başlatma, güncelleme denetimi, Kalender'i kaldırma.
 
 Tepsi simgesine sağ tıklayınca **Şimdi yenile**, **Takvimi gizle**, **Eski duvar kâğıdıma dön**
@@ -110,9 +110,9 @@ Sol menüden **API'ler ve Hizmetler > OAuth izin ekranı**'na girin. Google sizi
 Platform** sayfasına yönlendirir.
 
 1. **Get started**'a basın.
-2. **App Information**: uygulama adı `Kalender`, destek e-postası kendi adresiniz → **Next**.
-3. **Audience**: **External** → **Next**. **Contact Information**: e-posta adresiniz → **Next**.
-4. **Finish**: ilkeyi kabul eden kutuyu işaretleyin → **Continue** → **Create**.
+2. **App Information**: Uygulama adı `Kalender`, destek e-postası kendi adresiniz → **Next**.
+3. **Audience**: **External** → **Next**. **Contact Information**: E-posta adresiniz → **Next**.
+4. **Finish**: İlkeyi kabul eden kutuyu işaretleyin → **Continue** → **Create**.
 5. Sol menüden **Branding**'e girin. **Application home page** ve **Application privacy policy
    link** kutularına `https://github.com/SCgrS/Kalender` yazın. **Authorized domains** altında
    **+ Add domain** ile `github.com` ekleyip **Save**'e basın. Logo eklemeyin, logo Google'ın
@@ -167,11 +167,11 @@ veri kopyamı da sil** kutusunu işaretlemezseniz yeniden kurduğunuzda her şey
 Kalender telemetri içermez, hiçbir veri toplamaz. Google hesabınıza yalnızca okuma izniyle bağlanır. Bağlantı doğrudan sizinle
 Google arasındadır. Görünen ayın etkinlik ve görevlerinin başlık ve tarihleriyle bir kopyası, internet yokken de gösterilebilsin
 diye bilgisayarınızda durur. **Bağlantıyı kes** bu kopyayı da siler. Kalender internete bunun dışında yalnızca resmî tatil
-listesini yenilemek ve yeni sürüm olup olmadığına bakmak için çıkar.
+listesini yenilemek ve yeni sürüm olup olmadığına bakmak için bağlanır.
 
 ## Üçüncü taraf bileşenler
 
-Kalender hiçbir üçüncü taraf pakete bağlı değildir; kullandığı her şey Microsoft'un .NET'i ve Windows'un kendisidir. Hazır
+Kalender hiçbir üçüncü taraf pakete bağlı değildir. Kullandığı her şey Microsoft'un .NET'i ve Windows'un kendisidir. Hazır
 fotoğrafların sahipleri ve lisansları [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasındadır.
 
 ## Teşekkür
