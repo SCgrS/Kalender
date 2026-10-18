@@ -105,24 +105,25 @@ internal static class Program
 
         // En üstteki görüntüler: masaüstü simgeleri ve Windows 11 görev çubuğuyla dört zemin.
         // 3840×2160 ve %150 ölçek: 2560×1440, %100 bir ekranın (kullanıcınınki) bir buçuk kat keskin hâli.
-        var masaustleri = new (string Ad, string? Foto, string? Renk, bool Ortada, bool AcikSerit)[]
+        // Ust: takvim sağ üstte (simgelerin hizasında); sağında yine bir simge sütunu boş.
+        var masaustleri = new (string Ad, string? Foto, string? Renk, bool Ortada, bool AcikSerit, bool Ust)[]
         {
-            ("masaustu-1.jpg", null, "#141A22", false, false),
-            ("masaustu-2.jpg", "sisli-cam-ormani", null, true, false),
-            ("masaustu-3.jpg", "sisli-dag-sirtlari", null, false, false),
-            ("masaustu-4.jpg", null, "#D9CFC1", true, true),
+            ("masaustu-1.jpg", null, "#141A22", false, false, false),
+            ("masaustu-2.jpg", "sisli-dag-sirtlari", null, false, false, true),
+            ("masaustu-3.jpg", "sisli-cam-ormani", null, true, false, false),
+            ("masaustu-4.jpg", null, "#D9CFC1", true, true, false),
         };
         foreach (var m in masaustleri)
         {
             (Bitmap r, Rectangle blok) = Ciz(new Size(3840, 2160), anlik,
-                m.Foto is null ? null : HazirFotograf(m.Foto), m.Renk, kutu: false);
+                m.Foto is null ? null : HazirFotograf(m.Foto), m.Renk, kutu: false, ust: m.Ust);
             Masaustu.Ciz(r, 1.5, blok, m.Ortada, m.AcikSerit);
             Kaydet(r, Path.Combine(cikti, m.Ad));
             Console.WriteLine(m.Ad);
         }
 
         // Gün kutusu: koyu düz zemin (Kuzgun), takvimin çevresi de görünsün, iki kat piksel.
-        (Bitmap resim, Rectangle alan) = Ciz(new Size(5120, 2880), anlik, null, "#0B0E13", kutu: true);
+        (Bitmap resim, Rectangle alan) = Ciz(new Size(5120, 2880), anlik, null, "#0B0E13", kutu: true, ust: false);
         // Takvim ekranın sağ altında: sağa ve alta ekran kenarına kadar, sola ve yukarı biraz masaüstü.
         int sag = Math.Min(resim.Width, alan.Right + 600);
         int alt = Math.Min(resim.Height, alan.Bottom + 300);
@@ -215,7 +216,7 @@ internal static class Program
         return Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataSnapshot"), gunler)!;
     }
 
-    private static (Bitmap Resim, Rectangle Alan) Ciz(Size boyut, object anlik, string? foto, string? renk, bool kutu)
+    private static (Bitmap Resim, Rectangle Alan) Ciz(Size boyut, object anlik, string? foto, string? renk, bool kutu, bool ust)
     {
         object store = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"))!;
         object ayarlar = Oku(store, "Current")!;
@@ -233,6 +234,12 @@ internal static class Program
         }
 
         object yer = Activator.CreateInstance(Tip("Kalender.Settings.MonitorPlacement"))!;
+        if (ust)
+        {
+            // Yatayda varsayılan yer kalır; dikeyde en üste (çizici kenar payında durdurur).
+            Yaz(yer, "YRatio", 0.0);
+        }
+
         object cizici = Activator.CreateInstance(Tip("Kalender.Rendering.DesktopSurfaceRenderer"))!;
         object yuzey = cizici.GetType().GetMethod("Render")!.Invoke(cizici,
             new[] { boyut, ayarlar, yer, anlik, Bugun, Bugun, true })!;

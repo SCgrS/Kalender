@@ -12,7 +12,7 @@ Takvim konumu, boyutu ve renkleri özelleştirilebilir.
 
 ![Kalender, koyu düz renk (Mürekkep) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
 
-![Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla](docs/masaustu-2.jpg)
+![Kalender, sisli dağ sırtları fotoğrafında, sağ üstte takvim](docs/masaustu-2.jpg)
 
 ## Kurulum
 
@@ -44,7 +44,7 @@ Görüntülerdeki etkinlik ve görevler örnektir.
 Takvim duvar kâğıdının bir parçası olarak çizilir. Zemin düz renk, uygulamayla gelen dört fotoğraftan biri ya da kendi
 fotoğrafınız olabilir.
 
-![Kalender, sisli dağ sırtları fotoğrafında](docs/masaustu-3.jpg)
+![Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla](docs/masaustu-3.jpg)
 
 ![Kalender, açık düz renk zeminde: yazılar koyu, görev çubuğu açık](docs/masaustu-4.jpg)
 
