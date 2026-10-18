@@ -182,3 +182,6 @@ teşekkür ederim.
 ---
 
 Soru ve geri bildirimler için: [x.com/CgrShn](https://x.com/CgrShn)
+
+Lisans: MIT. Ayrıntılar için [LICENSE](LICENSE) dosyasına bakınız. Uygulamayla gelen zemin fotoğrafları bu lisansa
+girmez; onların lisansı [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasındadır.
