@@ -153,16 +153,16 @@ yeter. Ayarlarınız ve Google bağlantınız güncellemede korunur. Yeni sürü
 **Kaldır**. Kaldırma, Kalender'den önceki duvar kâğıdınızı geri yükler. **Ayarlarımı ve yerel
 veri kopyamı da sil** kutusunu işaretlemezseniz yeniden kurduğunuzda her şey yerinde olur.
 
-## Verileriniz
+## Veri gizliliği
 
-Kalender hiçbir veri toplamaz, telemetri içermez, kendine ait bir sunucusu yoktur, hiçbir yere veri göndermez. Hesap ya da
-e-posta istemez.
+Kalender hiçbir veri toplamaz, telemetri içermez, kendine ait bir sunucusu yoktur, hiçbir yere veri göndermez.
 
-**Google'ı bağlamadan:** İnternete yalnızca resmî ve dinî tatil listesini almak ve yeni sürüm olup olmadığına bakmak için çıkar.
+**Google Takvim bağlantısı kurulmadığında:**\
+İnternete yalnızca resmî ve dinî tatil listesini almak ve yeni sürüm olup olmadığına bakmak için istek gönderir.
 
-**Google'ı bağlayınca:** Takvim ve görevlerinize yalnızca okuma izniyle, doğrudan Google'la bağlanır. Google Takvim'inize hiçbir
-şey eklemez, değiştirmez, silmez. Etkinliklerin yalnızca başlığını, tarihini ve rengini alır. Bunların bir kopyası, internet
-yokken de gösterilebilsin diye bilgisayarınızda şifreli durur. **Bağlantıyı kes** bu kopyayı siler.
+**Google Takvim bağlantısı kurulduğunda:**\
+Takviminize yalnızca OKUMA izniyle bağlanır. Google Takvim'inize hiçbir şey eklemez, değiştirmez, silmez. Etkinliklerin
+başlığını, tarihini ve rengini kullanıcının bilgisayarında şifreli şekilde saklar. Bu verileri hiçbir yere göndermez.
 
 ## Üçüncü taraf bileşenler
 
