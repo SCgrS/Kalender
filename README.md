@@ -165,14 +165,14 @@ veri kopyamı da sil** kutusunu işaretlemezseniz yeniden kurduğunuzda her şey
 
 ## Verileriniz
 
-Kalender hiçbir veri toplamaz, telemetri içermez ve kendine ait bir sunucusu yoktur.
+Kalender hiçbir veri toplamaz, telemetri içermez, kendine ait bir sunucusu yoktur, hiçbir yere veri göndermez. Hesap ya da
+e-posta istemez.
 
-**Google'ı bağlamadan:** Hesap ya da e-posta istemez. İnternete yalnızca resmî tatil listesini almak ve yeni sürüm olup
-olmadığına bakmak için çıkar.
+**Google'ı bağlamadan:** İnternete yalnızca resmî ve dinî tatil listesini almak ve yeni sürüm olup olmadığına bakmak için çıkar.
 
-**Google'ı bağlayınca:** Takvim ve görevlerinize yalnızca okuma izniyle, doğrudan Google'la bağlanır; hiçbir şey eklemez,
-değiştirmez, silmez. Etkinliklerin yalnızca başlığını, tarihini ve rengini alır. Bunların bir kopyası, internet yokken de
-gösterilebilsin diye bilgisayarınızda durur; **Bağlantıyı kes** bu kopyayı siler.
+**Google'ı bağlayınca:** Takvim ve görevlerinize yalnızca okuma izniyle, doğrudan Google'la bağlanır. Google Takvim'inize hiçbir
+şey eklemez, değiştirmez, silmez. Etkinliklerin yalnızca başlığını, tarihini ve rengini alır. Bunların bir kopyası, internet
+yokken de gösterilebilsin diye bilgisayarınızda durur. **Bağlantıyı kes** bu kopyayı siler.
 
 ## Üçüncü taraf bileşenler
 
