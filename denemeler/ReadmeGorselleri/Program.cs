@@ -122,15 +122,17 @@ internal static class Program
             Console.WriteLine(m.Ad);
         }
 
-        // Gün kutusu: koyu düz zemin (Kuzgun), takvimin çevresi de görünsün, iki kat piksel.
-        (Bitmap resim, Rectangle alan) = Ciz(new Size(5120, 2880), anlik, null, "#0B0E13", kutu: true, ust: false);
+        // Gün kutusu: çam ormanı fotoğrafında, takvimin çevresi de görünsün, iki kat piksel.
+        // Kutu README'de okunsun diye gerçek oranının 1,6 katı çizilir.
+        (Bitmap resim, Rectangle alan) = Ciz(new Size(5120, 2880), anlik, HazirFotograf("sisli-cam-ormani"), null,
+            kutu: true, ust: false, kutuCarpani: 1.6);
         // Takvim ekranın sağ altında: sağa ve alta ekran kenarına kadar, sola ve yukarı biraz masaüstü.
         int sag = Math.Min(resim.Width, alan.Right + 600);
         int alt = Math.Min(resim.Height, alan.Bottom + 300);
         alan = Rectangle.FromLTRB(Math.Max(0, alan.Left - 600), Math.Max(0, alan.Top - 300), sag, alt);
         using (Bitmap kirpik = resim.Clone(alan, PixelFormat.Format24bppRgb))
         {
-            Kaydet(kirpik, Path.Combine(cikti, "gun-kutusu.png"));
+            Kaydet(kirpik, Path.Combine(cikti, "gun-kutusu.jpg"));
         }
 
         Console.WriteLine("Bitti: " + cikti);
@@ -216,7 +218,7 @@ internal static class Program
         return Activator.CreateInstance(Tip("Kalender.Calendar.CalendarDataSnapshot"), gunler)!;
     }
 
-    private static (Bitmap Resim, Rectangle Alan) Ciz(Size boyut, object anlik, string? foto, string? renk, bool kutu, bool ust)
+    private static (Bitmap Resim, Rectangle Alan) Ciz(Size boyut, object anlik, string? foto, string? renk, bool kutu, bool ust, double kutuCarpani = 1)
     {
         object store = Activator.CreateInstance(Tip("Kalender.Settings.SettingsStore"))!;
         object ayarlar = Oku(store, "Current")!;
@@ -256,7 +258,7 @@ internal static class Program
             object icerik = anlik.GetType().GetMethod("For")!.Invoke(anlik, new object[] { Bugun })!;
             double olcek = boyut.Width / 2560.0;
             Color soluk = (Color)Oku(Tip("Kalender.Rendering.Theme").GetMethod("From")!.Invoke(null, new[] { gorunum })!, "Muted")!;
-            using Bitmap k = GunKutusu(icerik, olcek, soluk);
+            using Bitmap k = GunKutusu(icerik, olcek * kutuCarpani, soluk);
 
             // Uygulamadaki gibi: hücrenin altında ortalı, gölge payı kadar yukarıda.
             int pay = (int)Math.Round(10 * olcek);

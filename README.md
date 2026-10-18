@@ -53,7 +53,7 @@ fotoğrafınız olabilir.
 Fareyi bir günün üzerinde kısa süre tutunca o günün kayıtları saat sırasıyla listelenir. Her
 satırın rengi Google'daki rengiyle aynıdır, tamamlanmış görevler gri görünür.
 
-![Gün kutusu: 14 Ekim'in duruşma, toplantı, bilirkişi incelemesi ve iki görevi](docs/gun-kutusu.png)
+![Gün kutusu: 14 Ekim'in duruşma, toplantı, bilirkişi incelemesi ve iki görevi](docs/gun-kutusu.jpg)
 
 ### Ay düğmeleri
 

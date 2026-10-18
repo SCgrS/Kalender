@@ -130,8 +130,8 @@ internal static class Masaustu
     private static List<Bitmap?> Uygulamalar(int boy, bool kullanici) => kullanici
         ? new()
         {
-            Simge(@"C:\Program Files\Mozilla Firefox\firefox.exe", 0, boy),
             Simge(@"C:\Program Files\Google\Chrome\Application\chrome.exe", 0, boy),
+            Simge(SpotifyYolu(), 0, boy),
         }
         : new()
         {
@@ -140,13 +140,43 @@ internal static class Masaustu
             Simge(@"C:\Program Files\Google\Chrome\Application\chrome.exe", 0, boy),
         };
 
+    /// <summary>
+    /// Spotify'ın exe'si: Microsoft Store paketi (WindowsApps klasörü listelenemediği için yolu
+    /// Get-AppxPackage'dan) ya da sitesinden kurulan sürüm. Bulunamazsa simge çizilmez.
+    /// </summary>
+    private static string SpotifyYolu()
+    {
+        try
+        {
+            var bilgi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                "-NoProfile -Command \"(Get-AppxPackage SpotifyAB.SpotifyMusic).InstallLocation\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var surec = System.Diagnostics.Process.Start(bilgi)!;
+            string klasor = surec.StandardOutput.ReadToEnd().Trim();
+            surec.WaitForExit();
+            if (klasor.Length > 0 && File.Exists(Path.Combine(klasor, "Spotify.exe")))
+            {
+                return Path.Combine(klasor, "Spotify.exe");
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Spotify", "Spotify.exe");
+    }
+
     private static Color Zemin(bool acik) => acik ? Color.FromArgb(238, 243, 243, 243) : Color.FromArgb(238, 32, 32, 32);
 
     private static Color Yazi(bool acik) => acik ? Color.FromArgb(20, 20, 20) : Color.White;
 
     /// <summary>
     /// Tam şerit, kullanıcının kendi görev çubuğu gibi: simgeler solda, arama düğmesi yok,
-    /// sabitli uygulamalar Firefox ve Chrome, saat sağda.
+    /// sabitli uygulamalar Chrome ve Spotify (ikisi de açık), saat sağda.
     /// </summary>
     private static void Serit(Graphics g, Size ekran, double s, bool acik, int yukseklik)
     {
@@ -190,7 +220,7 @@ internal static class Masaustu
 
     /// <summary>
     /// Başlat, (kullanıcının düzeninde değilse) Ara ve uygulamalar. Açık uygulamanın altında
-    /// çizgi: kullanıcının düzeninde Chrome, öbüründe Dosya Gezgini.
+    /// çizgi: kullanıcının düzeninde Chrome ve Spotify, öbüründe Dosya Gezgini.
     /// </summary>
     private static void Dugmeler(Graphics g, float x, float y, float dugme, double s, bool acik, bool kullanici)
     {
@@ -227,7 +257,7 @@ internal static class Masaustu
         }
 
         List<Bitmap?> uyg = Uygulamalar(256, kullanici);
-        int acikSira = kullanici ? 1 : 0;
+        int acikSon = kullanici ? 1 : 0;
         for (int i = 0; i < uyg.Count; i++)
         {
             if (uyg[i] is { } b)
@@ -236,7 +266,7 @@ internal static class Masaustu
                 b.Dispose();
             }
 
-            if (i == acikSira)
+            if (i <= acikSon)
             {
                 using var vurgu = new SolidBrush(acik ? Color.FromArgb(120, 0, 0, 0) : Color.FromArgb(150, 255, 255, 255));
                 float w = (float)(16 * s);
