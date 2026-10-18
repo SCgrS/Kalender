@@ -154,7 +154,8 @@ yeniden bağlanın.
 ## Güncelleme
 
 Kalender yeni sürümleri kendisi bulur ve bir pencereyle haber verir. **Güncelle**'ye basmanız
-yeter. Ayarlarınız ve Google bağlantınız güncellemede korunur. Güncelleme denetimi **Ayarlar > Genel**'den kapatılabilir.
+yeter. Ayarlarınız ve Google bağlantınız güncellemede korunur. Yeni sürüm olup olmadığına hemen bakmak için
+**Ayarlar > Genel > Şimdi denetle**'ye basın. Otomatik denetim aynı sayfadan kapatılabilir.
 
 ## Kaldırma
 

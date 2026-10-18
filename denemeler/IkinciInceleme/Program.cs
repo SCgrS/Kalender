@@ -1592,7 +1592,7 @@ internal static class Program
         object h = YeniHizmet();
         try
         {
-            Task Denetim() => (Task)Cagir(h, "CheckAsync", false)!;
+            Task Denetim() => (Task)Cagir(h, "CheckAsync", false, false)!;
             Task Kur() => (Task)Cagir(h, "InstallAsync", false)!;
             string Durum() => Oku(h, "State")!.ToString()!;
             int Indirme() => sunucu.Istek("/indir.exe");

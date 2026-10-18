@@ -278,7 +278,8 @@ internal static class Program
         return (hizmet, Oku(store, "Current")!, () => istek);
     }
 
-    private static Task DenetleAsync(object hizmet, bool hatirlat) => (Task)Cagir(hizmet, "CheckAsync", hatirlat)!;
+    private static Task DenetleAsync(object hizmet, bool hatirlat, bool elle = false)
+        => (Task)Cagir(hizmet, "CheckAsync", hatirlat, elle)!;
 
     /// <summary>Sürümün kullanıcıya gösterilen yazılışı (iki bölümlü; uygulamanın kendi işleviyle).</summary>
     private static string Kisa(Version surum)
@@ -426,6 +427,19 @@ internal static class Program
             await DenetleAsync(h, true);
             Denetle("denetim kapalıyken ağa çıkılmaz, pencere istenmez",
                 sunucu.Istek(yol) == once && istek() == 0 && Durum(h) == "Idle");
+            ((IDisposable)h).Dispose();
+        }
+
+        {
+            // "Şimdi denetle": otomatik denetim kapalıyken de sorar, pencere istemez.
+            var (h, ayar, istek) = YeniHizmet();
+            Yaz(ayar, "CheckForUpdates", false);
+            int once = sunucu.Istek(yol);
+            await DenetleAsync(h, false, elle: true);
+            Denetle("Şimdi denetle, otomatik denetim kapalıyken de yeni sürümü bulur",
+                sunucu.Istek(yol) == once + 1 && Durum(h) == "Available" && (bool)Oku(h, "ElleDenetlendi")!
+                && !(bool)Oku(h, "Checking")! && istek() == 0, Durum(h));
+            Denetle("Şimdi denetle ayarı değiştirmez", (bool)Oku(ayar, "CheckForUpdates")! == false);
             ((IDisposable)h).Dispose();
         }
 

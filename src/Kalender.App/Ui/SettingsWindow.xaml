@@ -716,6 +716,11 @@
                                             <TextBlock Style="{StaticResource Adim}" Margin="0"
                                                        Text="Çıkan pencerede Client ID ve Client secret yazar. İkisini de aşağıya yapıştırın." />
                                         </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="9." />
+                                            <TextBlock Style="{StaticResource Adim}" Margin="0"
+                                                       Text="Google'a bağlan'a basın. Tarayıcıda &quot;Google bu uygulamayı doğrulamadı&quot; uyarısı çıkarsa Gelişmiş &gt; Kalender'e git (güvenli değil) yolunu izleyin. Uygulamayı kendiniz oluşturduğunuz ve Google'ca incelenmediği için bu uyarı beklenen bir durumdur." />
+                                        </DockPanel>
                                     </StackPanel>
                                 </Expander>
                                 <Separator />
@@ -868,6 +873,16 @@
                                               Checked="OnUpdateCheckChanged" Unchecked="OnUpdateCheckChanged" />
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource SatirBasligi}" Text="Güncellemeleri otomatik denetle" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator />
+                                <DockPanel Style="{StaticResource Satir}">
+                                    <Button x:Name="CheckNowButton" DockPanel.Dock="Right" Content="Şimdi denetle"
+                                            Margin="16,0,0,0" VerticalAlignment="Center" Click="OnCheckNowClick" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource SatirBasligi}" Text="Güncellemeleri şimdi denetle" />
+                                        <TextBlock Style="{StaticResource SatirAciklamasi}"
+                                                   Text="Yeni sürüm olup olmadığına hemen bakar." />
                                     </StackPanel>
                                 </DockPanel>
                                 <Separator />

@@ -173,6 +173,15 @@ internal sealed class UpdateService : IDisposable
     /// <summary>Son denetim başarısız mı oldu (ağ yok, GitHub'a ulaşılamadı…)?</summary>
     public bool LastCheckFailed { get; private set; }
 
+    /// <summary>Denetim şu an sürüyor mu? ("Şimdi denetle" düğmesi bu sırada kapalı.)</summary>
+    public bool Checking => _checking;
+
+    /// <summary>
+    /// Bu oturumda "Şimdi denetle"ye basıldı mı? Otomatik denetim kapalıyken de elle
+    /// bulunan sürüm bildirilir.
+    /// </summary>
+    public bool ElleDenetlendi { get; private set; }
+
     public void Start() => _timer.Start();
 
     /// <summary>Son deneme eskiyse hemen denetler. Ayarlar penceresi açılırken çağrılır.</summary>
@@ -213,9 +222,12 @@ internal sealed class UpdateService : IDisposable
     /// geçer; bir sonraki denetimde yeniden denenir.
     /// </summary>
     /// <param name="remind">Yeni sürüm varsa ve zamanı geldiyse pencereyle haber verilsin mi?</param>
-    public async Task CheckAsync(bool remind = false)
+    /// <param name="elle">
+    /// Kullanıcı "Şimdi denetle"ye bastı: otomatik denetim kapalı olsa da denetlenir.
+    /// </param>
+    public async Task CheckAsync(bool remind = false, bool elle = false)
     {
-        if (_checking || !_settings.Current.CheckForUpdates
+        if (_checking || (!elle && !_settings.Current.CheckForUpdates)
             || State is UpdateState.Downloading or UpdateState.Installing)
         {
             return;
@@ -223,6 +235,11 @@ internal sealed class UpdateService : IDisposable
 
         _checking = true;
         _lastAttemptUtc = DateTime.UtcNow;
+        if (elle)
+        {
+            ElleDenetlendi = true;
+            Changed?.Invoke();
+        }
 
         try
         {

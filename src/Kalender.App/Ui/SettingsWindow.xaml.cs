@@ -1721,6 +1721,13 @@ public partial class SettingsWindow : Window
         RefreshUpdateUi();
     }
 
+    /// <summary>"Şimdi denetle": otomatik denetim kapalı olsa da en son sürüm hemen sorulur.</summary>
+    private async void OnCheckNowClick(object sender, RoutedEventArgs e)
+    {
+        await _host.Updates.CheckAsync(elle: true);
+        RefreshUpdateUi();
+    }
+
     /// <summary>
     /// Sol alttaki bildirime tıklandı: yeni sürüm indirilir ve kurulur.
     /// Kalender kurulu değil de taşınabilir çalışıyorsa kendini kuracağı bir
@@ -1760,7 +1767,12 @@ public partial class SettingsWindow : Window
         UpdateService u = _host.Updates;
         string? yeni = u.Available is UpdateInfo bulunan ? Installer.VersionText(bulunan.Version) : null;
 
-        UpdateButton.Visibility = yeni is not null && S.CheckForUpdates ? Visibility.Visible : Visibility.Collapsed;
+        // Otomatik denetim kapalıyken de "Şimdi denetle"nin bulduğu sürüm gösterilir.
+        bool denetleniyor = S.CheckForUpdates || u.ElleDenetlendi;
+        UpdateButton.Visibility = yeni is not null && denetleniyor ? Visibility.Visible : Visibility.Collapsed;
+        CheckNowButton.IsEnabled = !u.Checking
+            && u.State is not (UpdateState.Downloading or UpdateState.Installing);
+        CheckNowButton.Content = u.Checking ? "Denetleniyor…" : "Şimdi denetle";
         UpdateButton.ToolTip = u.State == UpdateState.Failed ? u.Error : null;
 
         (UpdateTitle.Text, UpdateDetail.Text) = u.State switch
@@ -1775,8 +1787,10 @@ public partial class SettingsWindow : Window
 
         UpdateNote.Text = true switch
         {
-            _ when !S.CheckForUpdates => "Güncelleme denetimi kapalı.",
+            _ when u.Checking => "Güncellemeler denetleniyor…",
+            _ when !denetleniyor => "Güncelleme denetimi kapalı.",
             _ when yeni is not null => $"Yeni sürüm var: {yeni}. Sol alttaki bildirime tıklayınca indirilip kurulur.",
+            _ when u.LastCheckFailed && !S.CheckForUpdates => "Güncellemeler şu an denetlenemedi. İnternet bağlantınızı denetleyip yeniden deneyin.",
             _ when u.LastCheckFailed => "Güncellemeler şu an denetlenemedi; daha sonra yeniden denenecek.",
             _ when u.LastChecked is DateTime t => $"Güncel. Son denetim: {t:HH:mm}.",
             _ => "Güncellemeler denetleniyor…",
