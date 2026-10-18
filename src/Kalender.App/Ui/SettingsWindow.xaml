@@ -97,6 +97,12 @@
                 <Setter Property="Foreground" Value="{DynamicResource SolukYaziFirca}" />
                 <Setter Property="DockPanel.Dock" Value="Left" />
             </Style>
+            <!-- Google kurulum adımlarının bölüm başlığı (README'deki 1–5. bölümler). -->
+            <Style x:Key="AdimBolumu" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Margin" Value="0,12,0,8" />
+            </Style>
 
             <Style x:Key="Sayfa" TargetType="ScrollViewer">
                 <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
@@ -674,52 +680,83 @@
                                         </StackPanel>
                                     </Expander.Header>
                                     <StackPanel>
+                                        <TextBlock Style="{StaticResource AdimBolumu}" Margin="0,4,0,8" Text="1. Google Cloud projesi oluşturun" />
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="1." />
-                                            <TextBlock Style="{StaticResource Adim}"><Hyperlink
-                                                NavigateUri="https://console.cloud.google.com"
-                                                RequestNavigate="OnLinkClicked">console.cloud.google.com</Hyperlink><Run
-                                                Text=" adresine kendi Google hesabınızla girin." /></TextBlock>
+                                            <TextBlock Style="{StaticResource Adim}"><Hyperlink NavigateUri="https://console.cloud.google.com" RequestNavigate="OnLinkClicked">console.cloud.google.com</Hyperlink><Run Text=" adresine Google hesabınızla girin." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="2." />
-                                            <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Üstteki proje seçiciden yeni bir proje oluşturun (adı önemli değil, örn. Kalender)." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Üstteki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu) tıklayın, " /><Run FontWeight="SemiBold" Text="New project" /><Run Text="'e basın, " /><Run FontWeight="SemiBold" Text="Project name" /><Run Text=" kutusuna " /><Run FontFamily="Consolas" Text="Kalender" /><Run Text=" yazıp " /><Run FontWeight="SemiBold" Text="Create" /><Run Text="'e basın. Sonra seçiciden bu oluşturduğunuz projeyi seçin." /></TextBlock>
+                                        </DockPanel>
+                                        <TextBlock Style="{StaticResource AdimBolumu}" Text="2. İki API'yi açın" />
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="1." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Sol menüden " /><Run FontWeight="SemiBold" Text="APIs &amp; Services &gt; Library" /><Run Text="'ye girin." /></TextBlock>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="2." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Arama kutusuna " /><Run FontFamily="Consolas" Text="Google Calendar API" /><Run Text=" yazın, sonuca tıklayın, " /><Run FontWeight="SemiBold" Text="Enable" /><Run Text="'a basın." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="3." />
-                                            <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Sol menüden API'ler ve Hizmetler &gt; Kitaplık'a girin; Google Calendar API ve Google Tasks API'yi bulup ikisini de Etkinleştir'e basın." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Library" /><Run Text="'ye dönüp " /><Run FontFamily="Consolas" Text="Google Tasks API" /><Run Text=" arayın, onu da " /><Run FontWeight="SemiBold" Text="Enable" /><Run Text="'a basın." /></TextBlock>
+                                        </DockPanel>
+                                        <TextBlock Style="{StaticResource AdimBolumu}" Text="3. İzin ekranını hazırlayın" />
+                                        <TextBlock Style="{StaticResource Adim}"><Run Text="Sol menüden " /><Run FontWeight="SemiBold" Text="APIs &amp; Services &gt; OAuth consent screen" /><Run Text="'e girin. Google sizi " /><Run FontWeight="SemiBold" Text="Google Auth Platform" /><Run Text=" sayfasına yönlendirir." /></TextBlock>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="1." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Get started" /><Run Text="'a basın." /></TextBlock>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="2." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="App Information" /><Run Text=": " /><Run FontWeight="SemiBold" Text="App name" /><Run Text=" kutusuna " /><Run FontFamily="Consolas" Text="Kalender" /><Run Text=" yazın, " /><Run FontWeight="SemiBold" Text="User support email" /><Run Text=" olarak kendi adresinizi seçin → " /><Run FontWeight="SemiBold" Text="Next" /><Run Text="." /></TextBlock>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="3." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Audience" /><Run Text=": " /><Run FontWeight="SemiBold" Text="External" /><Run Text=" → " /><Run FontWeight="SemiBold" Text="Next" /><Run Text=". " /><Run FontWeight="SemiBold" Text="Contact Information" /><Run Text=": E-posta adresinizi yazın → " /><Run FontWeight="SemiBold" Text="Next" /><Run Text="." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="4." />
-                                            <TextBlock Style="{StaticResource Adim}"
-                                                       Text="API'ler ve Hizmetler &gt; OAuth izin ekranı'na girin (Google Auth Platform sayfasına yönlendirir). Get started &gt; uygulama adı ve e-postanız &gt; Audience: External &gt; iletişim e-postanız &gt; ilkeyi kabul edip Create." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Finish" /><Run Text=": " /><Run FontWeight="SemiBold" Text="I agree to the Google API Services: User Data Policy" /><Run Text=" kutusunu işaretleyin → " /><Run FontWeight="SemiBold" Text="Continue" /><Run Text=" → " /><Run FontWeight="SemiBold" Text="Create" /><Run Text="." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="5." />
-                                            <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Sol menüden Branding: Application home page ve Application privacy policy link kutularına https://github.com/SCgrS/Kalender yazın. Authorized domains &gt; + Add domain: github.com &gt; Save. Logo eklemeyin; logo Google'ın ayrıca incelemesini gerektirir." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Sol menüden " /><Run FontWeight="SemiBold" Text="Branding" /><Run Text="'e girin. " /><Run FontWeight="SemiBold" Text="Application home page" /><Run Text=" ve " /><Run FontWeight="SemiBold" Text="Application privacy policy link" /><Run Text=" kutularına " /><Run FontFamily="Consolas" Text="https://github.com/SCgrS/Kalender" /><Run Text=" yazın. " /><Run FontWeight="SemiBold" Text="Authorized domains" /><Run Text=" altında " /><Run FontWeight="SemiBold" Text="+ Add domain" /><Run Text=" ile " /><Run FontFamily="Consolas" Text="github.com" /><Run Text=" ekleyip " /><Run FontWeight="SemiBold" Text="Save" /><Run Text="'e basın. Logo eklemeyin, logo Google'ın uygulamayı ayrıca incelemesini gerektirir." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
                                             <TextBlock Style="{StaticResource AdimNo}" Text="6." />
-                                            <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Sol menüden Audience &gt; Publish app &gt; Confirm. Yayımlamazsanız uygulama Testing durumunda kalır: kendinizi Test users bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Sol menüden " /><Run FontWeight="SemiBold" Text="Audience" /><Run Text="'a girip " /><Run FontWeight="SemiBold" Text="Publish app" /><Run Text=" → " /><Run FontWeight="SemiBold" Text="Confirm" /><Run Text="'e basın. Durum " /><Run FontWeight="SemiBold" Text="In production" /><Run Text=" olur. Yayımlamazsanız uygulama " /><Run FontWeight="SemiBold" Text="Testing" /><Run Text=" durumunda kalır. O zaman kendinizi " /><Run FontWeight="SemiBold" Text="Test users" /><Run Text=" bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür." /></TextBlock>
+                                        </DockPanel>
+                                        <TextBlock Style="{StaticResource AdimBolumu}" Text="4. İstemci kimliğini oluşturun" />
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="1." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Sol menüden " /><Run FontWeight="SemiBold" Text="Clients" /><Run Text=" → " /><Run FontWeight="SemiBold" Text="+ Create client" /><Run Text="." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
-                                            <TextBlock Style="{StaticResource AdimNo}" Text="7." />
-                                            <TextBlock Style="{StaticResource Adim}"
-                                                       Text="Sol menüden Clients &gt; + Create client. Application type: Desktop app. Ad: Kalender &gt; Create." />
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="2." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Application type" /><Run Text=": " /><Run FontWeight="SemiBold" Text="Desktop app" /><Run Text=". " /><Run FontWeight="SemiBold" Text="Name" /><Run Text=": " /><Run FontFamily="Consolas" Text="Kalender" /><Run Text=" → " /><Run FontWeight="SemiBold" Text="Create" /><Run Text="." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
-                                            <TextBlock Style="{StaticResource AdimNo}" Text="8." />
-                                            <TextBlock Style="{StaticResource Adim}" Margin="0"
-                                                       Text="Çıkan pencerede Client ID ve Client secret yazar. İkisini de aşağıya yapıştırın." />
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="3." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="Çıkan pencerede " /><Run FontWeight="SemiBold" Text="Client ID" /><Run Text=" ve " /><Run FontWeight="SemiBold" Text="Client secret" /><Run Text=" yazar. İkisini de kopyalayın. Pencereyi kapatsanız bile " /><Run FontWeight="SemiBold" Text="Clients" /><Run Text=" listesinden yeniden açabilirsiniz." /></TextBlock>
+                                        </DockPanel>
+                                        <TextBlock Style="{StaticResource AdimBolumu}" Text="5. Kalender'e yapıştırın" />
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="1." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run Text="İki değeri aşağıdaki " /><Run FontWeight="SemiBold" Text="İstemci kimliği (Client ID)" /><Run Text=" ve " /><Run FontWeight="SemiBold" Text="İstemci gizli anahtarı (Client secret)" /><Run Text=" kutularına yapıştırın." /></TextBlock>
                                         </DockPanel>
                                         <DockPanel>
-                                            <TextBlock Style="{StaticResource AdimNo}" Text="9." />
-                                            <TextBlock Style="{StaticResource Adim}" Margin="0"
-                                                       Text="Google'a bağlan'a basın. Tarayıcıda &quot;Google bu uygulamayı doğrulamadı&quot; uyarısı çıkarsa Gelişmiş &gt; Kalender'e git (güvenli değil) yolunu izleyin. Uygulamayı kendiniz oluşturduğunuz ve Google'ca incelenmediği için bu uyarı beklenen bir durumdur." />
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="2." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Google'a bağlan" /><Run Text="'a basın. Tarayıcıda Google onay ekranı açılır." /></TextBlock>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="3." />
+                                            <TextBlock Style="{StaticResource Adim}"><Run FontWeight="SemiBold" Text="Google hasn't verified this app" /><Run Text=" uyarısı çıkarsa " /><Run FontWeight="SemiBold" Text="Advanced" /><Run Text=" → " /><Run FontWeight="SemiBold" Text="Go to Kalender (unsafe)" /><Run Text=" yolunu izleyin. Uygulamayı kendiniz oluşturduğunuz ve Google'ca incelenmediği için bu uyarı beklenen bir durumdur." /></TextBlock>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource AdimNo}" Text="4." />
+                                            <TextBlock Style="{StaticResource Adim}" Margin="0"><Run Text='İzin verince tarayıcıda "Kalender bağlandı" yazısını görürsünüz. Sekmeyi kapatabilirsiniz.' /></TextBlock>
                                         </DockPanel>
                                     </StackPanel>
                                 </Expander>

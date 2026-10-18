@@ -95,47 +95,37 @@ Aynı adımlar Ayarlar penceresinde **Client ID nasıl alınır?** başlığı a
 ### 1. Google Cloud projesi oluşturun
 
 1. [console.cloud.google.com](https://console.cloud.google.com) adresine Google hesabınızla girin.
-2. Üstteki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu) tıklayın, **Yeni
-   proje**'ye basın, ada `Kalender` yazıp **Oluştur**'a basın. Sonra seçiciden bu projeyi seçin.
+2. Üstteki proje seçicisine (Google Cloud yazısının sağındaki açılır kutu) tıklayın, **New project**'e basın, **Project name** kutusuna `Kalender` yazıp **Create**'e basın. Sonra seçiciden bu oluşturduğunuz projeyi seçin.
 
 ### 2. İki API'yi açın
 
-1. Sol menüden **API'ler ve Hizmetler > Kitaplık**'a girin.
-2. Arama kutusuna `Google Calendar API` yazın, sonuca tıklayın, **Etkinleştir**'e basın.
-3. Kitaplığa dönüp `Google Tasks API` arayın, onu da **Etkinleştir**'e basın.
+1. Sol menüden **APIs & Services > Library**'ye girin.
+2. Arama kutusuna `Google Calendar API` yazın, sonuca tıklayın, **Enable**'a basın.
+3. **Library**'ye dönüp `Google Tasks API` arayın, onu da **Enable**'a basın.
 
 ### 3. İzin ekranını hazırlayın
 
-Sol menüden **API'ler ve Hizmetler > OAuth izin ekranı**'na girin. Google sizi **Google Auth
-Platform** sayfasına yönlendirir.
+Sol menüden **APIs & Services > OAuth consent screen**'e girin. Google sizi **Google Auth Platform** sayfasına yönlendirir.
 
 1. **Get started**'a basın.
-2. **App Information**: Uygulama adı `Kalender`, destek e-postası kendi adresiniz → **Next**.
-3. **Audience**: **External** → **Next**. **Contact Information**: E-posta adresiniz → **Next**.
-4. **Finish**: İlkeyi kabul eden kutuyu işaretleyin → **Continue** → **Create**.
-5. Sol menüden **Branding**'e girin. **Application home page** ve **Application privacy policy
-   link** kutularına `https://github.com/SCgrS/Kalender` yazın. **Authorized domains** altında
-   **+ Add domain** ile `github.com` ekleyip **Save**'e basın. Logo eklemeyin, logo Google'ın
-   uygulamayı ayrıca incelemesini gerektirir.
-6. Sol menüden **Audience**'a girip **Publish app** → **Confirm**'e basın. Durum **In
-   production** olur. Yayımlamazsanız uygulama **Testing** durumunda kalır. O zaman kendinizi
-   **Test users** bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür.
+2. **App Information**: **App name** kutusuna `Kalender` yazın, **User support email** olarak kendi adresinizi seçin → **Next**.
+3. **Audience**: **External** → **Next**. **Contact Information**: E-posta adresinizi yazın → **Next**.
+4. **Finish**: **I agree to the Google API Services: User Data Policy** kutusunu işaretleyin → **Continue** → **Create**.
+5. Sol menüden **Branding**'e girin. **Application home page** ve **Application privacy policy link** kutularına `https://github.com/SCgrS/Kalender` yazın. **Authorized domains** altında **+ Add domain** ile `github.com` ekleyip **Save**'e basın. Logo eklemeyin, logo Google'ın uygulamayı ayrıca incelemesini gerektirir.
+6. Sol menüden **Audience**'a girip **Publish app** → **Confirm**'e basın. Durum **In production** olur. Yayımlamazsanız uygulama **Testing** durumunda kalır. O zaman kendinizi **Test users** bölümüne eklemeniz gerekir ve Google bağlantıyı 7 günde bir düşürür.
 
 ### 4. İstemci kimliğini oluşturun
 
 1. Sol menüden **Clients** → **+ Create client**.
-2. Application type: **Desktop app**. Ad: `Kalender` → **Create**.
-3. Çıkan pencerede **Client ID** ve **Client secret** yazar. İkisini de kopyalayın. Pencereyi
-   kapatsanız bile Clients listesinden yeniden açabilirsiniz.
+2. **Application type**: **Desktop app**. **Name**: `Kalender` → **Create**.
+3. Çıkan pencerede **Client ID** ve **Client secret** yazar. İkisini de kopyalayın. Pencereyi kapatsanız bile **Clients** listesinden yeniden açabilirsiniz.
 
 ### 5. Kalender'e yapıştırın
 
 1. Tepsi simgesine tıklayıp **Ayarlar**'ı açın, soldan **Google** sayfasına geçin.
-2. İki değeri **İstemci kimliği (Client ID)** ve **İstemci gizli anahtarı (Client secret)**
-   kutularına yapıştırın.
+2. İki değeri **İstemci kimliği (Client ID)** ve **İstemci gizli anahtarı (Client secret)** kutularına yapıştırın.
 3. **Google'a bağlan**'a basın. Tarayıcıda Google onay ekranı açılır.
-4. "Google bu uygulamayı doğrulamadı" uyarısı çıkarsa **Gelişmiş > Kalender'e git (güvenli
-   değil)** yolunu izleyin. Uygulama Google'ca incelenmediği için bu uyarı beklenen bir durumdur.
+4. **Google hasn't verified this app** uyarısı çıkarsa **Advanced** → **Go to Kalender (unsafe)** yolunu izleyin. Uygulamayı kendiniz oluşturduğunuz ve Google'ca incelenmediği için bu uyarı beklenen bir durumdur.
 5. İzin verince tarayıcıda "Kalender bağlandı" yazısını görürsünüz. Sekmeyi kapatabilirsiniz.
 
 Bağlanırken durum satırının yanında dönen bir çember görünür. Önce tarayıcıdaki onay beklenir,

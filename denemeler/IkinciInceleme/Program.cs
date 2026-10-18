@@ -5392,8 +5392,10 @@ internal static class Program
         string metin = AyarPenceresiMetni();
         string beniOku = File.ReadAllText(Path.Combine(DepoKoku(), "README.md"));
         Denetle("iki kutuya da README'deki adımdaki gibi depo adresi yazdırılıyor, kaldırılan README bölümüne bağlantı yok",
-            metin.Contains("Application home page ve Application privacy policy link kutularına https://github.com/SCgrS/Kalender yazın.",
-                StringComparison.Ordinal)
+            // 1.18'den beri adım README'deki gibi parçalı (kalın İngilizce adlar, kod yazısıyla adres).
+            metin.IndexOf("Application privacy policy link", StringComparison.Ordinal) is int ad and >= 0
+            && metin.IndexOf(" kutularına ", ad, StringComparison.Ordinal) is int kutu and > 0
+            && metin.IndexOf("https://github.com/SCgrS/Kalender", kutu, StringComparison.Ordinal) > kutu
             && !metin.Contains("#verileriniz-nerede-duruyor", StringComparison.Ordinal)
             && beniOku.Contains("link** kutularına `https://github.com/SCgrS/Kalender` yazın.", StringComparison.Ordinal)
             && !beniOku.Contains("#verileriniz-nerede-duruyor", StringComparison.Ordinal),
