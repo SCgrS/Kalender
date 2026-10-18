@@ -174,6 +174,11 @@ listesini yenilemek ve yeni sürüm olup olmadığına bakmak için bağlanır.
 Kalender hiçbir üçüncü taraf pakete bağlı değildir. Kullandığı her şey Microsoft'un .NET'i ve Windows'un kendisidir. Hazır
 fotoğrafların sahipleri ve lisansları [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasındadır.
 
+## Otomatik denetimler
+
+[![CodeQL Advanced](https://github.com/SCgrS/Kalender/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/SCgrS/Kalender/actions/workflows/codeql.yml)\
+[![Dependency Review](https://github.com/SCgrS/Kalender/actions/workflows/dependency-review.yml/badge.svg?branch=main)](https://github.com/SCgrS/Kalender/actions/workflows/dependency-review.yml)
+
 ## Teşekkür
 
 Uygulamayla gelen zemin fotoğraflarını Unsplash'te herkesle paylaşan Dan Otis, Chris wu, Patrick Carr ve Artur Adilkhanian'a
