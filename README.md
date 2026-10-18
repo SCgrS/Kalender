@@ -10,7 +10,7 @@ hesabına yalnızca okuma izniyle bağlanılır.
 
 Takvim konumu, boyutu ve renkleri özelleştirilebilir.
 
-![Kalender, koyu düz renk (Mürekkep) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
+![Kalender, koyu düz renk (Kuzgun) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
 
 ![Kalender, sisli dağ sırtları fotoğrafında, sağ üstte takvim](docs/masaustu-2.jpg)
 

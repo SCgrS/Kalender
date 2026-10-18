@@ -108,7 +108,7 @@ internal static class Program
         // Ust: takvim sağ üstte (simgelerin hizasında); sağında yine bir simge sütunu boş.
         var masaustleri = new (string Ad, string? Foto, string? Renk, bool Ortada, bool AcikSerit, bool Ust)[]
         {
-            ("masaustu-1.jpg", null, "#141A22", false, false, false),
+            ("masaustu-1.jpg", null, "#0B0E13", false, false, false),
             ("masaustu-2.jpg", "sisli-dag-sirtlari", null, false, false, true),
             ("masaustu-3.jpg", "sisli-cam-ormani", null, true, false, false),
             ("masaustu-4.jpg", null, "#D9CFC1", true, true, false),
