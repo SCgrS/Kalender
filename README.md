@@ -163,6 +163,8 @@ Kalender hiçbir veri toplamaz, telemetri içermez, kendine ait bir sunucusu yok
 **Google Takvim bağlantısı kurulduğunda:**\
 Takviminize yalnızca OKUMA izniyle bağlanır. Google Takvim'inize hiçbir şey eklemez, değiştirmez, silmez. Etkinliklerin
 başlığını, tarihini ve rengini kullanıcının bilgisayarında şifreli şekilde saklar. Bu verileri hiçbir yere göndermez.
+İnternete yalnızca resmî ve dinî tatil listesini almak, yeni sürüm olup olmadığına bakmak ve Google Takvim'inizi okumak
+için istek gönderir.
 
 ## Üçüncü taraf bileşenler
 
