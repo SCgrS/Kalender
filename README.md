@@ -165,57 +165,14 @@ veri kopyamı da sil** kutusunu işaretlemezseniz yeniden kurduğunuzda her şey
 
 ## Verileriniz
 
-Kalender telemetri içermez; kullanım istatistiği, hata raporu ya da başka bir bilgi toplamaz ve kendine ait bir sunucusu yoktur.
-Aşağıda, Google'ı bağlamadan ve bağlayarak kullandığınızda Kalender'in neye bağlandığı, ne istediği, ne gönderdiği ve
-bilgisayarınızda ne tuttuğu tek tek yazıyor.
+Kalender hiçbir veri toplamaz, telemetri içermez ve kendine ait bir sunucusu yoktur.
 
-### Google'ı bağlamadan
+**Google'ı bağlamadan:** Hesap ya da e-posta istemez. İnternete yalnızca resmî tatil listesini almak ve yeni sürüm olup
+olmadığına bakmak için çıkar.
 
-Kalender bir hesap, ad ya da e-posta istemez. İnternete yalnızca iki iş için çıkar:
-
-- **Resmî tatiller:** Google'ın herkese açık Türkiye resmî tatil takvimini (`calendar.google.com` üzerindeki tatil dosyası)
-  30 günde bir indirir. İstek hesapsızdır; içinde sizinle ilgili bir bilgi yoktur.
-- **Yeni sürüm denetimi:** 12 saatte bir (Ayarlar açılınca ya da **Şimdi denetle**'ye basınca da) GitHub'a
-  (`api.github.com`) Kalender'in en son sürümünü sorar. İstekte yalnızca "Kalender" adı ve kurulu sürüm numarası
-  geçer. Denetim **Ayarlar > Genel**'den kapatılabilir.
-
-Her internet isteğinde olduğu gibi karşı taraf (Google ya da GitHub) bilgisayarınızın IP adresini görür. Bunun dışında Kalender
-hiçbir yere bir şey göndermez.
-
-### Google'ı bağlayınca
-
-Yukarıdakilere ek olarak:
-
-- **İstediği izin:** Yalnız iki okuma izni: Google Takvim'i görüntüleme (`calendar.readonly`) ve Google Görevler'i
-  görüntüleme (`tasks.readonly`). Etkinlik ya da görev ekleyemez, değiştiremez, silemez. Gmail, Drive, kişiler gibi başka
-  hiçbir şeye erişemez.
-- **Kimin uygulaması:** Bağlantı, sizin Google Cloud'da kendinizin oluşturduğu istemci kimliğiyle kurulur. Arada
-  geliştiricinin ya da başka birinin sunucusu yoktur; Kalender doğrudan Google'la konuşur.
-- **Aldıkları:** Takvimlerinizin adı ve rengi, görev listelerinizin adı; görünen ayın etkinliklerinin başlığı, tarihi, saati
-  ve rengi; görevlerin başlığı, son tarihi ve tamamlanıp tamamlanmadığı. Etkinliklerin açıklaması, yeri, katılımcıları, ekleri
-  ve bağlantıları **istenmez**; Google'dan yalnız bu alanlar istenir. Hesabınızın e-posta adresi ana takviminizin kimliğinden
-  okunur; ayarlarda gösterilir ve aşağıdaki "takvimde aç" bağlantısında kullanılır.
-- **Gönderdikleri:** Google'a yalnızca istemci kimliğiniz, izin anahtarı ve hangi takvimin hangi tarih aralığının istendiği gider. Sizin
-  verinizden Google'a ya da başka bir yere hiçbir şey yazılmaz.
-- **Ne sıklıkla:** Seçtiğiniz aralıkta (30 saniye – 24 saat) yeniler.
-- **Tarayıcıda açma:** Takvimin sağ tık menüsündeki "… takvimde aç" satırı o günü Google Takvim'de, tarayıcınızda açar; adres hangi hesabın
-  açılacağını bilsin diye e-posta adresinizi içerir. Bu sayfayı Kalender değil tarayıcınız açar.
-
-### Bilgisayarınızda tutulanlar
-
-Hepsi Windows hesabınıza ait `%LOCALAPPDATA%\Kalender` klasöründedir:
-
-- **Ayarlar** (`ayarlar.json`): Görünüm ve konum ayarları; Google bağlıysa istemci kimliği, hesabın e-posta adresi ve
-  seçtiğiniz takvimler. İstemci gizli anahtarı bu dosyada Windows'un şifrelemesiyle (DPAPI) durur.
-- **Google izni** (`google-token.dat`): Windows'un şifrelemesiyle saklanır; yalnız sizin Windows hesabınız açabilir.
-- **Etkinlik kopyası** (`cache` klasörü): Görünen ayın yukarıda sayılan bilgilerinin bir kopyası; internet yokken de
-  gösterilebilsin diye durur. Şifreli değildir.
-- **Tatil listesi, duvar kâğıdı resimleri ve günlük:** Günlük yalnız hataları ve kurulum, kapanış gibi olayları yazar; etkinlik
-  başlığı içermez. En yeni beş günlük dosyası saklanır, eskileri kendiliğinden silinir.
-
-**Bağlantıyı kes** izin dosyasını ve etkinlik kopyasını siler. Google'daki izni de kaldırmak için Google hesabınızın
-[Üçüncü taraf bağlantıları](https://myaccount.google.com/connections) sayfasından Kalender'i kaldırın. Kalender'i kaldırırken
-**Ayarlarımı ve yerel veri kopyamı da sil** kutusunu işaretlerseniz ayarlar, izin dosyası ve kopyalar da silinir.
+**Google'ı bağlayınca:** Takvim ve görevlerinize yalnızca okuma izniyle, doğrudan Google'la bağlanır; hiçbir şey eklemez,
+değiştirmez, silmez. Etkinliklerin yalnızca başlığını, tarihini ve rengini alır. Bunların bir kopyası, internet yokken de
+gösterilebilsin diye bilgisayarınızda durur; **Bağlantıyı kes** bu kopyayı siler.
 
 ## Üçüncü taraf bileşenler
 
