@@ -5039,8 +5039,12 @@ internal static class Program
             Denetle("önceki hesabın ayları ay belleğinde kalmadı", AyBellegi(u.Saglayici).Count == 0,
                 $"{AyBellegi(u.Saglayici).Count} ay");
 
-            string kopyaYolu = Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("CacheFolder", Hepsi)!.GetValue(null)!, "google.json");
-            string kopya = File.Exists(kopyaYolu) ? File.ReadAllText(kopyaYolu) : string.Empty;
+            // 1.17'den beri kopya DPAPI ile şifreli (google.dat); uygulamanın sabitiyle çözülüp bakılır.
+            string kopyaYolu = Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("CacheFolder", Hepsi)!.GetValue(null)!, "google.dat");
+            string kopya = File.Exists(kopyaYolu)
+                ? Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(kopyaYolu),
+                    Encoding.UTF8.GetBytes("Kalender.Google.Onbellek.v1"), DataProtectionScope.CurrentUser))
+                : string.Empty;
             Denetle("yerel kopyada önceki hesabın verisi yok, yeni hesabınki var",
                 !kopya.Contains("a@deneme", StringComparison.Ordinal) && !kopya.Contains("\"is-ekim\"", StringComparison.Ordinal)
                 && kopya.Contains("\"b-is-ekim\"", StringComparison.Ordinal));

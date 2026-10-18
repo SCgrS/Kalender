@@ -767,7 +767,9 @@ internal sealed class AppHost : IDisposable, IAppearanceHost
         }
         catch (Exception ex)
         {
-            Log.Warn("Açılamadı: " + target, ex);
+            // "Takvimde aç" adresi hesabın e-postasını (authuser) taşır; günlüğe sorgusuz yazılır.
+            int soru = target.IndexOf('?');
+            Log.Warn("Açılamadı: " + (soru >= 0 ? target[..soru] : target), ex);
         }
     }
 

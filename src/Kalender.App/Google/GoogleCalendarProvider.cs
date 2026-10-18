@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Kalender.Core;
@@ -127,7 +128,21 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
     /// </summary>
     public string? SonHata { get; private set; }
 
-    private static string CachePath => Path.Combine(Paths.CacheFolder, "google.json");
+    /// <summary>
+    /// Etkinlik ve görevlerin yerel kopyası. Windows'un DPAPI'siyle, yalnızca bu
+    /// kullanıcı hesabının bu bilgisayarda çözebileceği biçimde şifreli durur
+    /// (Google yetki dosyası gibi).
+    /// </summary>
+    private static string CachePath => Path.Combine(Paths.CacheFolder, "google.dat");
+
+    /// <summary>
+    /// 1.16'ya kadar kopya bu adla düz metin JSON olarak yazılıyordu. Bulunursa bir
+    /// kez okunup şifreli dosyaya aktarılır ve silinir.
+    /// </summary>
+    private static string EskiDuzCachePath => Path.Combine(Paths.CacheFolder, "google.json");
+
+    /// <summary>Kopyanın şifrelenmesine karıştırılan sabit; dosyanın amacını da işaretler.</summary>
+    private static readonly byte[] CacheEntropy = Encoding.UTF8.GetBytes("Kalender.Google.Onbellek.v1");
 
     // -------------------------------------------------------------- önbellek
 
@@ -144,15 +159,29 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             return;
         }
 
+        bool eskiDuzVardi = false;
+        bool yuklendi = false;
         try
         {
-            if (!File.Exists(CachePath))
+            string? json = null;
+            if (File.Exists(CachePath))
+            {
+                byte[] sifreli = File.ReadAllBytes(CachePath);
+                json = Encoding.UTF8.GetString(
+                    ProtectedData.Unprotect(sifreli, CacheEntropy, DataProtectionScope.CurrentUser));
+            }
+            else if (File.Exists(EskiDuzCachePath))
+            {
+                json = File.ReadAllText(EskiDuzCachePath, Encoding.UTF8);
+                eskiDuzVardi = true;
+            }
+
+            if (json is null)
             {
                 return;
             }
 
-            var bundle = JsonSerializer.Deserialize<ProviderBundle>(
-                File.ReadAllText(CachePath, Encoding.UTF8), JsonOptions);
+            var bundle = JsonSerializer.Deserialize<ProviderBundle>(json, JsonOptions);
 
             if (bundle is not null)
             {
@@ -161,12 +190,53 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
                 RemapColors(bundle);
 
                 Data = bundle;
+                yuklendi = true;
                 Log.Info($"Google önbelleği yüklendi: {bundle.Events.Count} etkinlik, {bundle.Tasks.Count} görev.");
+
+                if (eskiDuzVardi)
+                {
+                    // Eski düz metin kopya şifreli dosyaya aktarılır; SaveCache
+                    // yazabildiyse düz dosyayı da siler, yazamadıysa düz kopya
+                    // tek kopya olarak kalır (sonraki açılışta yeniden denenir).
+                    lock (_veriKilidi)
+                    {
+                        SaveCache();
+                    }
+
+                    Log.Info("Google önbelleği şifreli hâle getirildi.");
+                }
             }
         }
         catch (Exception ex)
         {
             Log.Warn("Google önbelleği okunamadı.", ex);
+        }
+        finally
+        {
+            // Okunamayan eski düz kopya işe yaramaz; o da diskte kalmasın.
+            if (eskiDuzVardi && !yuklendi)
+            {
+                EskiDuzKopyayiSil();
+            }
+        }
+    }
+
+    /// <summary>1.16'ya kadar yazılan düz metin kopyayı (ve yarım kalmış geçici dosyasını) siler.</summary>
+    private static void EskiDuzKopyayiSil()
+    {
+        try
+        {
+            foreach (string yol in new[] { EskiDuzCachePath, EskiDuzCachePath + ".tmp" })
+            {
+                if (File.Exists(yol))
+                {
+                    File.Delete(yol);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Eski düz metin Google önbelleği silinemedi.", ex);
         }
     }
 
@@ -378,6 +448,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             {
                 Log.Warn("Google önbelleği silinemedi.", ex);
             }
+
+            EskiDuzKopyayiSil();
         }
     }
 
@@ -387,7 +459,8 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
         {
             Directory.CreateDirectory(Paths.CacheFolder);
             string temp = CachePath + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(Data, JsonOptions), new UTF8Encoding(false));
+            byte[] duz = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(Data, JsonOptions));
+            File.WriteAllBytes(temp, ProtectedData.Protect(duz, CacheEntropy, DataProtectionScope.CurrentUser));
 
             if (File.Exists(CachePath))
             {
@@ -397,6 +470,9 @@ internal sealed class GoogleCalendarProvider : ICalendarProvider, IDisposable
             {
                 File.Move(temp, CachePath);
             }
+
+            // Şifreli kopya yerinde: 1.16'nın düz metin kopyası kalmasın.
+            EskiDuzKopyayiSil();
         }
         catch (Exception ex)
         {

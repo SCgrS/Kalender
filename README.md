@@ -172,7 +172,7 @@ e-posta istemez.
 
 **Google'ı bağlayınca:** Takvim ve görevlerinize yalnızca okuma izniyle, doğrudan Google'la bağlanır. Google Takvim'inize hiçbir
 şey eklemez, değiştirmez, silmez. Etkinliklerin yalnızca başlığını, tarihini ve rengini alır. Bunların bir kopyası, internet
-yokken de gösterilebilsin diye bilgisayarınızda durur. **Bağlantıyı kes** bu kopyayı siler.
+yokken de gösterilebilsin diye bilgisayarınızda şifreli durur. **Bağlantıyı kes** bu kopyayı siler.
 
 ## Üçüncü taraf bileşenler
 

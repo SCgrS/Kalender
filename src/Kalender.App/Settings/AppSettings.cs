@@ -154,10 +154,69 @@ internal sealed class AppearanceSettings
 }
 
 /// <summary>Google bağlantısı ve yoklama ayarları.</summary>
-internal sealed class GoogleSettings
+internal sealed class GoogleSettings : IJsonOnDeserialized
 {
-    /// <summary>Kullanıcının kendi Google Cloud istemci kimliği.</summary>
-    public string? ClientId { get; set; }
+    private const string KimlikAdi = "Google istemci kimliği";
+    private const string EpostaAdi = "Google hesabının e-posta adresi";
+    private const string TakvimlerAdi = "Seçili Google takvimleri";
+
+    private string? _clientId;
+    private string? _clientIdSifreli;
+
+    /// <summary>
+    /// Kullanıcının kendi Google Cloud istemci kimliği. Çözülmüş hâli yalnızca
+    /// bellekte durur; ayar dosyasına <see cref="ClientIdSifreli"/> yazılır.
+    /// </summary>
+    [JsonIgnore]
+    public string? ClientId
+    {
+        get => _clientId;
+        set
+        {
+            _clientId = value;
+            _clientIdSifreli = GizliDeger.Sifrele(value, KimlikAdi);
+        }
+    }
+
+    /// <summary>İstemci kimliğinin Windows DPAPI ile şifrelenmiş hâli (Base64).</summary>
+    public string? ClientIdSifreli
+    {
+        get => _clientIdSifreli;
+        set
+        {
+            _clientIdSifreli = value;
+            _clientId = GizliDeger.Coz(value, KimlikAdi);
+        }
+    }
+
+    /// <summary>
+    /// 1.16'ya kadar istemci kimliği "ClientId" adıyla düz metin yazılıyordu. Bu
+    /// alan yalnızca o eski kaydı okumak için var (bkz. <see cref="EskiDuzMetinClientSecret"/>).
+    /// </summary>
+    /// <remarks>
+    /// Okunan değer hemen değil, okuma bitince (<see cref="IJsonOnDeserialized.OnDeserialized"/>)
+    /// uygulanır: 1.16'ya dönülüp yeniden geçilirse 1.16 tanımadığı şifreli alanı dosyanın
+    /// sonuna olduğu gibi geri yazar; o eski değer 1.16'da girilen yenisini ezmemeli.
+    /// Şifreleme yapılamazsa (DPAPI hatası) değer kaybolmasın diye 1.16'daki gibi düz
+    /// yazılır; sonraki açılışta yeniden şifrelenmeye çalışılır.
+    /// </remarks>
+    [JsonPropertyName("ClientId")]
+    public string? EskiDuzMetinClientId
+    {
+        get => _clientIdSifreli is null ? _clientId : null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                _okunanDuzKimlik = value;
+                DuzMetinOkundu = true;
+            }
+        }
+    }
+
+    private string? _okunanDuzKimlik;
+    private string? _okunanDuzEposta;
+    private List<string>? _okunanDuzTakvimler;
 
     private string? _clientSecret;
     private string? _clientSecretSifreli;
@@ -213,7 +272,10 @@ internal sealed class GoogleSettings
         }
     }
 
-    /// <summary>Ayar dosyasında eski düz metin parola bulundu; dosya şifreli hâliyle yeniden yazılmalı.</summary>
+    /// <summary>
+    /// Ayar dosyasında eski düz metin bir değer (gizli anahtar, istemci kimliği,
+    /// e-posta ya da seçili takvimler) bulundu; dosya şifreli hâliyle yeniden yazılmalı.
+    /// </summary>
     [JsonIgnore]
     public bool DuzMetinOkundu { get; set; }
 
@@ -230,9 +292,89 @@ internal sealed class GoogleSettings
 
     /// <summary>
     /// Gösterilecek takvimlerin kimlikleri. Boşsa hepsi, yalnız
-    /// <see cref="HicbiriSecili"/> varsa hiçbiri gösterilir.
+    /// <see cref="HicbiriSecili"/> varsa hiçbiri gösterilir. Ana takvimin ve
+    /// paylaşılan takvimlerin kimliği e-posta adresidir; bu yüzden liste ayar
+    /// dosyasına <see cref="SelectedCalendarIdsSifreli"/> olarak yazılır. Liste
+    /// yerinde değiştirildiği için (Add, Remove, Clear) şifreli hâli her yazımda
+    /// listeden yeniden hesaplanır.
     /// </summary>
+    [JsonIgnore]
     public List<string> SelectedCalendarIds { get; set; } = new();
+
+    private string? _sonTakvimlerDuz;
+    private string? _sonTakvimlerSifreli;
+
+    /// <summary>
+    /// Seçili takvimlerin JSON dizisi olarak Windows DPAPI ile şifrelenmiş hâli
+    /// (Base64). Liste boşsa (hepsi gösteriliyor) yazılmaz. Liste değişmedikçe aynı
+    /// şifreli metin verilir; dosya her kayıtta gereksiz yere değişmesin.
+    /// </summary>
+    public string? SelectedCalendarIdsSifreli
+    {
+        get
+        {
+            if (SelectedCalendarIds.Count == 0)
+            {
+                return null;
+            }
+
+            string duz = JsonSerializer.Serialize(SelectedCalendarIds);
+            if (duz != _sonTakvimlerDuz || _sonTakvimlerSifreli is null)
+            {
+                _sonTakvimlerSifreli = GizliDeger.Sifrele(duz, TakvimlerAdi);
+                _sonTakvimlerDuz = _sonTakvimlerSifreli is null ? null : duz;
+            }
+
+            _takvimlerSifrelenemedi = _sonTakvimlerSifreli is null;
+            return _sonTakvimlerSifreli;
+        }
+        set
+        {
+            string? duz = GizliDeger.Coz(value, TakvimlerAdi);
+            List<string>? liste = null;
+            if (duz is not null)
+            {
+                try
+                {
+                    liste = JsonSerializer.Deserialize<List<string>>(duz);
+                }
+                catch (JsonException)
+                {
+                    liste = null;
+                }
+            }
+
+            SelectedCalendarIds = liste ?? new List<string>();
+            _sonTakvimlerDuz = liste is null ? null : duz;
+            _sonTakvimlerSifreli = liste is null ? null : value;
+        }
+    }
+
+    /// <summary>
+    /// 1.16'ya kadar liste "SelectedCalendarIds" adıyla düz metin yazılıyordu. Bu
+    /// alan yalnızca o eski kaydı okumak için var.
+    /// </summary>
+    /// <remarks>
+    /// 1.16 şifreli seçimi okuyamadığı için listeyi hep yazar (boşsa []). Okunan liste
+    /// <see cref="IJsonOnDeserialized.OnDeserialized"/>'da uygulanır. Şifreleme
+    /// yapılamadıysa liste düz yazılır (bkz. <see cref="EskiDuzMetinClientId"/>);
+    /// <see cref="SelectedCalendarIdsSifreli"/> ondan önce okunduğu için bayrak güncel.
+    /// </remarks>
+    [JsonPropertyName("SelectedCalendarIds")]
+    public List<string>? EskiDuzMetinSelectedCalendarIds
+    {
+        get => _takvimlerSifrelenemedi && SelectedCalendarIds.Count > 0 ? SelectedCalendarIds : null;
+        set
+        {
+            _okunanDuzTakvimler = value;
+            if (value is { Count: > 0 })
+            {
+                DuzMetinOkundu = true;
+            }
+        }
+    }
+
+    private bool _takvimlerSifrelenemedi;
 
     /// <summary>
     /// Gösterilecek görev listelerinin kimlikleri. Boşsa hepsi, yalnız
@@ -243,8 +385,86 @@ internal sealed class GoogleSettings
     /// <summary>Görev noktacıklarının rengi (#RRGGBB).</summary>
     public string TaskColor { get; set; } = "#4C8DFF";
 
-    /// <summary>Bağlı hesabın e-posta adresi; yalnızca ayarlarda göstermek için.</summary>
-    public string? AccountEmail { get; set; }
+    private string? _accountEmail;
+    private string? _accountEmailSifreli;
+
+    /// <summary>
+    /// Bağlı hesabın e-posta adresi; yalnızca ayarlarda göstermek için. Çözülmüş
+    /// hâli yalnızca bellekte durur; ayar dosyasına <see cref="AccountEmailSifreli"/> yazılır.
+    /// </summary>
+    [JsonIgnore]
+    public string? AccountEmail
+    {
+        get => _accountEmail;
+        set
+        {
+            _accountEmail = value;
+            _accountEmailSifreli = GizliDeger.Sifrele(value, EpostaAdi);
+        }
+    }
+
+    /// <summary>E-posta adresinin Windows DPAPI ile şifrelenmiş hâli (Base64).</summary>
+    public string? AccountEmailSifreli
+    {
+        get => _accountEmailSifreli;
+        set
+        {
+            _accountEmailSifreli = value;
+            _accountEmail = GizliDeger.Coz(value, EpostaAdi);
+        }
+    }
+
+    /// <summary>
+    /// 1.16'ya kadar e-posta "AccountEmail" adıyla düz metin yazılıyordu. Bu alan
+    /// yalnızca o eski kaydı okumak için var.
+    /// </summary>
+    /// <remarks>Okuma ve yazma <see cref="EskiDuzMetinClientId"/> ile aynı kurala uyar.</remarks>
+    [JsonPropertyName("AccountEmail")]
+    public string? EskiDuzMetinAccountEmail
+    {
+        get => _accountEmailSifreli is null ? _accountEmail : null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                _okunanDuzEposta = value;
+                DuzMetinOkundu = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Okuma bitti: düz değerler şifreli alanlardan önce gelir. 1.17 düz yazmaz (yalnız
+    /// şifreleme yapılamadığında); dosyada düz değer varsa onu en son 1.16 ya da öncesi
+    /// yazmıştır ve şifreli alanlar 1.16'nın dokunmadan geri yazdığı eski değerlerdir.
+    /// </summary>
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        // Bu noktada AccountEmail şifreli alandan çözülen değerdir (ya da null).
+        bool hesapDegisti = _okunanDuzEposta is not null && AccountEmail is not null
+            && !string.Equals(_okunanDuzEposta, AccountEmail, StringComparison.OrdinalIgnoreCase);
+
+        if (_okunanDuzKimlik is not null)
+        {
+            ClientId = _okunanDuzKimlik;
+        }
+
+        if (_okunanDuzEposta is not null)
+        {
+            AccountEmail = _okunanDuzEposta;
+        }
+
+        // Boş düz liste eski şifreli seçimi yalnız hesap değiştiyse düşürür: 1.16'ya
+        // dönülüp hiçbir şeye dokunulmadan geri gelinince seçim korunur.
+        if (_okunanDuzTakvimler is { Count: > 0 } || (_okunanDuzTakvimler is not null && hesapDegisti))
+        {
+            SelectedCalendarIds = _okunanDuzTakvimler;
+        }
+
+        _okunanDuzKimlik = null;
+        _okunanDuzEposta = null;
+        _okunanDuzTakvimler = null;
+    }
 
     /// <summary>Bu sürümün tanımadığı alanlar; bkz. <see cref="AppSettings.BilinmeyenAlanlar"/>.</summary>
     [JsonExtensionData]

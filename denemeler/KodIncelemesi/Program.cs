@@ -1423,9 +1423,10 @@ internal static class Program
             Denetle("kapanışta iki değer de ayara yazıldı",
                 (string?)Oku(google, "ClientId") == "deneme.apps.googleusercontent.com"
                 && (string?)Oku(google, "ClientSecret") == "GOCSPX-deneme");
-            Denetle("ve dosyaya kaydedildi (gizli anahtar şifreli)",
-                metin.Contains("deneme.apps.googleusercontent.com", StringComparison.Ordinal)
+            Denetle("ve dosyaya kaydedildi (istemci kimliği ve gizli anahtar şifreli, 1.17)",
+                metin.Contains("ClientIdSifreli", StringComparison.Ordinal)
                 && metin.Contains("ClientSecretSifreli", StringComparison.Ordinal)
+                && !metin.Contains("deneme.apps.googleusercontent.com", StringComparison.Ordinal)
                 && !metin.Contains("GOCSPX-deneme", StringComparison.Ordinal));
             Denetle("duvar kâğıdı yeniden yazılmadı", kapi.Uygulama == 0);
 

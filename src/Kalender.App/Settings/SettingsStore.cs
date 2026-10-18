@@ -41,8 +41,9 @@ internal sealed class SettingsStore
 
         Log.Level = (LogLevel)Math.Clamp(Current.LogLevel, 0, 4);
 
-        // 1.10'a kadar Google istemci gizli anahtarı düz metin yazılıyordu;
-        // dosya bir kez şifreli hâliyle yeniden yazılır, düz metin kalmaz.
+        // 1.10'a kadar Google istemci gizli anahtarı, 1.16'ya kadar istemci
+        // kimliği, hesabın e-posta adresi ve seçili takvimler düz metin
+        // yazılıyordu; dosya bir kez şifreli hâliyle yeniden yazılır, düz metin kalmaz.
         if (duzMetinVardi)
         {
             Current.Google.DuzMetinOkundu = false;
@@ -55,7 +56,7 @@ internal sealed class SettingsStore
                 YedegiSil(Paths.SettingsFile);
             }
 
-            Log.Info("Google istemci gizli anahtarı ayar dosyasında şifreli hâle getirildi.");
+            Log.Info("Google bilgileri ayar dosyasında şifreli hâle getirildi.");
         }
     }
 

@@ -422,6 +422,7 @@ internal static class Program
             await Bolum(Madde17);
             await Bolum(Madde38);
             await Bolum(Madde34);
+            await Bolum(YerelKopyaSifreli);
         }
         finally
         {
@@ -457,7 +458,7 @@ internal static class Program
         Denetle("griye çekilen iş gri çiziliyor", Renk(saglayici, "e30") == "#7c7c7c", Renk(saglayici, "e30") ?? "yok");
         Denetle("çevrimiçi ve hata yok", (bool)Oku(saglayici, "IsOnline")! && Oku(saglayici, "SonHata") is null);
         Denetle("önbellek geçici klasöre yazıldı",
-            File.Exists(Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("CacheFolder")!.GetValue(null)!, "google.json")));
+            File.Exists(Path.Combine((string)Tip("Kalender.Core.Paths").GetProperty("CacheFolder")!.GetValue(null)!, "google.dat")));
 
         // Sonraki yoklama yeni anahtarla, 401'siz gider.
         int oncekiRet = google.Ret401;
@@ -941,6 +942,106 @@ internal static class Program
         }
     }
 
+    // 1.17 ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Yerel kopya (cache\google.dat) DPAPI ile şifreli yazılıyor; 1.16'nın düz
+    /// metin google.json'u okunup şifreliye aktarılıyor ve siliniyor.
+    /// </summary>
+    private static async Task YerelKopyaSifreli()
+    {
+        Console.WriteLine();
+        Console.WriteLine("1.17) Yerel kopya bilgisayarda şifreli duruyor");
+
+        string sifreli = Path.Combine(Klasor("CacheFolder"), "google.dat");
+        string eskiDuz = Path.Combine(Klasor("CacheFolder"), "google.json");
+
+        var (_, saglayici, _) = Bagli();
+        Cagir(saglayici, "ClearCache");
+        bool yazildi = await Esitle(saglayici);
+        byte[] bayt = File.Exists(sifreli) ? File.ReadAllBytes(sifreli) : Array.Empty<byte>();
+        string ham = Encoding.UTF8.GetString(bayt) + Encoding.Unicode.GetString(bayt);
+        Denetle("kopya şifreli dosyaya yazıldı, düz dosya yok", yazildi && bayt.Length > 0 && !File.Exists(eskiDuz));
+        Denetle("dosyada etkinlik başlığı ve e-posta düz metin değil",
+            !ham.Contains("Dava", StringComparison.Ordinal) && !ham.Contains("takvim@deneme", StringComparison.Ordinal)
+            && !ham.TrimStart().StartsWith('{'));
+        Denetle("dosya bu kullanıcı için DPAPI ile çözülüyor ve aynı veriyi veriyor", Cozulur(bayt, out string? json)
+            && json!.Contains("\"Dava\"", StringComparison.Ordinal) && json.Contains("takvim@deneme", StringComparison.Ordinal));
+        Denetle("geçici dosya kalmadı", !File.Exists(sifreli + ".tmp"));
+
+        // 1.16'nın düz metin kopyası: şifreli dosya yokken okunur, şifreliye aktarılır, silinir.
+        Cozulur(bayt, out string? duzJson);
+        File.Delete(sifreli);
+        File.WriteAllText(eskiDuz, duzJson!, new UTF8Encoding(false));
+        File.WriteAllText(eskiDuz + ".tmp", duzJson!, new UTF8Encoding(false));
+        var (_, saglayici2, _) = Kur();
+        Cagir(saglayici2, "LoadCache");
+        Denetle("1.16'nın düz kopyası yüklendi", Etkinlikler(saglayici2).Count == 1, $"{Etkinlikler(saglayici2).Count} etkinlik");
+        Denetle("düz kopya ve geçici dosyası silindi, şifreli kopya yazıldı",
+            !File.Exists(eskiDuz) && !File.Exists(eskiDuz + ".tmp") && File.Exists(sifreli)
+            && Cozulur(File.ReadAllBytes(sifreli), out string? aktarilan) && aktarilan!.Contains("\"Dava\"", StringComparison.Ordinal));
+
+        var (_, saglayici3, _) = Kur();
+        Cagir(saglayici3, "LoadCache");
+        Denetle("sonraki açılışta şifreli kopya yükleniyor", Etkinlikler(saglayici3).Count == 1);
+
+        // Okunamayan eski düz kopya işe yaramaz: silinir, uygulama düşmez.
+        File.Delete(sifreli);
+        File.WriteAllText(eskiDuz, "{ bozuk", new UTF8Encoding(false));
+        var (_, saglayici4, _) = Kur();
+        Exception? hata = null;
+        try
+        {
+            Cagir(saglayici4, "LoadCache");
+        }
+        catch (Exception ex)
+        {
+            hata = ex;
+        }
+
+        Denetle("bozuk düz kopya hata fırlatmadan silindi", hata is null && !File.Exists(eskiDuz)
+            && Etkinlikler(saglayici4).Count == 0, hata?.GetBaseException().Message ?? "");
+
+        // Başka bir hesabın şifrelediği (çözülemeyen) kopya: düşmez, boş başlar.
+        File.WriteAllBytes(sifreli, new byte[] { 1, 0, 0, 0, 0xD0, 0x8C, 0x9D, 0xDF, 1, 0x15, 0xD1, 0x11, 0x8C, 0x7A, 0, 0xC0 });
+        var (_, saglayici5, _) = Kur();
+        hata = null;
+        try
+        {
+            Cagir(saglayici5, "LoadCache");
+        }
+        catch (Exception ex)
+        {
+            hata = ex;
+        }
+
+        Denetle("çözülemeyen kopya hata fırlatmadan yok sayıldı", hata is null && Etkinlikler(saglayici5).Count == 0,
+            hata?.GetBaseException().Message ?? "");
+
+        // Bağlantıyı kes: iki dosya da silinir.
+        File.WriteAllText(eskiDuz, "{}", new UTF8Encoding(false));
+        Cagir(saglayici5, "ClearCache");
+        Denetle("bağlantı kesilince şifreli ve eski düz kopya silindi", !File.Exists(sifreli) && !File.Exists(eskiDuz));
+    }
+
+    /// <summary>Uygulamanın kopya şifrelemesiyle (DPAPI, aynı sabit) çözmeyi dener.</summary>
+    private static bool Cozulur(byte[] bayt, out string? json)
+    {
+        try
+        {
+            byte[] duz = System.Security.Cryptography.ProtectedData.Unprotect(bayt,
+                Encoding.UTF8.GetBytes("Kalender.Google.Onbellek.v1"),
+                System.Security.Cryptography.DataProtectionScope.CurrentUser);
+            json = Encoding.UTF8.GetString(duz);
+            return true;
+        }
+        catch (Exception)
+        {
+            json = null;
+            return false;
+        }
+    }
+
     // 14 ------------------------------------------------------------------------
 
     private static async Task Madde14()
@@ -948,7 +1049,7 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("14) Bağlantı keserken süren eşitleme yerel kopyayı geri yazmıyor");
 
-        string onbellek = Path.Combine(Klasor("CacheFolder"), "google.json");
+        string onbellek = Path.Combine(Klasor("CacheFolder"), "google.dat");
         string yetkiDosyasi = Path.Combine(Klasor("RootFolder"), "google-token.dat");
 
         var (yetki, saglayici, google) = Bagli();
