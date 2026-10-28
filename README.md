@@ -10,19 +10,24 @@ hesabına yalnızca okuma izniyle bağlanılır.
 
 Takvim konumu, boyutu ve renkleri özelleştirilebilir.
 
-![Kalender, koyu düz renk (Kuzgun) zeminde: masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi](docs/masaustu-1.jpg)
+<p align="center">
+  <img src="docs/masaustu-1.jpg" width="90%" alt="Kalender, koyu düz renk (Kuzgun) zeminde: Masaüstü simgeleri, Windows 11 görev çubuğu ve sağ altta renkli noktacıklı Ekim takvimi">
+</p>
 
-![Kalender, sisli dağ sırtları fotoğrafında, sağ üstte takvim](docs/masaustu-2.jpg)
+<p align="center">
+  <img src="docs/masaustu-2.jpg" width="90%" alt="Kalender, sisli dağ sırtları fotoğrafında, sağ üstte takvim">
+</p>
 
 ## Kurulum
 
 Windows 10 (20H2 ve üzeri) ya da Windows 11, 64 bit.
 
 1. Yukarıdaki bağlantıdan `Kalender-Kurulum.exe` dosyasını indirin ve çift tıklayın.
-2. Windows SmartScreen uyarı gösterirse **Daha fazla bilgi**'ye, sonra **Yine de çalıştır**'a basın.
+2. Windows SmartScreen uyarı gösterirse **Daha fazla bilgi**'ye, sonra **Yine de çalıştır**'a basın. Uyarı, uygulama
+   imzalı olmadığı için çıkar.
 3. **Kur**'a basın. Kurulum birkaç saniye sürer, ardından Kalender başlar.
 
-Google Takvim ve Görevler bağlantısı adımları aşağıda, **Google Takvim ve Görevler Bağlantısı** başlığındadır.
+Google Takvim ve Görevler bağlantısı adımları aşağıda, **Google Takvim ve Görevler bağlantısı** başlığındadır.
 
 ## Öne çıkanlar
 
@@ -44,16 +49,22 @@ Görüntülerdeki etkinlik ve görevler örnektir.
 Takvim duvar kâğıdının bir parçası olarak çizilir. Zemin düz renk, uygulamayla gelen dört fotoğraftan biri ya da kendi
 fotoğrafınız olabilir.
 
-![Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla](docs/masaustu-3.jpg)
+<p align="center">
+  <img src="docs/masaustu-3.jpg" width="90%" alt="Kalender, sisli çam ormanı fotoğrafında, ortada kısa görev çubuğuyla">
+</p>
 
-![Kalender, açık düz renk zeminde: yazılar koyu, görev çubuğu açık](docs/masaustu-4.jpg)
+<p align="center">
+  <img src="docs/masaustu-4.jpg" width="90%" alt="Kalender, açık düz renk zeminde: Yazılar koyu, görev çubuğu açık">
+</p>
 
 ### Gün kutusu
 
 Fareyi bir günün üzerinde kısa süre tutunca o günün kayıtları saat sırasıyla listelenir. Her
 satırın rengi Google'daki rengiyle aynıdır, tamamlanmış görevler gri görünür.
 
-![Gün kutusu: 14 Ekim'in duruşma, toplantı, bilirkişi incelemesi ve iki görevi](docs/gun-kutusu.jpg)
+<p align="center">
+  <img src="docs/gun-kutusu.jpg" width="90%" alt="Gün kutusu: 14 Ekim'in duruşma, toplantı, bilirkişi incelemesi ve iki görevi">
+</p>
 
 ### Ay düğmeleri
 
@@ -85,7 +96,7 @@ Saatin yanındaki tepsi simgesine tıklayın. Her değişiklik anında masaüst�
 Tepsi simgesine sağ tıklayınca **Şimdi yenile**, **Takvimi gizle**, **Eski duvar kâğıdıma dön**
 ve **Çıkış** gibi komutlar çıkar.
 
-## Google Takvim ve Görevler Bağlantısı
+## Google Takvim ve Görevler bağlantısı
 
 Kalender Google hesabınıza **yalnızca okuma** izniyle bağlanır. Etkinlik veya görev eklemez,
 silmez. Bağlantı doğrudan sizinle Google arasındadır, arada başka bir sunucu yoktur. Bunun için
@@ -99,13 +110,13 @@ Aynı adımlar Ayarlar penceresinde **Client ID nasıl alınır?** başlığı a
 
 ### 2. İki API'yi açın
 
-1. Sol menüden **APIs & Services > Library**'ye girin.
+1. Sol menüden **APIs & Services › Library**'ye girin.
 2. Arama kutusuna `Google Calendar API` yazın, sonuca tıklayın, **Enable**'a basın.
 3. **Library**'ye dönüp `Google Tasks API` arayın, onu da **Enable**'a basın.
 
 ### 3. İzin ekranını hazırlayın
 
-Sol menüden **APIs & Services > OAuth consent screen**'e girin. Google sizi **Google Auth Platform** sayfasına yönlendirir.
+Sol menüden **APIs & Services › OAuth consent screen**'e girin. Google sizi **Google Auth Platform** sayfasına yönlendirir.
 
 1. **Get started**'a basın.
 2. **App Information**: **App name** kutusuna `Kalender` yazın, **User support email** olarak kendi adresinizi seçin → **Next**.
@@ -145,13 +156,7 @@ yeniden bağlanın.
 
 Kalender yeni sürümleri kendisi bulur ve bir pencereyle haber verir. **Güncelle**'ye basmanız
 yeter. Ayarlarınız ve Google bağlantınız güncellemede korunur. Yeni sürüm olup olmadığına hemen bakmak için
-**Ayarlar > Genel > Şimdi denetle**'ye basın. Otomatik denetim aynı sayfadan kapatılabilir.
-
-## Kaldırma
-
-**Ayarlar > Genel > Kalender'i kaldır** ya da Windows **Ayarlar > Uygulamalar** listesinden
-**Kaldır**. Kaldırma, Kalender'den önceki duvar kâğıdınızı geri yükler. **Ayarlarımı ve yerel
-veri kopyamı da sil** kutusunu işaretlemezseniz yeniden kurduğunuzda her şey yerinde olur.
+**Ayarlar › Genel › Şimdi denetle**'ye basın. Otomatik denetim aynı sayfadan kapatılabilir.
 
 ## Veri gizliliği
 
@@ -186,4 +191,4 @@ teşekkür ederim.
 Soru ve geri bildirimler için: [x.com/CgrShn](https://x.com/CgrShn)
 
 Lisans: AGPL-3.0. Ayrıntılar için [LICENSE](LICENSE) dosyasına bakınız. Uygulamayla gelen zemin fotoğrafları bu lisansa
-girmez; onların lisansı [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasındadır.
+girmez. Onların lisansı [UCUNCU-TARAF.md](UCUNCU-TARAF.md) dosyasındadır.
